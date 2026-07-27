@@ -201,7 +201,7 @@ def parse_oi_history_points(response):
 
 
 def history_open_interest_point(history_points, target_timestamp_ms, label):
-    """Return the nearest usable ``(timestamp, OI)`` at or before a target."""
+    """Return the nearest usable OI and implied price at or before a target."""
     saw_invalid_value = False
     for timestamp_ms, item in reversed(history_points):
         if timestamp_ms > target_timestamp_ms:
@@ -213,7 +213,10 @@ def history_open_interest_point(history_points, target_timestamp_ms, label):
         if open_interest is None or open_interest < 0:
             saw_invalid_value = True
             continue
-        return timestamp_ms, open_interest
+        return timestamp_ms, open_interest, _history_implied_price(
+            item,
+            open_interest,
+        )
 
     if saw_invalid_value:
         raise ValueError(f"invalid {label} OI history")
@@ -222,14 +225,37 @@ def history_open_interest_point(history_points, target_timestamp_ms, label):
 
 def history_point_value(point, target_timestamp_ms):
     """Return a cached history value only while its source remains in range."""
+    if not _history_point_is_usable(point, target_timestamp_ms):
+        return None
+    return point[1]
+
+
+def history_point_price(point, target_timestamp_ms):
+    """Return the implied historical price while its source remains in range."""
+    if not _history_point_is_usable(point, target_timestamp_ms):
+        return None
+    return point[2]
+
+
+def _history_point_is_usable(point, target_timestamp_ms):
     if point is None:
+        return False
+    timestamp_ms = point[0]
+    return (
+        timestamp_ms <= target_timestamp_ms
+        and target_timestamp_ms - timestamp_ms
+        <= HISTORY_BASELINE_TOLERANCE_MS
+    )
+
+
+def _history_implied_price(item, open_interest):
+    if open_interest <= 0:
         return None
-    timestamp_ms, open_interest = point
-    if timestamp_ms > target_timestamp_ms:
+    open_interest_value = optional_float(item.get("sumOpenInterestValue"))
+    if open_interest_value is None or open_interest_value <= 0:
         return None
-    if target_timestamp_ms - timestamp_ms > HISTORY_BASELINE_TOLERANCE_MS:
-        return None
-    return open_interest
+    price = open_interest_value / open_interest
+    return price if isfinite(price) and price > 0 else None
 
 
 def calculate_change_percent(current_value, previous_value):

@@ -2,7 +2,6 @@ import { formatPercent } from "../utils/format.js";
 
 export function renderStatCards(elements, stats) {
   const changedValues = [];
-  updateValue(elements.changeCount, stats.changeCount, changedValues);
   updateValue(
     elements.topIncrease,
     stats.topIncrease?.symbol || "-",

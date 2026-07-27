@@ -68,6 +68,6 @@ exchange_ticket/          Binance 观察列表生成器
 realtime_oi_dashboard/    实时价格和 OI 面板
 shared/binance.py         Binance 符号校验和 TradingView 别名
 shared/http.py            Binance JSON 请求、重试和线程会话
-shared/utils.py           名单写入、数值解析和快照原子写入
+shared/utils.py           名单写入、数值解析和缓存原子写入
 shared/web.py             OI 面板的静态文件和 JSON 响应处理
 ```

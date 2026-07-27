@@ -7,7 +7,6 @@ export function useTableFilters(initialState = {}) {
     favoritesOnly: false,
     ...initialState,
   };
-  let version = 0;
 
   function update(nextState) {
     let changed = false;
@@ -17,7 +16,6 @@ export function useTableFilters(initialState = {}) {
         changed = true;
       }
     }
-    if (changed) version += 1;
     return changed;
   }
 
@@ -39,9 +37,6 @@ export function useTableFilters(initialState = {}) {
     },
     getState() {
       return state;
-    },
-    getVersion() {
-      return version;
     },
   };
 }

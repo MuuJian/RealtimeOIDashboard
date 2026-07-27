@@ -1,10 +1,3 @@
-const PRICE_DRIVEN_SORT_KEYS = new Set([
-  "price",
-  "priceChangePercent",
-  "currentOiValue",
-  "volume24h",
-]);
-
 function sortableNumber(value) {
   if (value == null || value === "") return null;
   const number = Number(value);
@@ -31,6 +24,20 @@ export function applyLivePriceToRow(row, live) {
   ) {
     row.priceChangePercent = live.priceChangePercent;
     changed = true;
+  }
+
+  const price7dBaseline = Number(row.price7dBaseline);
+  if (Number.isFinite(price7dBaseline) && price7dBaseline > 0) {
+    const price7dChangePercent = (price - price7dBaseline)
+      / price7dBaseline
+      * 100;
+    if (
+      Number.isFinite(price7dChangePercent)
+      && row.price7dChangePercent !== price7dChangePercent
+    ) {
+      row.price7dChangePercent = price7dChangePercent;
+      changed = true;
+    }
   }
 
   const currentOi = Number(row.currentOi);
@@ -100,7 +107,7 @@ export function getHeatMax(rows) {
   const maximums = {
     fundingRatePercent: 0,
     priceChangePercent: 0,
-    changePercent: 0,
+    price7dChangePercent: 0,
     oi24hChangePercent: 0,
     oi7dChangePercent: 0,
   };
@@ -114,7 +121,10 @@ export function getHeatMax(rows) {
       maximums.priceChangePercent,
       row.priceChangePercent,
     );
-    maximums.changePercent = largerAbsolute(maximums.changePercent, row.changePercent);
+    maximums.price7dChangePercent = largerAbsolute(
+      maximums.price7dChangePercent,
+      row.price7dChangePercent,
+    );
     maximums.oi24hChangePercent = largerAbsolute(
       maximums.oi24hChangePercent,
       row.oi24hChangePercent,
@@ -126,12 +136,6 @@ export function getHeatMax(rows) {
   }
 
   return maximums;
-}
-
-export function isPriceDrivenView(filters, sortState) {
-  return PRICE_DRIVEN_SORT_KEYS.has(sortState.sortKey)
-    || Number(filters.minOiValue || 0) > 0
-    || Number(filters.minVolume || 0) > 0;
 }
 
 function largerAbsolute(current, value) {

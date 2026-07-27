@@ -37,23 +37,23 @@ export function createRankingRow(row, context) {
   priceLink.rel = "noopener noreferrer";
   priceCell.append(priceLink);
 
-  const fundingRateCell = document.createElement("td");
   const priceChangeCell = document.createElement("td");
+  const price7dChangeCell = document.createElement("td");
+  const fundingRateCell = document.createElement("td");
   const oiValueCell = document.createElement("td");
   const volumeCell = document.createElement("td");
-  const oiChangeCell = document.createElement("td");
   const oi24hChangeCell = document.createElement("td");
   const oi7dChangeCell = document.createElement("td");
 
   tr.append(
     favoriteCell,
     symbolCell,
-    priceCell,
     fundingRateCell,
+    priceCell,
     priceChangeCell,
+    price7dChangeCell,
     oiValueCell,
     volumeCell,
-    oiChangeCell,
     oi24hChangeCell,
     oi7dChangeCell,
   );
@@ -61,12 +61,12 @@ export function createRankingRow(row, context) {
   tr._cells = {
     favoriteButton,
     symbolLink,
-    priceLink,
     fundingRateCell,
+    priceLink,
     priceChangeCell,
+    price7dChangeCell,
     oiValueCell,
     volumeCell,
-    oiChangeCell,
     oi24hChangeCell,
     oi7dChangeCell,
   };
@@ -78,6 +78,7 @@ export function createRankingRow(row, context) {
 export function updateRankingRow(tr, row, context) {
   const cells = tr._cells;
   const isFavorite = context.favorites.has(row.symbol);
+  tr.dataset.symbol = row.symbol;
 
   cells.favoriteButton.dataset.favorite = row.symbol;
   cells.favoriteButton.classList.toggle("active", isFavorite);
@@ -92,22 +93,29 @@ export function updateRankingRow(tr, row, context) {
   cells.symbolLink.textContent = row.symbol;
   cells.priceLink.href = tradingViewUrl(row.symbol);
   cells.priceLink.textContent = formatPrice(row.price);
-  cells.fundingRateCell.title = formatFundingTitle(row.nextFundingTime);
   cells.oiValueCell.textContent = formatCurrency(row.currentOiValue);
   cells.volumeCell.textContent = formatCurrency(row.volume24h);
 
+  updateHeatCell(
+    cells.priceChangeCell,
+    row.priceChangePercent,
+    context.heatMax.priceChangePercent,
+  );
+  cells.price7dChangeCell.title = Number.isFinite(row.price7dBaseline)
+    ? `7 天前参考价：${formatPrice(row.price7dBaseline)}`
+    : "等待 7 天历史价格";
+  updateHeatCell(
+    cells.price7dChangeCell,
+    row.price7dChangePercent,
+    context.heatMax.price7dChangePercent,
+  );
+  cells.fundingRateCell.title = formatFundingTitle(row.nextFundingTime);
   updateHeatCell(
     cells.fundingRateCell,
     row.fundingRatePercent,
     context.heatMax.fundingRatePercent,
     formatFundingRate,
   );
-  updateHeatCell(
-    cells.priceChangeCell,
-    row.priceChangePercent,
-    context.heatMax.priceChangePercent,
-  );
-  updateHeatCell(cells.oiChangeCell, row.changePercent, context.heatMax.changePercent);
   updateHeatCell(
     cells.oi24hChangeCell,
     row.oi24hChangePercent,

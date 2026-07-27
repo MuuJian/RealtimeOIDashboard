@@ -296,8 +296,9 @@ class BinanceFuturesClient:
         self,
         symbol: str,
         current_oi: float,
+        current_price: float,
     ) -> dict[str, float | None]:
-        return self.oi_history.get_changes(symbol, current_oi)
+        return self.oi_history.get_changes(symbol, current_oi, current_price)
 
     def _fetch_oi_history(self, symbol: str):
         return self.request_json(
@@ -327,6 +328,12 @@ class BinanceFuturesClient:
         with self.market_cache_lock:
             self.ticker_cache.clear()
             self.funding_cache.clear()
+
+    def export_oi_history_cache(self) -> dict[str, dict[str, object]]:
+        return self.oi_history.export_cache()
+
+    def restore_oi_history_cache(self, records: object) -> int:
+        return self.oi_history.restore_cache(records)
 
     def close(self) -> None:
         if self._owns_http_client:

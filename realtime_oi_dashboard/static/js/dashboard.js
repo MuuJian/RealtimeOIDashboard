@@ -3,27 +3,35 @@ import { createHighOi7dTable } from "./components/HighOi7dTable.js";
 import { createOiRankingTable } from "./components/OiRankingTable.js";
 import { createSortableHeaders } from "./components/SortableHeader.js";
 import { renderStatCards, renderWsState } from "./components/StatCard.js";
-import { useBinancePriceSocket } from "./hooks/useBinancePriceSocket.js";
+import { createBinancePriceFeed } from "./data/BinancePriceFeed.js";
 import { useFavorites } from "./hooks/useFavorites.js";
 import { loadOiSnapshot, useOiRankingData } from "./hooks/useOiRankingData.js";
 import { useTableFilters } from "./hooks/useTableFilters.js";
 import { useTableSort } from "./hooks/useTableSort.js";
 import { createMotionEffects } from "./motionEffects.js";
 import { createParticleField } from "./particleField.js";
-import {
-  buildHighOi7dRows,
-  buildVisibleRows,
-  getHeatMax,
-  isPriceDrivenView,
-} from "./utils/rankingRows.js";
+import { createRankingProcessor } from "./services/RankingProcessor.js";
 
 const OI_ROWS_MAX_STALE_MS = 15 * 60 * 1000;
 const lifecycleController = new AbortController();
+const EMPTY_HEAT_MAX = Object.freeze({
+  fundingRatePercent: 0,
+  priceChangePercent: 0,
+  price7dChangePercent: 0,
+  oi24hChangePercent: 0,
+  oi7dChangePercent: 0,
+});
+const PRICE_STATUS_LABELS = Object.freeze({
+  connecting: "连接中",
+  error: "异常",
+  live: "实时",
+  paused: "暂停",
+  reconnecting: "重连中",
+});
 
 const elements = {
   statusTitle: document.getElementById("statusTitle"),
   statusText: document.getElementById("statusText"),
-  changeCount: document.getElementById("changeCount"),
   wsState: document.getElementById("wsState"),
   topIncrease: document.getElementById("topIncrease"),
   topIncreaseNote: document.getElementById("topIncreaseNote"),
@@ -52,20 +60,24 @@ const motionEffects = createMotionEffects();
 const particleField = createParticleField(
   document.getElementById("particleField"),
 );
+const priceFeed = createBinancePriceFeed();
+const rankingProcessor = createRankingProcessor();
 
-let heatMax = getHeatMax([]);
-let fullRenderFrame = 0;
-let patchFrame = 0;
-let highOi7dFrame = 0;
+let heatMax = EMPTY_HEAT_MAX;
+let visibleRows = [];
+let highOi7dRows = [];
+let uiFrame = 0;
 let refreshTimer = null;
 let oiRefreshInFlight = false;
 let lastOiResponseAt = null;
 let disposed = false;
+let latestViewRequest = 0;
+let pendingFullRender = false;
+let pendingHighRender = false;
+let pendingControlsRender = false;
+let pendingStatsRender = false;
+let pendingPriceStatus = null;
 let pendingPatchSymbols = new Set();
-let visibleRowsCache = {
-  deps: "",
-  rows: [],
-};
 
 const table = createOiRankingTable({
   tbody: elements.rankBody,
@@ -80,39 +92,20 @@ const filterBar = createFilterBar({
   elements,
   filters,
   favorites,
-  onChange: scheduleFullRender,
+  onChange: resetTableAndRequestView,
 });
 
 const sortableHeaders = createSortableHeaders({
   headers: elements.sortableHeaders,
   sort,
-  onChange: scheduleFullRender,
+  onChange: resetTableAndRequestView,
 });
 
-const priceSocket = useBinancePriceSocket({
-  onStatusChange(value) {
-    if (disposed) return;
-    motionEffects.pulseValues(renderWsState(elements.wsState, value));
-  },
-  onPricesChange(changedSymbols, priceMap) {
-    if (disposed) return;
-    const affectedSymbols = rankingData.applyPriceUpdates(changedSymbols, priceMap);
-    if (!affectedSymbols.length) return;
-
-    if (isPriceDrivenView(filters.getState(), sort.getState())) {
-      scheduleFullRender();
-      return;
-    }
-
-    if (fullRenderFrame) return;
-
-    const symbolsToPatch = syncLivePriceHeatScale()
-      ? visibleRowsCache.rows.map(row => row.symbol)
-      : affectedSymbols;
-    scheduleRowPatch(symbolsToPatch);
-    scheduleHighOi7dRender();
-  },
+const unsubscribePriceStatus = priceFeed.subscribeStatus(status => {
+  if (disposed) return;
+  scheduleUiRender({ priceStatus: status });
 });
+const unsubscribePrices = priceFeed.subscribePrices(handlePriceBatch);
 
 elements.rankBody.addEventListener("click", event => {
   const target = event.target instanceof Element ? event.target : null;
@@ -122,18 +115,23 @@ elements.rankBody.addEventListener("click", event => {
   const symbol = button.dataset.favorite;
   favorites.toggle(symbol);
   motionEffects.popFavorite(button);
-  filterBar.render();
 
   if (filters.getState().favoritesOnly) {
-    scheduleFullRender();
+    table.scrollToTop();
+    requestRankingView({ forceFull: true });
   } else {
-    scheduleRowPatch([symbol]);
+    scheduleUiRender({
+      controls: true,
+      patchSymbols: [symbol],
+    });
   }
 });
 
-filterBar.render();
-sortableHeaders.render();
-scheduleFullRender();
+scheduleUiRender({
+  controls: true,
+  full: true,
+  high: true,
+});
 document.addEventListener("visibilitychange", syncLiveUpdates);
 window.addEventListener("pagehide", handlePageHide);
 window.addEventListener("pageshow", handlePageShow);
@@ -147,8 +145,12 @@ function dispose() {
   window.removeEventListener("pagehide", handlePageHide);
   window.removeEventListener("pageshow", handlePageShow);
   lifecycleController.abort();
+  unsubscribePriceStatus();
+  unsubscribePrices();
+  rankingProcessor.dispose();
   motionEffects.dispose();
   particleField.dispose();
+  table.dispose();
   stopLiveUpdates();
   cancelScheduledRenders();
 }
@@ -157,7 +159,6 @@ function syncLiveUpdates() {
   if (disposed) return;
   if (document.hidden) {
     stopLiveUpdates();
-    renderWsState(elements.wsState, "暂停");
     return;
   }
 
@@ -166,7 +167,7 @@ function syncLiveUpdates() {
 
 function startLiveUpdates() {
   if (disposed || document.hidden || refreshTimer !== null) return;
-  priceSocket.connect();
+  priceFeed.connect();
   refreshOi();
   refreshTimer = window.setInterval(refreshOi, 10000);
 }
@@ -176,7 +177,7 @@ function stopLiveUpdates() {
     window.clearInterval(refreshTimer);
     refreshTimer = null;
   }
-  priceSocket.close();
+  priceFeed.close();
 }
 
 function handlePageHide(event) {
@@ -198,17 +199,24 @@ async function refreshOi() {
     const payload = await loadOiSnapshot({ signal: lifecycleController.signal });
     if (disposed) return;
     lastOiResponseAt = responseClock();
-    rankingData.setRows(payload.rows, priceSocket.getPrices());
+    rankingData.setRows(payload.rows, priceFeed.getPrices());
     renderOiStatus(payload);
-    motionEffects.pulseValues(renderStatCards(elements, rankingData.getStats()));
-    scheduleFullRender();
+    requestRankingView({
+      replaceRows: rankingData.getRows(),
+      changedSymbols: rankingData.getRows().map(row => row.symbol),
+      forceFull: !visibleRows.length,
+    });
+    scheduleUiRender({ stats: true });
   } catch (error) {
     if (disposed) return;
     if (lastOiResponseAt && isResponseStale(lastOiResponseAt)) {
       lastOiResponseAt = null;
-      rankingData.setRows([], priceSocket.getPrices());
-      motionEffects.pulseValues(renderStatCards(elements, rankingData.getStats()));
-      scheduleFullRender();
+      rankingData.setRows([], priceFeed.getPrices());
+      requestRankingView({
+        replaceRows: [],
+        forceFull: true,
+      });
+      scheduleUiRender({ stats: true });
     }
     elements.statusTitle.textContent = "OI 连接异常";
     elements.statusText.textContent = error.message;
@@ -236,60 +244,159 @@ function renderOiStatus(payload) {
   ].join("");
 }
 
-function scheduleFullRender() {
-  if (fullRenderFrame) return;
-  fullRenderFrame = window.requestAnimationFrame(renderFull);
+function resetTableAndRequestView() {
+  table.scrollToTop();
+  scheduleUiRender({ controls: true });
+  requestRankingView({ forceFull: true });
 }
 
-function scheduleRowPatch(symbols) {
-  if (fullRenderFrame) return;
+function handlePriceBatch(changedSymbols, priceMap) {
+  if (disposed) return;
+  const affectedSymbols = rankingData.applyPriceUpdates(changedSymbols, priceMap);
+  if (!affectedSymbols.length) return;
 
-  for (const symbol of symbols) {
-    pendingPatchSymbols.add(symbol);
-  }
-
-  if (patchFrame) return;
-  patchFrame = window.requestAnimationFrame(() => {
-    patchFrame = 0;
-    const symbolsToPatch = new Set(pendingPatchSymbols);
-    pendingPatchSymbols.clear();
-    table.patchRows(symbolsToPatch, getRowRenderContext());
+  requestRankingView({
+    patchRows: affectedSymbols
+      .map(symbol => rankingData.getRow(symbol))
+      .filter(Boolean),
+    changedSymbols: affectedSymbols,
   });
 }
 
-function renderFull() {
-  fullRenderFrame = 0;
-  cancelPendingPatch();
+function requestRankingView({
+  replaceRows,
+  patchRows = [],
+  changedSymbols = [],
+  forceFull = false,
+} = {}) {
+  const requestVersion = ++latestViewRequest;
+  const previousVisibleSymbols = visibleRows.map(row => row.symbol);
+  const previousHighSymbols = highOi7dRows.map(row => row.symbol);
+  const previousHeatMax = heatMax;
 
-  const visibleRows = getVisibleRows();
-  heatMax = getHeatMax(visibleRows);
-  motionEffects.revealRows(table.render(visibleRows, getRowRenderContext()));
-  renderHighOi7d();
-  filterBar.render();
-  sortableHeaders.render();
+  rankingProcessor.request({
+    replaceRows,
+    patchRows,
+    filters: filters.getState(),
+    sort: sort.getState(),
+    favorites: favorites.getSet(),
+  }).then(view => {
+    if (disposed || requestVersion !== latestViewRequest) return;
+
+    const nextVisibleRows = rowsForSymbols(view.visibleSymbols);
+    const nextHighRows = rowsForSymbols(view.highOi7dSymbols);
+    const visibleOrderChanged = !sameSymbols(
+      previousVisibleSymbols,
+      view.visibleSymbols,
+    );
+    const highRowsChanged = !sameSymbols(
+      previousHighSymbols,
+      view.highOi7dSymbols,
+    );
+    const heatChanged = !sameHeatMax(previousHeatMax, view.heatMax);
+
+    visibleRows = nextVisibleRows;
+    highOi7dRows = nextHighRows;
+    heatMax = view.heatMax;
+
+    scheduleUiRender({
+      full: forceFull || visibleOrderChanged || replaceRows !== undefined,
+      high: forceFull || highRowsChanged || replaceRows !== undefined
+        || patchRows.length > 0,
+      patchSymbols: heatChanged ? view.visibleSymbols : changedSymbols,
+    });
+  }).catch(error => {
+    if (disposed) return;
+    elements.statusTitle.textContent = "排行计算异常";
+    elements.statusText.textContent = error.message;
+  });
 }
 
-function getVisibleRows() {
-  const deps = [
-    rankingData.getVersion(),
-    filters.getVersion(),
-    sort.getVersion(),
-    favorites.getVersion(),
-  ].join(":");
+function rowsForSymbols(symbols) {
+  const rows = [];
+  for (const symbol of symbols) {
+    const row = rankingData.getRow(symbol);
+    if (row) rows.push(row);
+  }
+  return rows;
+}
 
-  if (visibleRowsCache.deps !== deps) {
-    visibleRowsCache = {
-      deps,
-      rows: buildVisibleRows(
-        rankingData.getRows(),
-        filters.getState(),
-        sort.getState(),
-        favorites.getSet(),
-      ),
-    };
+function sameSymbols(previous, next) {
+  if (previous.length !== next.length) return false;
+  return previous.every((symbol, index) => symbol === next[index]);
+}
+
+function sameHeatMax(previous, next) {
+  return Object.keys(EMPTY_HEAT_MAX).every(
+    key => previous[key] === next[key],
+  );
+}
+
+function scheduleUiRender({
+  full = false,
+  high = false,
+  controls = false,
+  stats = false,
+  priceStatus,
+  patchSymbols = [],
+} = {}) {
+  if (full) {
+    pendingFullRender = true;
+    pendingPatchSymbols.clear();
+  } else if (!pendingFullRender) {
+    for (const symbol of patchSymbols) pendingPatchSymbols.add(symbol);
+  }
+  pendingHighRender ||= high;
+  pendingControlsRender ||= controls;
+  pendingStatsRender ||= stats;
+  if (priceStatus) pendingPriceStatus = priceStatus;
+
+  if (uiFrame) return;
+  uiFrame = window.requestAnimationFrame(flushUiRender);
+}
+
+function flushUiRender() {
+  uiFrame = 0;
+
+  if (pendingPriceStatus) {
+    const label = PRICE_STATUS_LABELS[pendingPriceStatus] || "连接中";
+    motionEffects.pulseValues(renderWsState(elements.wsState, label));
+    pendingPriceStatus = null;
   }
 
-  return visibleRowsCache.rows;
+  if (pendingStatsRender) {
+    motionEffects.pulseValues(
+      renderStatCards(elements, rankingData.getStats()),
+    );
+    pendingStatsRender = false;
+  }
+
+  if (pendingFullRender) {
+    motionEffects.revealRows(
+      table.render(visibleRows, getRowRenderContext()),
+    );
+    pendingFullRender = false;
+    pendingPatchSymbols.clear();
+  } else if (pendingPatchSymbols.size) {
+    table.patchRows(pendingPatchSymbols, getRowRenderContext());
+    pendingPatchSymbols.clear();
+  }
+
+  if (pendingHighRender) {
+    motionEffects.revealRows(
+      highOi7dTable.render(
+        highOi7dRows,
+        rankingData.getRows().length > 0,
+      ),
+    );
+    pendingHighRender = false;
+  }
+
+  if (pendingControlsRender) {
+    filterBar.render();
+    sortableHeaders.render();
+    pendingControlsRender = false;
+  }
 }
 
 function getRowRenderContext() {
@@ -300,47 +407,18 @@ function getRowRenderContext() {
   };
 }
 
-function syncLivePriceHeatScale() {
-  const nextHeatMax = getHeatMax(visibleRowsCache.rows);
-  if (nextHeatMax.priceChangePercent === heatMax.priceChangePercent) return false;
-
-  heatMax = nextHeatMax;
-  return true;
-}
-
-function scheduleHighOi7dRender() {
-  if (fullRenderFrame || highOi7dFrame) return;
-  highOi7dFrame = window.requestAnimationFrame(() => {
-    highOi7dFrame = 0;
-    renderHighOi7d();
-  });
-}
-
-function renderHighOi7d() {
-  const rows = rankingData.getRows();
-  motionEffects.revealRows(
-    highOi7dTable.render(buildHighOi7dRows(rows), rows.length > 0),
-  );
-}
-
-function cancelPendingPatch() {
-  if (patchFrame) {
-    window.cancelAnimationFrame(patchFrame);
-    patchFrame = 0;
-  }
-  if (highOi7dFrame) {
-    window.cancelAnimationFrame(highOi7dFrame);
-    highOi7dFrame = 0;
-  }
-  pendingPatchSymbols.clear();
-}
-
 function cancelScheduledRenders() {
-  if (fullRenderFrame) {
-    window.cancelAnimationFrame(fullRenderFrame);
-    fullRenderFrame = 0;
+  latestViewRequest += 1;
+  if (uiFrame) {
+    window.cancelAnimationFrame(uiFrame);
+    uiFrame = 0;
   }
-  cancelPendingPatch();
+  pendingFullRender = false;
+  pendingHighRender = false;
+  pendingControlsRender = false;
+  pendingStatsRender = false;
+  pendingPriceStatus = null;
+  pendingPatchSymbols.clear();
 }
 
 function responseClock() {

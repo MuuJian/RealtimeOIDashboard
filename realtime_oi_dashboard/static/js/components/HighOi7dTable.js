@@ -8,23 +8,28 @@ import {
   signClass,
   tradingViewUrl,
 } from "../utils/format.js";
+import { syncChildren } from "../utils/dom.js";
 
 const EMPTY_MESSAGE = "暂无满足 7D 持仓 > 100% 且持仓价值 > $1000万 的币种。";
 const LOADING_MESSAGE = "正在获取本次启动后的 OI 数据。";
 
 export function createHighOi7dTable({ tbody }) {
   const rowsBySymbol = new Map();
+  const emptyRow = createEmptyRow();
 
   function render(rows, hasSourceRows) {
     if (!rows.length) {
       rowsBySymbol.clear();
-      tbody.replaceChildren(createEmptyRow(hasSourceRows));
+      emptyRow._message.textContent = hasSourceRows
+        ? EMPTY_MESSAGE
+        : LOADING_MESSAGE;
+      syncChildren(tbody, [emptyRow]);
       return [];
     }
 
-    const fragment = document.createDocumentFragment();
     const nextSymbols = new Set();
     const createdRows = [];
+    const nextChildren = [];
 
     for (const row of rows) {
       nextSymbols.add(row.symbol);
@@ -36,7 +41,7 @@ export function createHighOi7dTable({ tbody }) {
         createdRows.push(tr);
       }
       updateRow(tr, row);
-      fragment.append(tr);
+      nextChildren.push(tr);
     }
 
     for (const [symbol, tr] of rowsBySymbol.entries()) {
@@ -46,7 +51,7 @@ export function createHighOi7dTable({ tbody }) {
       }
     }
 
-    tbody.replaceChildren(fragment);
+    syncChildren(tbody, nextChildren);
     return createdRows;
   }
 
@@ -66,7 +71,7 @@ export function createHighOi7dTable({ tbody }) {
     changeCell.className = "heat";
     const valueCell = document.createElement("td");
 
-    tr.append(symbolCell, priceCell, fundingRateCell, changeCell, valueCell);
+    tr.append(symbolCell, fundingRateCell, priceCell, changeCell, valueCell);
     tr._cells = { symbolLink, priceLink, fundingRateCell, changeCell, valueCell };
     return tr;
   }
@@ -85,13 +90,13 @@ export function createHighOi7dTable({ tbody }) {
     cells.valueCell.textContent = formatCurrency(row.currentOiValue);
   }
 
-  function createEmptyRow(hasSourceRows) {
+  function createEmptyRow() {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
     td.colSpan = 5;
     td.className = "empty";
-    td.textContent = hasSourceRows ? EMPTY_MESSAGE : LOADING_MESSAGE;
     tr.append(td);
+    tr._message = td;
     return tr;
   }
 

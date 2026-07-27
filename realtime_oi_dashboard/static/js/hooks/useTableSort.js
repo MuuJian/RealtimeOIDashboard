@@ -1,10 +1,9 @@
 export function useTableSort(initialState = {}) {
   const state = {
-    sortKey: "changePercent",
+    sortKey: "oi24hChangePercent",
     sortDir: "desc",
     ...initialState,
   };
-  let version = 0;
 
   function setSortKey(sortKey) {
     if (state.sortKey === sortKey) {
@@ -13,16 +12,12 @@ export function useTableSort(initialState = {}) {
       state.sortKey = sortKey;
       state.sortDir = "desc";
     }
-    version += 1;
   }
 
   return {
     setSortKey,
     getState() {
       return state;
-    },
-    getVersion() {
-      return version;
     },
   };
 }

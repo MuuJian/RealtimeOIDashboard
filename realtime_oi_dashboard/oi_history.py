@@ -11,15 +11,19 @@ from realtime_oi_dashboard.errors import PollingStopped
 from realtime_oi_dashboard.market_data import (
     HISTORY_BASELINE_TOLERANCE_MS,
     HOUR_MS,
+    MAX_SAFE_INTEGER,
     calculate_change_percent,
     history_open_interest_point,
+    history_point_price,
     history_point_value,
     parse_oi_history_points,
 )
+from shared.binance import is_valid_binance_symbol
+from shared.utils import optional_float, optional_int
 
 
 OI_HISTORY_RETRY_SECONDS = 60
-HistoryPoint = tuple[int, float]
+HistoryPoint = tuple[int, float, float | None]
 
 
 class OiHistoryService:
@@ -42,8 +46,13 @@ class OiHistoryService:
         self,
         symbol: str,
         current_oi: float,
+        current_price: float,
     ) -> dict[str, float | None]:
         baselines = self._get_baselines(symbol)
+        price_7d_baseline = history_point_price(
+            baselines.past_7d_point,
+            baselines.target_7d_ms,
+        )
 
         return {
             "oi24hChangePercent": calculate_change_percent(
@@ -59,6 +68,11 @@ class OiHistoryService:
                     baselines.past_7d_point,
                     baselines.target_7d_ms,
                 ),
+            ),
+            "price7dBaseline": price_7d_baseline,
+            "price7dChangePercent": calculate_change_percent(
+                current_price,
+                price_7d_baseline,
             ),
         }
 
@@ -200,6 +214,84 @@ class OiHistoryService:
                 if symbol in active_symbols
             }
 
+    def export_cache(self) -> dict[str, dict[str, object]]:
+        """Return restart-safe history baselines with their real expiry time."""
+        monotonic_now = time.monotonic()
+        wall_now = time.time()
+        with self._lock:
+            cache = dict(self._cache)
+
+        exported = {}
+        for symbol, entry in cache.items():
+            remaining_seconds = entry.refresh_deadline - monotonic_now
+            if remaining_seconds <= 0:
+                continue
+            exported[symbol] = {
+                "refreshAt": wall_now + remaining_seconds,
+                "past24hPoint": _serialize_point(entry.past_24h_point),
+                "past7dPoint": _serialize_point(entry.past_7d_point),
+            }
+        return exported
+
+    def restore_cache(self, records: object) -> int:
+        """Restore still-fresh baselines without extending their cache life."""
+        if self._cache_seconds <= 0 or not isinstance(records, dict):
+            return 0
+
+        wall_now = time.time()
+        monotonic_now = time.monotonic()
+        target_24h_ms, target_7d_ms = _target_timestamps()
+        restored = {}
+
+        for symbol, item in records.items():
+            if not is_valid_binance_symbol(symbol) or not isinstance(item, dict):
+                continue
+
+            refresh_at = optional_float(item.get("refreshAt"))
+            if refresh_at is None:
+                continue
+            remaining_cache_seconds = refresh_at - wall_now
+            if remaining_cache_seconds <= 0:
+                continue
+
+            past_24h_point = _usable_restored_point(
+                item.get("past24hPoint"),
+                target_24h_ms,
+            )
+            past_7d_point = _usable_restored_point(
+                item.get("past7dPoint"),
+                target_7d_ms,
+            )
+            if past_24h_point is None and past_7d_point is None:
+                continue
+
+            refresh_in = min(
+                self._cache_seconds,
+                remaining_cache_seconds,
+            )
+            for point, target_timestamp_ms in (
+                (past_24h_point, target_24h_ms),
+                (past_7d_point, target_7d_ms),
+            ):
+                remaining_valid_seconds = _remaining_valid_seconds(
+                    point,
+                    target_timestamp_ms,
+                )
+                if remaining_valid_seconds is not None:
+                    refresh_in = min(refresh_in, remaining_valid_seconds)
+            if refresh_in <= 0:
+                continue
+
+            restored[symbol] = _CacheEntry(
+                refresh_deadline=monotonic_now + refresh_in,
+                past_24h_point=past_24h_point,
+                past_7d_point=past_7d_point,
+            )
+
+        with self._lock:
+            self._cache.update(restored)
+        return len(restored)
+
     def clear(self) -> None:
         with self._lock:
             self._cache.clear()
@@ -240,3 +332,35 @@ def _remaining_valid_seconds(
         - target_timestamp_ms
     )
     return max(remaining_ms / 1000, 0)
+
+
+def _serialize_point(point: HistoryPoint | None) -> list[float | int | None] | None:
+    return list(point) if point is not None else None
+
+
+def _usable_restored_point(
+    value: object,
+    target_timestamp_ms: int,
+) -> HistoryPoint | None:
+    point = _deserialize_point(value)
+    if history_point_value(point, target_timestamp_ms) is None:
+        return None
+    return point
+
+
+def _deserialize_point(value: object) -> HistoryPoint | None:
+    if not isinstance(value, list) or len(value) != 3:
+        return None
+
+    timestamp_ms = optional_int(value[0])
+    open_interest = optional_float(value[1])
+    implied_price = optional_float(value[2])
+    if (
+        timestamp_ms is None
+        or not 0 < timestamp_ms <= MAX_SAFE_INTEGER
+        or open_interest is None
+        or open_interest < 0
+        or (implied_price is not None and implied_price <= 0)
+    ):
+        return None
+    return timestamp_ms, open_interest, implied_price

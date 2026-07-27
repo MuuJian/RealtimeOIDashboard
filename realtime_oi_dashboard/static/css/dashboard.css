@@ -222,7 +222,7 @@ header {
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -262,10 +262,6 @@ header {
 
 .metric:nth-child(3)::before {
   animation-delay: -2.4s;
-}
-
-.metric:nth-child(4)::before {
-  animation-delay: -3.6s;
 }
 
 .metric::after {
@@ -534,6 +530,29 @@ table {
   table-layout: fixed;
 }
 
+.oi-table {
+  --virtual-row-height: 55px;
+}
+
+.oi-table tbody tr:not(.virtual-spacer) {
+  height: var(--virtual-row-height);
+}
+
+.oi-table .virtual-spacer {
+  height: auto;
+  pointer-events: none;
+  transition: none;
+}
+
+.oi-table .virtual-spacer:hover {
+  background: transparent;
+}
+
+.oi-table .virtual-spacer td {
+  padding: 0;
+  border: 0;
+}
+
 th,
 td {
   overflow: hidden;
@@ -682,17 +701,17 @@ tbody tr:last-child td {
 .oi-table th:nth-child(2),
 .oi-table td:nth-child(2) { width: 160px; }
 .oi-table th:nth-child(3),
-.oi-table td:nth-child(3) { width: 120px; }
+.oi-table td:nth-child(3) { width: 130px; }
 .oi-table th:nth-child(4),
-.oi-table td:nth-child(4) { width: 135px; }
+.oi-table td:nth-child(4) { width: 120px; }
 .oi-table th:nth-child(5),
-.oi-table td:nth-child(5) { width: 140px; }
+.oi-table td:nth-child(5) { width: 135px; }
 .oi-table th:nth-child(6),
-.oi-table td:nth-child(6) { width: 145px; }
+.oi-table td:nth-child(6) { width: 130px; }
 .oi-table th:nth-child(7),
-.oi-table td:nth-child(7) { width: 125px; }
+.oi-table td:nth-child(7) { width: 145px; }
 .oi-table th:nth-child(8),
-.oi-table td:nth-child(8) { width: 130px; }
+.oi-table td:nth-child(8) { width: 125px; }
 .oi-table th:nth-child(9),
 .oi-table td:nth-child(9) { width: 130px; }
 .oi-table th:nth-child(10),
@@ -701,9 +720,9 @@ tbody tr:last-child td {
 .signal-table th:nth-child(1),
 .signal-table td:nth-child(1) { width: 160px; }
 .signal-table th:nth-child(2),
-.signal-table td:nth-child(2) { width: 120px; }
+.signal-table td:nth-child(2) { width: 130px; }
 .signal-table th:nth-child(3),
-.signal-table td:nth-child(3) { width: 130px; }
+.signal-table td:nth-child(3) { width: 120px; }
 .signal-table th:nth-child(4),
 .signal-table td:nth-child(4) { width: 140px; }
 .signal-table th:nth-child(5),

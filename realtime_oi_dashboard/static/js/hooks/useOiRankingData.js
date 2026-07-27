@@ -1,8 +1,9 @@
 import { applyLivePriceToRow } from "../utils/rankingRows.js";
 
+const OI_API_SCHEMA_VERSION = 3;
 const OPTIONAL_NUMBER_FIELDS = [
-  "changePercent",
   "priceChangePercent",
+  "price7dChangePercent",
   "fundingRatePercent",
   "oi24hChangePercent",
   "oi7dChangePercent",
@@ -11,6 +12,7 @@ const LIVE_MARKET_FIELDS = [
   "price",
   "volume24h",
   "priceChangePercent",
+  "price7dChangePercent",
   "currentOiValue",
 ];
 
@@ -18,7 +20,6 @@ export function useOiRankingData() {
   const serverRowsBySymbol = new Map();
   const rowsBySymbol = new Map();
   let rows = [];
-  let version = 0;
   let stats = buildStats(rows);
 
   function setRows(nextRows, priceMap) {
@@ -43,7 +44,6 @@ export function useOiRankingData() {
 
     rows = [...rowsBySymbol.values()];
     stats = buildStats(rows);
-    version += 1;
   }
 
   function applyPriceUpdates(symbols, priceMap) {
@@ -63,10 +63,6 @@ export function useOiRankingData() {
       }
     }
 
-    if (affectedSymbols.length) {
-      version += 1;
-    }
-
     return affectedSymbols;
   }
 
@@ -81,9 +77,6 @@ export function useOiRankingData() {
     },
     getStats() {
       return stats;
-    },
-    getVersion() {
-      return version;
     },
   };
 }
@@ -119,6 +112,9 @@ export async function loadOiSnapshot({ signal } = {}) {
     });
     if (!response.ok) throw new Error(`OI 请求失败 (${response.status})`);
     const payload = await response.json();
+    if (payload?.schema_version !== OI_API_SCHEMA_VERSION) {
+      throw new Error("后台版本较旧，请重启面板服务");
+    }
     if (
       !payload
       || !Array.isArray(payload.rows)
@@ -151,10 +147,14 @@ function isOiRow(item) {
     || !isNonNegativeNumber(item.currentOi)
     || !isNonNegativeNumber(item.currentOiValue)
     || !isOptionalNonNegativeNumber(item.volume24h)
+    || !Object.hasOwn(item, "price7dBaseline")
+    || !isOptionalPositiveNumber(item.price7dBaseline)
     || !isOptionalTimestamp(item.nextFundingTime)
   ) return false;
 
-  return OPTIONAL_NUMBER_FIELDS.every(field => isOptionalNumber(item[field]));
+  return OPTIONAL_NUMBER_FIELDS.every(
+    field => Object.hasOwn(item, field) && isOptionalNumber(item[field]),
+  );
 }
 
 function isPositiveNumber(value) {
@@ -173,6 +173,10 @@ function isOptionalNonNegativeNumber(value) {
   return value == null || isNonNegativeNumber(value);
 }
 
+function isOptionalPositiveNumber(value) {
+  return value == null || isPositiveNumber(value);
+}
+
 function isOptionalTimestamp(value) {
   return value == null || (Number.isSafeInteger(value) && value > 0);
 }
@@ -182,13 +186,10 @@ function isFiniteNumber(value) {
 }
 
 function buildStats(rows) {
-  let changeCount = 0;
   let topIncrease = null;
   let topDecrease = null;
 
   for (const row of rows) {
-    if (row.changePercent != null) changeCount += 1;
-
     const change = row.oi24hChangePercent;
     if (change > 0 && (!topIncrease || change > topIncrease.oi24hChangePercent)) {
       topIncrease = row;
@@ -201,7 +202,6 @@ function buildStats(rows) {
   }
 
   return {
-    changeCount,
     topIncrease,
     topDecrease,
   };

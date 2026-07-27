@@ -13,7 +13,6 @@ from pathlib import Path
 from realtime_oi_dashboard.binance_client import BinanceFuturesClient
 from realtime_oi_dashboard.errors import PollingStopped
 from realtime_oi_dashboard.market_data import (
-    calculate_change_percent,
     future_timestamp_ms,
     validate_symbol_refresh,
 )
@@ -26,14 +25,15 @@ from realtime_oi_dashboard.snapshot_store import (
 
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
-SNAPSHOT_BASELINE_MAX_AGE_SECONDS = 15 * 60
-SNAPSHOT_CLOCK_SKEW_SECONDS = 60
+ROW_MAX_AGE_SECONDS = 15 * 60
+CLOCK_SKEW_SECONDS = 60
 RECENT_ERROR_SECONDS = 60
 SYMBOL_REFRESH_RETRY_SECONDS = 60
 CLOCK_DISCONTINUITY_TOLERANCE_SECONDS = 60
 EMPTY_BATCH_ERROR = "本批次没有成功更新任何 OI 数据"
 CLOCK_RESET_ERROR = "检测到系统休眠或时钟跳变，正在重新获取 OI 数据"
 STALE_ROWS_ERROR = "OI 数据已超过 15 分钟，等待重新获取"
+OI_API_SCHEMA_VERSION = 3
 
 
 class OIPoller:
@@ -96,12 +96,11 @@ class OIPoller:
             http_client=http_client,
         )
         self.last_snapshot_save = None
-        loaded_snapshot = self.load_previous_snapshot()
-        self.known_symbols = loaded_snapshot.known_symbols
+        loaded_cache = self.load_previous_cache()
+        self.binance.restore_oi_history_cache(loaded_cache.oi_history)
+        self.known_symbols = loaded_cache.known_symbols
         self.oi_state = OiStateStore(
-            max_age_seconds=SNAPSHOT_BASELINE_MAX_AGE_SECONDS,
-            snapshot=loaded_snapshot.snapshot,
-            update_times=loaded_snapshot.update_times,
+            max_age_seconds=ROW_MAX_AGE_SECONDS,
         )
         self.state = {
             "saved_at": None,
@@ -111,15 +110,11 @@ class OIPoller:
         self._last_wall_clock = time.time()
         self._last_monotonic_clock = time.monotonic()
 
-    def load_previous_snapshot(self):
+    def load_previous_cache(self):
         try:
-            return load_snapshot_file(
-                self.snapshot_file,
-                max_age_seconds=SNAPSHOT_BASELINE_MAX_AGE_SECONDS,
-                clock_skew_seconds=SNAPSHOT_CLOCK_SKEW_SECONDS,
-            )
+            return load_snapshot_file(self.snapshot_file)
         except (OSError, ValueError, RecursionError) as exc:
-            print(f"{timestamp()} failed to load previous OI snapshot: {exc}")
+            print(f"{timestamp()} failed to load previous OI cache: {exc}")
             return LoadedSnapshot()
 
     def record_symbol_error(self, symbol, exc):
@@ -159,13 +154,13 @@ class OIPoller:
                 return False
 
             with self.lock:
-                snapshot = self.oi_state.copy_snapshot()
                 symbols = set(self.symbols or self.known_symbols)
+            oi_history = self.binance.export_oi_history_cache()
             write_snapshot_file(
                 self.snapshot_file,
-                snapshot=snapshot,
                 symbols=symbols,
                 saved_at=iso_now(),
+                oi_history=oi_history,
             )
             self.last_snapshot_save = time.monotonic()
             return True
@@ -186,8 +181,12 @@ class OIPoller:
     def get_open_interest(self, symbol):
         return self.binance.get_open_interest(symbol)
 
-    def get_oi_history_changes(self, symbol, current_oi):
-        return self.binance.get_oi_history_changes(symbol, current_oi)
+    def get_oi_history_changes(self, symbol, current_oi, current_price):
+        return self.binance.get_oi_history_changes(
+            symbol,
+            current_oi,
+            current_price,
+        )
 
     def refresh_symbols_if_needed(self):
         now = time.monotonic()
@@ -252,7 +251,7 @@ class OIPoller:
         )
 
     def prune_stale_data(self, now=None):
-        """Drop rows and OI baselines that exceeded the retention window."""
+        """Drop rows that exceeded the retention window."""
         current_time = time.monotonic() if now is None else now
         return self.oi_state.prune_stale(current_time)
 
@@ -438,29 +437,19 @@ class OIPoller:
         if not isfinite(current_oi_value):
             raise ValueError("open-interest value is not finite")
 
-        with self.lock:
-            previous = self.oi_state.previous_snapshot(symbol, measured_at)
-        previous_oi = previous.get("oi", 0) if previous else 0
         funding = funding_rates.get(symbol, {}) if funding_rates else {}
         funding_rate_percent = funding.get("fundingRatePercent")
         now_ms = int(measured_wall_time * 1000)
         next_funding_time = future_timestamp_ms(funding.get("nextFundingTime"), now_ms)
 
-        change_percent = calculate_change_percent(current_oi, previous_oi)
+        oi_history = self.get_oi_history_changes(symbol, current_oi, price)
 
-        oi_history = self.get_oi_history_changes(symbol, current_oi)
-
-        snapshot_item = {
-            "oi": current_oi,
-            "updated_at": iso_now(measured_wall_time),
-        }
         row = {
             "symbol": symbol,
             "price": price,
             "volume24h": volume_24h,
             "currentOi": current_oi,
             "currentOiValue": current_oi_value,
-            "changePercent": change_percent,
             "priceChangePercent": ticker.get("priceChangePercent"),
             "fundingRatePercent": funding_rate_percent,
             "nextFundingTime": next_funding_time,
@@ -468,7 +457,6 @@ class OIPoller:
         }
         return OiUpdate(
             symbol=symbol,
-            snapshot=snapshot_item,
             row=row,
             measured_at=measured_at,
         )
@@ -525,6 +513,7 @@ class OIPoller:
         with self.lock:
             self.prune_stale_data()
             state = dict(self.state)
+            state["schema_version"] = OI_API_SCHEMA_VERSION
             state["total_symbols"] = len(self.symbols)
             rows = self.oi_state.copy_rows()
             if rows and self._wall_clock_rows_are_stale(time.time()):
@@ -540,8 +529,8 @@ class OIPoller:
         age = wall_now - self._last_success_wall_clock
         return (
             not isfinite(age)
-            or age < -SNAPSHOT_CLOCK_SKEW_SECONDS
-            or age > SNAPSHOT_BASELINE_MAX_AGE_SECONDS
+            or age < -CLOCK_SKEW_SECONDS
+            or age > ROW_MAX_AGE_SECONDS
         )
 
 

@@ -1,6 +1,5 @@
 export function useFavorites(storageKey) {
   const favorites = readFavorites(storageKey);
-  let version = 0;
 
   function save() {
     try {
@@ -19,7 +18,6 @@ export function useFavorites(storageKey) {
     } else {
       favorites.add(normalizedSymbol);
     }
-    version += 1;
     save();
     return true;
   }
@@ -28,9 +26,6 @@ export function useFavorites(storageKey) {
     toggle,
     getSet() {
       return favorites;
-    },
-    getVersion() {
-      return version;
     },
     get size() {
       return favorites.size;

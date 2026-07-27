@@ -9,15 +9,18 @@ const RECONNECT_ATTEMPT_CAP = 6;
 const TICKER_STREAM_URL =
   "wss://fstream.binance.com/market/stream?streams=!ticker@arr";
 
-export function useBinancePriceSocket({ onStatusChange, onPricesChange }) {
+export function createBinancePriceFeed() {
   const priceMap = new Map();
   const pendingSymbols = new Set();
+  const priceListeners = new Set();
+  const statusListeners = new Set();
   let socket = null;
   let reconnectTimer = 0;
   let staleTimer = 0;
   let flushFrame = 0;
-  let stopped = false;
+  let stopped = true;
   let reconnectAttempts = 0;
+  let status = "paused";
 
   function connect() {
     stopped = false;
@@ -36,16 +39,16 @@ export function useBinancePriceSocket({ onStatusChange, onPricesChange }) {
     try {
       nextSocket = new WebSocket(TICKER_STREAM_URL);
     } catch {
-      onStatusChange("异常");
+      setStatus("error");
       scheduleReconnect();
       return;
     }
     socket = nextSocket;
-    onStatusChange("连接中");
+    setStatus("connecting");
 
     nextSocket.onopen = () => {
       if (socket !== nextSocket || stopped) return;
-      onStatusChange("实时");
+      setStatus("live");
       armStaleTimer(nextSocket);
     };
 
@@ -58,18 +61,11 @@ export function useBinancePriceSocket({ onStatusChange, onPricesChange }) {
       armStaleTimer(nextSocket);
 
       for (const { symbol, ticker } of updates) {
-        const prev = priceMap.get(symbol);
-        const nextTicker = mergeTickerUpdate(prev, ticker);
-
-        if (
-          !prev
-          || prev.price !== nextTicker.price
-          || prev.volume24h !== nextTicker.volume24h
-          || prev.priceChangePercent !== nextTicker.priceChangePercent
-        ) {
-          priceMap.set(symbol, nextTicker);
-          pendingSymbols.add(symbol);
-        }
+        const previous = priceMap.get(symbol);
+        const nextTicker = mergeTickerUpdate(previous, ticker);
+        if (!tickerChanged(previous, nextTicker)) continue;
+        priceMap.set(symbol, nextTicker);
+        pendingSymbols.add(symbol);
       }
 
       if (pendingSymbols.size) scheduleFlush();
@@ -88,14 +84,41 @@ export function useBinancePriceSocket({ onStatusChange, onPricesChange }) {
 
     nextSocket.onerror = () => {
       if (socket !== nextSocket || stopped) return;
-      onStatusChange("异常");
+      setStatus("error");
       nextSocket.close();
     };
   }
 
+  function close() {
+    stopped = true;
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = 0;
+    clearStaleTimer();
+    reconnectAttempts = 0;
+
+    const currentSocket = socket;
+    socket = null;
+    if (currentSocket && currentSocket.readyState < WebSocket.CLOSING) {
+      currentSocket.close();
+    }
+    clearLivePricesAndNotify();
+    setStatus("paused");
+  }
+
+  function subscribePrices(listener) {
+    priceListeners.add(listener);
+    return () => priceListeners.delete(listener);
+  }
+
+  function subscribeStatus(listener) {
+    statusListeners.add(listener);
+    listener(status);
+    return () => statusListeners.delete(listener);
+  }
+
   function scheduleReconnect() {
     if (stopped || reconnectTimer) return;
-    onStatusChange("重连中");
+    setStatus("reconnecting");
     reconnectAttempts = Math.min(reconnectAttempts + 1, RECONNECT_ATTEMPT_CAP);
     const delay = Math.min(
       1000 * 2 ** (reconnectAttempts - 1),
@@ -112,7 +135,7 @@ export function useBinancePriceSocket({ onStatusChange, onPricesChange }) {
     staleTimer = window.setTimeout(() => {
       staleTimer = 0;
       if (socket !== currentSocket || stopped) return;
-      onStatusChange("异常");
+      setStatus("error");
       currentSocket.close();
     }, TICKER_STALE_TIMEOUT_MS);
   }
@@ -131,31 +154,14 @@ export function useBinancePriceSocket({ onStatusChange, onPricesChange }) {
 
       const changedSymbols = new Set(pendingSymbols);
       pendingSymbols.clear();
-      onPricesChange(changedSymbols, priceMap);
+      notifyPriceListeners(changedSymbols);
     });
-  }
-
-  function close() {
-    stopped = true;
-    window.clearTimeout(reconnectTimer);
-    reconnectTimer = 0;
-    clearStaleTimer();
-    reconnectAttempts = 0;
-
-    const currentSocket = socket;
-    socket = null;
-    if (currentSocket && currentSocket.readyState < WebSocket.CLOSING) {
-      currentSocket.close();
-    }
-    clearLivePricesAndNotify();
   }
 
   function clearLivePricesAndNotify() {
     const changedSymbols = new Set(priceMap.keys());
     clearLivePrices();
-    if (changedSymbols.size) {
-      onPricesChange(changedSymbols, priceMap);
-    }
+    if (changedSymbols.size) notifyPriceListeners(changedSymbols);
   }
 
   function clearLivePrices() {
@@ -167,11 +173,36 @@ export function useBinancePriceSocket({ onStatusChange, onPricesChange }) {
     }
   }
 
+  function notifyPriceListeners(changedSymbols) {
+    for (const listener of priceListeners) {
+      listener(changedSymbols, priceMap);
+    }
+  }
+
+  function setStatus(nextStatus) {
+    if (status === nextStatus) return;
+    status = nextStatus;
+    for (const listener of statusListeners) {
+      listener(status);
+    }
+  }
+
   return {
-    connect,
     close,
+    connect,
     getPrices() {
       return priceMap;
     },
+    subscribePrices,
+    subscribeStatus,
   };
+}
+
+function tickerChanged(previous, nextTicker) {
+  return (
+    !previous
+    || previous.price !== nextTicker.price
+    || previous.volume24h !== nextTicker.volume24h
+    || previous.priceChangePercent !== nextTicker.priceChangePercent
+  );
 }

@@ -51,9 +51,15 @@ function collectJavaScriptFiles(root) {
 function checkRelativeImports(file) {
   const source = readFileSync(file, "utf8");
   const module = new vm.SourceTextModule(source, { identifier: file });
-  const specifiers = module.moduleRequests
+  const imports = module.moduleRequests
     ? module.moduleRequests.map(request => request.specifier)
     : module.dependencySpecifiers;
+  const workers = [
+    ...source.matchAll(
+      /new Worker\(\s*new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)/g,
+    ),
+  ].map(match => match[1]);
+  const specifiers = [...imports, ...workers];
   const targets = [];
 
   for (const specifier of specifiers) {

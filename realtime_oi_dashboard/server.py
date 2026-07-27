@@ -132,7 +132,7 @@ def parse_args(argv=None):
         "--snapshot-save-interval",
         type=non_negative_float,
         default=10,
-        help="seconds between atomic snapshot writes; 0 writes every batch",
+        help="seconds between atomic cache writes; 0 writes every batch",
     )
     return parser.parse_args(argv)
 
@@ -202,7 +202,7 @@ def _stop_poller(poller, thread):
     try:
         poller.save_state(force=True)
     except Exception as exc:
-        print(f"{timestamp()} failed to save final OI snapshot: {exc}")
+        print(f"{timestamp()} failed to save final OI cache: {exc}")
 
 
 if __name__ == "__main__":

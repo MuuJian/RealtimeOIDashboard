@@ -1,16 +1,14 @@
-"""Persistent OI snapshot loading and serialization."""
+"""Persistent symbol and OI-history cache loading and serialization."""
 
 from __future__ import annotations
 
 import json
-import time
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from shared.binance import is_valid_binance_symbol
-from shared.utils import optional_float, write_text_atomic
+from shared.utils import write_text_atomic
 
 
 MAX_SNAPSHOT_FILE_BYTES = 5 * 1024 * 1024
@@ -18,20 +16,12 @@ MAX_SNAPSHOT_FILE_BYTES = 5 * 1024 * 1024
 
 @dataclass(slots=True)
 class LoadedSnapshot:
-    snapshot: dict[str, dict[str, Any]] = field(default_factory=dict)
     known_symbols: set[str] = field(default_factory=set)
-    update_times: dict[str, float] = field(default_factory=dict)
+    oi_history: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
-def load_snapshot_file(
-    path: Path,
-    *,
-    max_age_seconds: float,
-    clock_skew_seconds: float,
-    wall_time: float | None = None,
-    monotonic_time: float | None = None,
-) -> LoadedSnapshot:
-    """Load valid recent baselines while retaining the last known symbol set."""
+def load_snapshot_file(path: Path) -> LoadedSnapshot:
+    """Load the last known symbol set and validated history-cache container."""
     if not path.exists():
         return LoadedSnapshot()
 
@@ -40,83 +30,45 @@ def load_snapshot_file(
         return LoadedSnapshot()
 
     known_symbols = _valid_symbols(payload.get("symbols"))
-    raw_snapshot = payload.get("snapshot")
-    if not isinstance(raw_snapshot, dict):
-        return LoadedSnapshot(known_symbols=known_symbols)
-
-    current_wall_time = time.time() if wall_time is None else wall_time
-    current_monotonic_time = (
-        time.monotonic() if monotonic_time is None else monotonic_time
+    legacy_snapshot = payload.get("snapshot")
+    if isinstance(legacy_snapshot, dict):
+        known_symbols.update(
+            symbol
+            for symbol in legacy_snapshot
+            if is_valid_binance_symbol(symbol)
+        )
+    raw_oi_history = payload.get("oi_history")
+    oi_history = (
+        dict(raw_oi_history)
+        if isinstance(raw_oi_history, dict)
+        else {}
     )
-    snapshot = {}
-    update_times = {}
-
-    for symbol, item in raw_snapshot.items():
-        if not is_valid_binance_symbol(symbol) or not isinstance(item, dict):
-            continue
-
-        oi = optional_float(item.get("oi"))
-        if oi is None or oi < 0:
-            continue
-        known_symbols.add(symbol)
-
-        age = snapshot_age_seconds(item, current_wall_time)
-        if (
-            age is None
-            or age < -clock_skew_seconds
-            or age > max_age_seconds
-        ):
-            continue
-
-        updated_at = item.get("updated_at")
-        snapshot[symbol] = {
-            "oi": oi,
-            "updated_at": updated_at,
-        }
-        update_times[symbol] = current_monotonic_time - max(age, 0)
 
     return LoadedSnapshot(
-        snapshot=snapshot,
         known_symbols=known_symbols,
-        update_times=update_times,
+        oi_history=oi_history,
     )
 
 
 def write_snapshot_file(
     path: Path,
     *,
-    snapshot: dict[str, dict[str, Any]],
     symbols: set[str] | list[str],
     saved_at: str,
+    oi_history: dict[str, dict[str, Any]] | None = None,
 ) -> None:
-    """Atomically serialize the stable on-disk snapshot format."""
+    """Atomically serialize restart-safe symbol and history-cache state."""
     payload = {
         "saved_at": saved_at,
         "symbols": sorted(symbols),
-        "snapshot": snapshot,
+        "oi_history": oi_history or {},
     }
     text = json.dumps(payload, ensure_ascii=False, allow_nan=False)
     if len(text.encode("utf-8")) > MAX_SNAPSHOT_FILE_BYTES:
         raise ValueError(
-            f"OI snapshot exceeds {MAX_SNAPSHOT_FILE_BYTES} bytes"
+            f"OI cache exceeds {MAX_SNAPSHOT_FILE_BYTES} bytes"
         )
     write_text_atomic(path, text)
-
-
-def snapshot_age_seconds(item: dict[str, Any], now: float | None = None) -> float | None:
-    updated_at = item.get("updated_at")
-    if not isinstance(updated_at, str):
-        return None
-    try:
-        updated_datetime = datetime.fromisoformat(updated_at)
-        if updated_datetime.tzinfo is None:
-            return None
-        updated_timestamp = updated_datetime.timestamp()
-    except (OSError, ValueError, OverflowError):
-        return None
-
-    current_timestamp = time.time() if now is None else now
-    return current_timestamp - updated_timestamp
 
 
 def _valid_symbols(value: object) -> set[str]:
@@ -130,6 +82,6 @@ def _read_snapshot_text(path: Path) -> str:
         raw_payload = file.read(MAX_SNAPSHOT_FILE_BYTES + 1)
     if len(raw_payload) > MAX_SNAPSHOT_FILE_BYTES:
         raise ValueError(
-            f"OI snapshot exceeds {MAX_SNAPSHOT_FILE_BYTES} bytes"
+            f"OI cache exceeds {MAX_SNAPSHOT_FILE_BYTES} bytes"
         )
     return raw_payload.decode("utf-8")

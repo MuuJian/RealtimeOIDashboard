@@ -24,17 +24,11 @@
           <span class="status-pulse" aria-hidden="true"></span>
           <strong id="statusTitle">启动中</strong>
         </div>
-        <span id="statusText">等待 OI 快照和价格 WebSocket</span>
+        <span id="statusText">等待本次 OI 数据和价格 WebSocket</span>
       </div>
     </header>
 
     <section class="metrics">
-      <div class="metric metric-cyan" data-motion="metric">
-        <div class="metric-icon" aria-hidden="true">Σ</div>
-        <div class="label">变化币种</div>
-        <div class="value" id="changeCount">-</div>
-        <div class="note">本轮 OI 可对比数量</div>
-      </div>
       <div class="metric metric-blue" data-motion="metric" data-connection="connecting">
         <div class="metric-icon metric-icon-signal" aria-hidden="true"><i></i><i></i><i></i></div>
         <div class="label">价格连接</div>
@@ -69,14 +63,14 @@
           <thead>
             <tr>
               <th scope="col">币种</th>
-              <th scope="col">价格</th>
               <th scope="col">资金费率</th>
+              <th scope="col">价格</th>
               <th scope="col">持仓(7d%)</th>
               <th scope="col">持仓价值</th>
             </tr>
           </thead>
           <tbody id="highOi7dBody">
-            <tr><td colspan="5" class="empty">等待 OI 快照。</td></tr>
+            <tr><td colspan="5" class="empty">等待本次 OI 数据。</td></tr>
           </tbody>
         </table>
       </div>
@@ -87,7 +81,7 @@
         <div class="panel-title">
           <span class="panel-kicker">MARKET SCANNER</span>
           <strong>OI 变化排行</strong>
-          <div class="sub">默认按持仓变化从高到低排序；价格实时跳动，OI 与 24h/7d 变化按批次更新。</div>
+          <div class="sub">默认按持仓(24h%)从高到低排序；价格及其 24h / 7d 变化实时跳动，OI 变化按批次更新。</div>
         </div>
         <div class="controls">
           <input id="searchInput" type="search" placeholder="搜索币种" aria-label="搜索币种">
@@ -122,12 +116,12 @@
             <tr>
               <th class="favorite-cell" scope="col" aria-label="收藏"></th>
               <th scope="col" data-sort="symbol"><span class="sort-label">币种<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="price"><span class="sort-label">价格<span class="sort-arrows"></span></span></th>
               <th scope="col" data-sort="fundingRatePercent"><span class="sort-label">资金费率<span class="sort-arrows"></span></span></th>
+              <th scope="col" data-sort="price"><span class="sort-label">价格<span class="sort-arrows"></span></span></th>
               <th scope="col" data-sort="priceChangePercent"><span class="sort-label">价格(24h%)<span class="sort-arrows"></span></span></th>
+              <th scope="col" data-sort="price7dChangePercent"><span class="sort-label">价格(7d%)<span class="sort-arrows"></span></span></th>
               <th scope="col" data-sort="currentOiValue"><span class="sort-label">持仓价值<span class="sort-arrows"></span></span></th>
               <th scope="col" data-sort="volume24h"><span class="sort-label">成交额(24h)<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="changePercent"><span class="sort-label">持仓变化<span class="sort-arrows"></span></span></th>
               <th scope="col" data-sort="oi24hChangePercent"><span class="sort-label">持仓(24h%)<span class="sort-arrows"></span></span></th>
               <th scope="col" data-sort="oi7dChangePercent"><span class="sort-label">持仓(7d%)<span class="sort-arrows"></span></span></th>
             </tr>
