@@ -112,15 +112,15 @@ body::after {
   z-index: 1;
   width: min(100vw - 32px, 1760px);
   margin: 0 auto;
-  padding: 32px 0 48px;
+  padding: 20px 0 48px;
 }
 
 header {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
   gap: 28px;
-  margin-bottom: 22px;
+  margin-bottom: 14px;
 }
 
 .hero-copy {
@@ -131,7 +131,7 @@ header {
   display: flex;
   align-items: center;
   gap: 9px;
-  margin-bottom: 13px;
+  margin-bottom: 0;
   color: var(--cyan);
   font-size: 11px;
   font-weight: 800;
@@ -145,23 +145,6 @@ header {
   background: var(--cyan);
   box-shadow: 0 0 0 4px rgba(86, 231, 255, .1), 0 0 18px var(--cyan);
   animation: live-pulse 2.2s ease-out infinite;
-}
-
-h1 {
-  margin: 0;
-  color: #f8faff;
-  font-size: clamp(36px, 4.2vw, 68px);
-  font-weight: 900;
-  letter-spacing: -.055em;
-  line-height: .96;
-  white-space: nowrap;
-}
-
-h1 span {
-  background: linear-gradient(105deg, #8eeeff 4%, #718aff 50%, #bc82ff 96%);
-  background-clip: text;
-  color: transparent;
-  -webkit-background-clip: text;
 }
 
 .sub {
@@ -802,12 +785,7 @@ tbody tr:last-child td {
 @media (max-width: 640px) {
   .shell {
     width: calc(100vw - 16px);
-    padding-top: 18px;
-  }
-
-  h1 {
-    font-size: clamp(33px, 12vw, 50px);
-    white-space: normal;
+    padding-top: 12px;
   }
 
   .metrics {
