@@ -48,8 +48,8 @@ export function createRankingRow(row, context) {
   tr.append(
     favoriteCell,
     symbolCell,
-    fundingRateCell,
     priceCell,
+    fundingRateCell,
     priceChangeCell,
     price7dChangeCell,
     oiValueCell,

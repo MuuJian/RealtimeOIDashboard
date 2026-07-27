@@ -71,7 +71,7 @@ export function createHighOi7dTable({ tbody }) {
     changeCell.className = "heat";
     const valueCell = document.createElement("td");
 
-    tr.append(symbolCell, fundingRateCell, priceCell, changeCell, valueCell);
+    tr.append(symbolCell, priceCell, fundingRateCell, changeCell, valueCell);
     tr._cells = { symbolLink, priceLink, fundingRateCell, changeCell, valueCell };
     return tr;
   }
