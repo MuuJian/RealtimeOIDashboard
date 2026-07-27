@@ -16,7 +16,9 @@ WebSocket 断线或连续 15 秒没有收到有效 ticker 时，会立即撤销�
 - `oi_state.py`：同步维护 OI 基线、更新时间和页面行。
 - `snapshot_store.py`：持久化 OI 基线的校验、加载与原子写入。
 - `server.py`：命令行参数、本地 HTTP 服务与启动/停止流程。
-- `static/`：浏览器端价格 WebSocket、筛选、排序与页面渲染。
+- `static/`：浏览器端价格 WebSocket、筛选、排序、页面渲染与 Motion 动效。
+
+页面会从 jsDelivr 按固定版本加载 Motion；加载失败时自动保留完整功能并退回无 Motion 动效。背景粒子使用本地 Canvas 绘制，不依赖付费组件。系统开启“减少动态效果”后，页面会停用进入、数字回弹与表格行级动画，并把粒子背景切换为静态。
 
 ## 启动
 

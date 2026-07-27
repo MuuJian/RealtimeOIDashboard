@@ -8,6 +8,8 @@ import { useFavorites } from "./hooks/useFavorites.js";
 import { loadOiSnapshot, useOiRankingData } from "./hooks/useOiRankingData.js";
 import { useTableFilters } from "./hooks/useTableFilters.js";
 import { useTableSort } from "./hooks/useTableSort.js";
+import { createMotionEffects } from "./motionEffects.js";
+import { createParticleField } from "./particleField.js";
 import {
   buildHighOi7dRows,
   buildVisibleRows,
@@ -46,6 +48,10 @@ const filters = useTableFilters({
   minVolume: Number(elements.volumeFilter.value),
 });
 const sort = useTableSort();
+const motionEffects = createMotionEffects();
+const particleField = createParticleField(
+  document.getElementById("particleField"),
+);
 
 let heatMax = getHeatMax([]);
 let fullRenderFrame = 0;
@@ -86,7 +92,7 @@ const sortableHeaders = createSortableHeaders({
 const priceSocket = useBinancePriceSocket({
   onStatusChange(value) {
     if (disposed) return;
-    renderWsState(elements.wsState, value);
+    motionEffects.pulseValues(renderWsState(elements.wsState, value));
   },
   onPricesChange(changedSymbols, priceMap) {
     if (disposed) return;
@@ -115,6 +121,7 @@ elements.rankBody.addEventListener("click", event => {
 
   const symbol = button.dataset.favorite;
   favorites.toggle(symbol);
+  motionEffects.popFavorite(button);
   filterBar.render();
 
   if (filters.getState().favoritesOnly) {
@@ -131,6 +138,7 @@ document.addEventListener("visibilitychange", syncLiveUpdates);
 window.addEventListener("pagehide", handlePageHide);
 window.addEventListener("pageshow", handlePageShow);
 syncLiveUpdates();
+motionEffects.playEntrance();
 
 function dispose() {
   if (disposed) return;
@@ -139,6 +147,8 @@ function dispose() {
   window.removeEventListener("pagehide", handlePageHide);
   window.removeEventListener("pageshow", handlePageShow);
   lifecycleController.abort();
+  motionEffects.dispose();
+  particleField.dispose();
   stopLiveUpdates();
   cancelScheduledRenders();
 }
@@ -190,14 +200,14 @@ async function refreshOi() {
     lastOiResponseAt = responseClock();
     rankingData.setRows(payload.rows, priceSocket.getPrices());
     renderOiStatus(payload);
-    renderStatCards(elements, rankingData.getStats());
+    motionEffects.pulseValues(renderStatCards(elements, rankingData.getStats()));
     scheduleFullRender();
   } catch (error) {
     if (disposed) return;
     if (lastOiResponseAt && isResponseStale(lastOiResponseAt)) {
       lastOiResponseAt = null;
       rankingData.setRows([], priceSocket.getPrices());
-      renderStatCards(elements, rankingData.getStats());
+      motionEffects.pulseValues(renderStatCards(elements, rankingData.getStats()));
       scheduleFullRender();
     }
     elements.statusTitle.textContent = "OI 连接异常";
@@ -253,7 +263,7 @@ function renderFull() {
 
   const visibleRows = getVisibleRows();
   heatMax = getHeatMax(visibleRows);
-  table.render(visibleRows, getRowRenderContext());
+  motionEffects.revealRows(table.render(visibleRows, getRowRenderContext()));
   renderHighOi7d();
   filterBar.render();
   sortableHeaders.render();
@@ -308,7 +318,9 @@ function scheduleHighOi7dRender() {
 
 function renderHighOi7d() {
   const rows = rankingData.getRows();
-  highOi7dTable.render(buildHighOi7dRows(rows), rows.length > 0);
+  motionEffects.revealRows(
+    highOi7dTable.render(buildHighOi7dRows(rows), rows.length > 0),
+  );
 }
 
 function cancelPendingPatch() {

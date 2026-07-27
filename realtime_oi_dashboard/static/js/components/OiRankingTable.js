@@ -15,11 +15,12 @@ export function createOiRankingTable({ tbody, getRowBySymbol }) {
       rowsBySymbol.clear();
       tbody.textContent = "";
       tbody.append(createEmptyRow(context.hasSourceRows));
-      return;
+      return [];
     }
 
     const fragment = document.createDocumentFragment();
     const nextVisible = new Set();
+    const createdRows = [];
 
     for (const row of rows) {
       nextVisible.add(row.symbol);
@@ -29,6 +30,7 @@ export function createOiRankingTable({ tbody, getRowBySymbol }) {
       if (!tr) {
         tr = createRankingRow(row, context);
         rowsBySymbol.set(row.symbol, tr);
+        createdRows.push(tr);
       } else {
         updateRankingRow(tr, row, context);
       }
@@ -44,6 +46,7 @@ export function createOiRankingTable({ tbody, getRowBySymbol }) {
 
     tbody.textContent = "";
     tbody.append(fragment);
+    return createdRows;
   }
 
   function patchRows(symbols, context) {

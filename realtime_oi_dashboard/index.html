@@ -7,28 +7,60 @@
   <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
 <body>
+  <div class="ambient" aria-hidden="true">
+    <canvas class="particle-field" id="particleField"></canvas>
+    <span class="ambient-orb ambient-orb-cyan"></span>
+    <span class="ambient-orb ambient-orb-violet"></span>
+    <span class="ambient-grid"></span>
+  </div>
+
   <div class="shell">
-    <header>
-      <div>
-        <h1>实时价格 持仓变化</h1>
+    <header data-motion="hero">
+      <div class="hero-copy">
+        <div class="eyebrow"><span></span>BINANCE USDⓈ-M · LIVE</div>
+        <h1>实时价格 <span>持仓变化</span></h1>
         <div class="sub">价格用 Binance Futures WebSocket 实时更新；OI 持仓按批次连续轮询。</div>
       </div>
-      <div class="status" role="status" aria-live="polite" aria-atomic="true">
-        <strong id="statusTitle">启动中</strong>
+      <div class="status" data-motion="status" role="status" aria-live="polite" aria-atomic="true">
+        <div class="status-heading">
+          <span class="status-pulse" aria-hidden="true"></span>
+          <strong id="statusTitle">启动中</strong>
+        </div>
         <span id="statusText">等待 OI 快照和价格 WebSocket</span>
       </div>
     </header>
 
     <section class="metrics">
-      <div class="metric"><div class="label">变化币种</div><div class="value" id="changeCount">-</div><div class="note">本轮 OI 可对比数量</div></div>
-      <div class="metric"><div class="label">价格连接</div><div class="value" id="wsState" role="status" aria-live="polite" aria-atomic="true">-</div><div class="note">Binance WebSocket</div></div>
-      <div class="metric"><div class="label">24h 最大增仓</div><div class="value" id="topIncrease">-</div><div class="note" id="topIncreaseNote">24h OI 变化</div></div>
-      <div class="metric"><div class="label">24h 最大减仓</div><div class="value" id="topDecrease">-</div><div class="note" id="topDecreaseNote">24h OI 变化</div></div>
+      <div class="metric metric-cyan" data-motion="metric">
+        <div class="metric-icon" aria-hidden="true">Σ</div>
+        <div class="label">变化币种</div>
+        <div class="value" id="changeCount">-</div>
+        <div class="note">本轮 OI 可对比数量</div>
+      </div>
+      <div class="metric metric-blue" data-motion="metric" data-connection="connecting">
+        <div class="metric-icon metric-icon-signal" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="label">价格连接</div>
+        <div class="value" id="wsState" role="status" aria-live="polite" aria-atomic="true">-</div>
+        <div class="note">Binance WebSocket</div>
+      </div>
+      <div class="metric metric-green" data-motion="metric">
+        <div class="metric-icon" aria-hidden="true">↗</div>
+        <div class="label">24h 最大增仓</div>
+        <div class="value" id="topIncrease">-</div>
+        <div class="note" id="topIncreaseNote">24h OI 变化</div>
+      </div>
+      <div class="metric metric-red" data-motion="metric">
+        <div class="metric-icon" aria-hidden="true">↘</div>
+        <div class="label">24h 最大减仓</div>
+        <div class="value" id="topDecrease">-</div>
+        <div class="note" id="topDecreaseNote">24h OI 变化</div>
+      </div>
     </section>
 
-    <section class="panel signal-panel">
+    <section class="panel signal-panel" data-motion="panel">
       <div class="toolbar">
-        <div>
+        <div class="panel-title">
+          <span class="panel-kicker">MOMENTUM SIGNAL</span>
           <strong>7D OI &gt; 100%</strong>
           <div class="sub">持仓(7d%) &gt; 100% 且持仓价值 &gt; $1000万。</div>
         </div>
@@ -52,9 +84,10 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel" data-motion="panel">
       <div class="toolbar">
-        <div>
+        <div class="panel-title">
+          <span class="panel-kicker">MARKET SCANNER</span>
           <strong>OI 变化排行</strong>
           <div class="sub">默认按持仓变化从高到低排序；价格实时跳动，OI 与 24h/7d 变化按批次更新。</div>
         </div>

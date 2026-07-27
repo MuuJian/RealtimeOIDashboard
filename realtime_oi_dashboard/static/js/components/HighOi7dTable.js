@@ -19,11 +19,12 @@ export function createHighOi7dTable({ tbody }) {
     if (!rows.length) {
       rowsBySymbol.clear();
       tbody.replaceChildren(createEmptyRow(hasSourceRows));
-      return;
+      return [];
     }
 
     const fragment = document.createDocumentFragment();
     const nextSymbols = new Set();
+    const createdRows = [];
 
     for (const row of rows) {
       nextSymbols.add(row.symbol);
@@ -32,6 +33,7 @@ export function createHighOi7dTable({ tbody }) {
       if (!tr) {
         tr = createRow();
         rowsBySymbol.set(row.symbol, tr);
+        createdRows.push(tr);
       }
       updateRow(tr, row);
       fragment.append(tr);
@@ -45,6 +47,7 @@ export function createHighOi7dTable({ tbody }) {
     }
 
     tbody.replaceChildren(fragment);
+    return createdRows;
   }
 
   function createRow() {
