@@ -33,7 +33,7 @@ CLOCK_DISCONTINUITY_TOLERANCE_SECONDS = 60
 EMPTY_BATCH_ERROR = "本批次没有成功更新任何 OI 数据"
 CLOCK_RESET_ERROR = "检测到系统休眠或时钟跳变，正在重新获取 OI 数据"
 STALE_ROWS_ERROR = "OI 数据已超过 15 分钟，等待重新获取"
-OI_API_SCHEMA_VERSION = 3
+OI_API_SCHEMA_VERSION = 4
 
 
 class OIPoller:
@@ -450,6 +450,7 @@ class OIPoller:
             "volume24h": volume_24h,
             "currentOi": current_oi,
             "currentOiValue": current_oi_value,
+            "oiUpdatedAt": now_ms,
             "priceChangePercent": ticker.get("priceChangePercent"),
             "fundingRatePercent": funding_rate_percent,
             "nextFundingTime": next_funding_time,

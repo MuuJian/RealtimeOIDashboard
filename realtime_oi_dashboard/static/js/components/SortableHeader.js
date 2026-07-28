@@ -1,12 +1,12 @@
-export function createSortableHeaders({ headers, sort, onChange }) {
+export function createSortableHeaders({ headers, sort, onChange, signal }) {
   headers.forEach(th => {
     th.tabIndex = 0;
-    th.addEventListener("click", () => activate(th));
+    th.addEventListener("click", () => activate(th), { signal });
     th.addEventListener("keydown", event => {
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
       activate(th);
-    });
+    }, { signal });
   });
 
   function activate(th) {

@@ -1,17 +1,37 @@
-export function useTableSort(initialState = {}) {
+const VALID_SORT_KEYS = new Set([
+  "symbol",
+  "price",
+  "fundingRatePercent",
+  "priceChangePercent",
+  "price7dChangePercent",
+  "currentOiValue",
+  "volume24h",
+  "oi24hChangePercent",
+  "oi7dChangePercent",
+]);
+
+export function useTableSort({
+  storageKey = "",
+  initialState = {},
+} = {}) {
+  const persistedState = readSortState(storageKey);
   const state = {
     sortKey: "oi24hChangePercent",
     sortDir: "desc",
     ...initialState,
+    ...persistedState,
   };
 
   function setSortKey(sortKey) {
+    if (!VALID_SORT_KEYS.has(sortKey)) return false;
     if (state.sortKey === sortKey) {
       state.sortDir = state.sortDir === "desc" ? "asc" : "desc";
     } else {
       state.sortKey = sortKey;
       state.sortDir = "desc";
     }
+    saveSortState(storageKey, state);
+    return true;
   }
 
   return {
@@ -20,4 +40,34 @@ export function useTableSort(initialState = {}) {
       return state;
     },
   };
+}
+
+function readSortState(storageKey) {
+  if (!storageKey) return {};
+  try {
+    const value = JSON.parse(localStorage.getItem(storageKey) || "null");
+    if (
+      !value
+      || !VALID_SORT_KEYS.has(value.sortKey)
+      || !["asc", "desc"].includes(value.sortDir)
+    ) return {};
+    return {
+      sortKey: value.sortKey,
+      sortDir: value.sortDir,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function saveSortState(storageKey, state) {
+  if (!storageKey) return;
+  try {
+    localStorage.setItem(storageKey, JSON.stringify({
+      sortKey: state.sortKey,
+      sortDir: state.sortDir,
+    }));
+  } catch {
+    // Sorting still works for the current page when storage is unavailable.
+  }
 }

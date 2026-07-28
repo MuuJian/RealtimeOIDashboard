@@ -1,6 +1,6 @@
 import { applyLivePriceToRow } from "../utils/rankingRows.js";
 
-const OI_API_SCHEMA_VERSION = 3;
+const OI_API_SCHEMA_VERSION = 4;
 const OPTIONAL_NUMBER_FIELDS = [
   "priceChangePercent",
   "price7dChangePercent",
@@ -113,7 +113,7 @@ export async function loadOiSnapshot({ signal } = {}) {
     if (!response.ok) throw new Error(`OI 请求失败 (${response.status})`);
     const payload = await response.json();
     if (payload?.schema_version !== OI_API_SCHEMA_VERSION) {
-      throw new Error("后台版本较旧，请重启面板服务");
+      throw new Error("前后端版本不一致，请刷新页面或重启服务");
     }
     if (
       !payload
@@ -147,6 +147,7 @@ function isOiRow(item) {
     || !isNonNegativeNumber(item.currentOi)
     || !isNonNegativeNumber(item.currentOiValue)
     || !isOptionalNonNegativeNumber(item.volume24h)
+    || !isTimestamp(item.oiUpdatedAt)
     || !Object.hasOwn(item, "price7dBaseline")
     || !isOptionalPositiveNumber(item.price7dBaseline)
     || !isOptionalTimestamp(item.nextFundingTime)
@@ -178,7 +179,11 @@ function isOptionalPositiveNumber(value) {
 }
 
 function isOptionalTimestamp(value) {
-  return value == null || (Number.isSafeInteger(value) && value > 0);
+  return value == null || isTimestamp(value);
+}
+
+function isTimestamp(value) {
+  return Number.isSafeInteger(value) && value > 0;
 }
 
 function isFiniteNumber(value) {

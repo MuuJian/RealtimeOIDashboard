@@ -20,6 +20,7 @@ export function createRankingProcessor() {
     filters,
     sort,
     favorites,
+    signalFilters,
   }) {
     if (disposed) return Promise.reject(new Error("ranking processor disposed"));
 
@@ -29,6 +30,7 @@ export function createRankingProcessor() {
       filters: { ...filters },
       sort: { ...sort },
       favorites: [...favorites],
+      signalFilters: { ...signalFilters },
     };
 
     if (!worker) {
@@ -132,6 +134,7 @@ export function createRankingProcessor() {
       view.filters,
       view.sort,
       new Set(view.favorites),
+      view.signalFilters,
     );
   }
 

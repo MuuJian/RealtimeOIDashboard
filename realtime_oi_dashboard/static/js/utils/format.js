@@ -53,6 +53,34 @@ export function formatFundingTitle(nextFundingTime) {
   return `下次资金费结算: ${date.toLocaleString()}`;
 }
 
+export function formatOiUpdateAge(value, now = Date.now()) {
+  const time = finiteNumber(value);
+  if (time == null || time <= 0) return "-";
+
+  const ageMs = Math.max(0, now - time);
+  if (ageMs < 5000) return "刚刚";
+  if (ageMs < 60000) return `${Math.floor(ageMs / 1000)}秒前`;
+  return `${Math.floor(ageMs / 60000)}分钟前`;
+}
+
+export function oiUpdateSignalState(value, now = Date.now()) {
+  const time = finiteNumber(value);
+  if (time == null || time <= 0) return "danger";
+
+  const ageMs = Math.max(0, now - time);
+  if (ageMs >= 60 * 1000) return "danger";
+  if (ageMs > 20 * 1000) return "warning";
+  return "fresh";
+}
+
+export function formatOiUpdateTitle(value) {
+  const time = finiteNumber(value);
+  if (time == null || time <= 0) return "";
+  const date = new Date(time);
+  if (Number.isNaN(date.getTime())) return "";
+  return `OI 获取时间：${date.toLocaleString()}`;
+}
+
 const TRADINGVIEW_SYMBOL_MAP = {
   "币安人生USDT": "BIANRENSHENGUSDT",
   "龙虾USDT": "LONGXIAUSDT",

@@ -1,5 +1,12 @@
-export function useFavorites(storageKey) {
+export function useFavorites(
+  storageKey,
+  {
+    seedSymbols = [],
+    seedVersion = "",
+  } = {},
+) {
   const favorites = readFavorites(storageKey);
+  seedFavorites(storageKey, favorites, seedSymbols, seedVersion);
 
   function save() {
     try {
@@ -31,6 +38,29 @@ export function useFavorites(storageKey) {
       return favorites.size;
     },
   };
+}
+
+function seedFavorites(storageKey, favorites, symbols, version) {
+  if (!version) return;
+
+  const markerKey = `${storageKey}:seed:${version}`;
+  try {
+    if (localStorage.getItem(markerKey) === "1") return;
+  } catch {
+    // Continue with in-memory favorites when storage is unavailable.
+  }
+
+  for (const symbol of symbols) {
+    const normalizedSymbol = normalizeSymbol(symbol);
+    if (normalizedSymbol) favorites.add(normalizedSymbol);
+  }
+
+  try {
+    localStorage.setItem(storageKey, JSON.stringify([...favorites]));
+    localStorage.setItem(markerKey, "1");
+  } catch {
+    // Seeded favorites still work for the current page.
+  }
 }
 
 function readFavorites(storageKey) {

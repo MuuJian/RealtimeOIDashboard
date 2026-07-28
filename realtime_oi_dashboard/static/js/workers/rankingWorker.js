@@ -19,6 +19,7 @@ self.onmessage = event => {
     message.filters,
     message.sort,
     new Set(message.favorites),
+    message.signalFilters,
   );
   self.postMessage({
     type: "result",

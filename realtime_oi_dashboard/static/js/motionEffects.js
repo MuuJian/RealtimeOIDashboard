@@ -8,11 +8,12 @@ export function createMotionEffects() {
   const activeAnimations = new Set();
   let motionPromise = null;
   let disposed = false;
+  let paused = document.hidden || !document.hasFocus();
 
   reducedMotion?.addEventListener("change", handleMotionPreference);
 
   function loadMotion() {
-    if (disposed || reducedMotion?.matches) return Promise.resolve(null);
+    if (disposed || paused || reducedMotion?.matches) return Promise.resolve(null);
     if (!motionPromise) {
       motionPromise = import(MOTION_MODULE_URL).catch(() => null);
     }
@@ -28,7 +29,7 @@ export function createMotionEffects() {
 
       track(animate(
         hero,
-        { opacity: [0, 1], y: [22, 0], filter: ["blur(7px)", "blur(0px)"] },
+        { opacity: [0, 1], y: [22, 0] },
         { duration: 0.72, ease: [0.22, 1, 0.36, 1] },
       ));
       track(animate(
@@ -111,11 +112,16 @@ export function createMotionEffects() {
     stopAnimations();
   }
 
+  function setPaused(nextPaused) {
+    paused = Boolean(nextPaused);
+    if (paused) stopAnimations();
+  }
+
   function run(callback) {
-    if (disposed || reducedMotion?.matches) return;
+    if (disposed || paused || reducedMotion?.matches) return;
     void loadMotion()
       .then(motion => {
-        if (!motion || disposed || reducedMotion?.matches) return;
+        if (!motion || disposed || paused || reducedMotion?.matches) return;
         callback(motion);
       })
       .catch(() => {});
@@ -151,5 +157,6 @@ export function createMotionEffects() {
     popFavorite,
     pulseValues,
     revealRows,
+    setPaused,
   };
 }

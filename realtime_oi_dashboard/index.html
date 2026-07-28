@@ -7,13 +7,6 @@
   <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
 <body>
-  <div class="ambient" aria-hidden="true">
-    <canvas class="particle-field" id="particleField"></canvas>
-    <span class="ambient-orb ambient-orb-cyan"></span>
-    <span class="ambient-orb ambient-orb-violet"></span>
-    <span class="ambient-grid"></span>
-  </div>
-
   <div class="shell">
     <header data-motion="hero">
       <div class="hero-copy">
@@ -53,8 +46,19 @@
       <div class="toolbar">
         <div class="panel-title">
           <span class="panel-kicker">MOMENTUM SIGNAL</span>
-          <strong>7D OI &gt; 100%</strong>
-          <div class="sub">持仓(7d%) &gt; 100% 且持仓价值 &gt; $1000万。</div>
+          <strong>7D OI 异动信号</strong>
+        </div>
+        <div class="controls signal-controls">
+          <select id="signalOi7dFilter" aria-label="7 天 OI 最低变化">
+            <option value="50">7D OI &gt; 50%</option>
+            <option value="100" selected>7D OI &gt; 100%</option>
+            <option value="200">7D OI &gt; 200%</option>
+          </select>
+          <select id="signalOiValueFilter" aria-label="最低持仓价值">
+            <option value="5000000">持仓价值 &gt; $500万</option>
+            <option value="10000000" selected>持仓价值 &gt; $1000万</option>
+            <option value="50000000">持仓价值 &gt; $5000万</option>
+          </select>
         </div>
       </div>
 
@@ -65,12 +69,17 @@
               <th scope="col">币种</th>
               <th scope="col">价格</th>
               <th scope="col">资金费率</th>
-              <th scope="col">持仓(7d%)</th>
+              <th scope="col">价格(24h%)</th>
+              <th scope="col">价格(7d%)</th>
               <th scope="col">持仓价值</th>
+              <th scope="col">成交额(24h)</th>
+              <th scope="col">持仓(24h%)</th>
+              <th scope="col">持仓(7d%)</th>
+              <th scope="col" title="20 秒内：1 格绿色；约 40 秒：3 格黄色；满 1 分钟：5 格红色">OI 更新状态</th>
             </tr>
           </thead>
           <tbody id="highOi7dBody">
-            <tr><td colspan="5" class="empty">等待本次 OI 数据。</td></tr>
+            <tr><td colspan="10" class="empty">等待本次 OI 数据。</td></tr>
           </tbody>
         </table>
       </div>
@@ -124,6 +133,7 @@
               <th scope="col" data-sort="volume24h"><span class="sort-label">成交额(24h)<span class="sort-arrows"></span></span></th>
               <th scope="col" data-sort="oi24hChangePercent"><span class="sort-label">持仓(24h%)<span class="sort-arrows"></span></span></th>
               <th scope="col" data-sort="oi7dChangePercent"><span class="sort-label">持仓(7d%)<span class="sort-arrows"></span></span></th>
+              <th scope="col" title="20 秒内：1 格绿色；约 40 秒：3 格黄色；满 1 分钟：5 格红色">OI 更新状态</th>
             </tr>
           </thead>
           <tbody id="rankBody"></tbody>

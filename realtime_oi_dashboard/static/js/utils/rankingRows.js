@@ -95,10 +95,18 @@ export function buildVisibleRows(rows, filters, sortState, favorites) {
     .slice(0, limit != null && limit >= 0 ? limit : 99999);
 }
 
-export function buildHighOi7dRows(rows) {
+export function buildHighOi7dRows(
+  rows,
+  {
+    minOi7dChangePercent = 100,
+    minOiValue = 10000000,
+  } = {},
+) {
   return rows
-    .filter(row => Number(row.oi7dChangePercent || 0) > 100)
-    .filter(row => Number(row.currentOiValue || 0) > 10000000)
+    .filter(
+      row => Number(row.oi7dChangePercent || 0) > minOi7dChangePercent,
+    )
+    .filter(row => Number(row.currentOiValue || 0) > minOiValue)
     .slice()
     .sort((a, b) => Number(b.oi7dChangePercent || 0) - Number(a.oi7dChangePercent || 0));
 }
