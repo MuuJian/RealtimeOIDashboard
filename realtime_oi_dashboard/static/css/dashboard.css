@@ -448,8 +448,8 @@ button {
 }
 
 .signal-wrap {
-  height: 242px;
-  max-height: 242px;
+  height: 192px;
+  max-height: 192px;
   scrollbar-width: none;
 }
 
