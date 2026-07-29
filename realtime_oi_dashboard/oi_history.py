@@ -18,8 +18,8 @@ from realtime_oi_dashboard.market_data import (
     history_point_value,
     parse_oi_history_points,
 )
-from shared.binance import is_valid_binance_symbol
-from shared.utils import optional_float, optional_int
+from realtime_oi_dashboard.parsing import optional_float, optional_int
+from realtime_oi_dashboard.symbols import is_valid_binance_symbol
 
 
 OI_HISTORY_RETRY_SECONDS = 60

@@ -14,7 +14,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from realtime_oi_dashboard.poller import OIPoller, timestamp
-from shared.web import DashboardRequestHandler
+from realtime_oi_dashboard.web import DashboardRequestHandler
 
 
 ROOT_DIR = Path(__file__).resolve().parent

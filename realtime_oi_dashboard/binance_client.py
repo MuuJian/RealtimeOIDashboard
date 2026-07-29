@@ -17,9 +17,9 @@ from realtime_oi_dashboard.market_data import (
     parse_market_tickers,
 )
 from realtime_oi_dashboard.oi_history import OiHistoryService
-from shared.binance import is_valid_binance_symbol
-from shared.http import JsonHttpClient
-from shared.utils import optional_float
+from realtime_oi_dashboard.http import JsonHttpClient
+from realtime_oi_dashboard.parsing import optional_float
+from realtime_oi_dashboard.symbols import is_valid_binance_symbol
 
 
 PARTIAL_RESPONSE_RETRY_SECONDS = 60

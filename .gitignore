@@ -6,9 +6,7 @@ include/
 lib/
 pyvenv.*
 
-# Runtime output and local config
-ticket/
-exchange_ticket/ticket/
+# Runtime data and local config
 realtime_oi_dashboard/data/
 .env
 .DS_Store
@@ -18,5 +16,4 @@ __pycache__/
 *.py[cod]
 
 # Local tool state
-gmgn/
 .codex/

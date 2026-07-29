@@ -5,8 +5,8 @@ from __future__ import annotations
 import time
 from math import isfinite
 
-from shared.binance import is_valid_binance_symbol
-from shared.utils import optional_float, optional_int
+from realtime_oi_dashboard.parsing import optional_float, optional_int
+from realtime_oi_dashboard.symbols import is_valid_binance_symbol
 
 
 MIN_EXPECTED_ACTIVE_SYMBOLS = 20

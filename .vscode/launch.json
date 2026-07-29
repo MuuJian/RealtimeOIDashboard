@@ -5,7 +5,7 @@
       "name": "Realtime OI Dashboard",
       "type": "python",
       "request": "launch",
-      "module": "realtime_oi_dashboard.server",
+      "program": "${workspaceFolder}/main.py",
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "justMyCode": true,
@@ -22,15 +22,6 @@
         "uriFormat": "%s",
         "action": "openExternally"
       }
-    },
-    {
-      "name": "Generate Watchlists",
-      "type": "python",
-      "request": "launch",
-      "program": "${workspaceFolder}/main.py",
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "justMyCode": true
     }
   ]
 }

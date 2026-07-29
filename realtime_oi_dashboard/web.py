@@ -1,4 +1,4 @@
-"""Shared building blocks for the repository's local dashboards."""
+"""HTTP response helpers for the realtime OI dashboard."""
 
 from __future__ import annotations
 

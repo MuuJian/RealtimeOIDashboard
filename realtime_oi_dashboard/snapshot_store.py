@@ -7,8 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from shared.binance import is_valid_binance_symbol
-from shared.utils import write_text_atomic
+from realtime_oi_dashboard.file_io import write_text_atomic
+from realtime_oi_dashboard.symbols import is_valid_binance_symbol
 
 
 MAX_SNAPSHOT_FILE_BYTES = 5 * 1024 * 1024

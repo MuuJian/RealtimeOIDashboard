@@ -1,4 +1,4 @@
-"""Small, reusable HTTP helpers for exchange APIs."""
+"""Thread-safe JSON HTTP client for Binance API requests."""
 
 from __future__ import annotations
 
@@ -170,34 +170,6 @@ class JsonHttpClient:
             if response.status_code in {418, 429}:
                 return 10.0 * attempt
         return base_delay
-
-
-def fetch_json(
-    url: str,
-    *,
-    params: dict[str, Any] | None = None,
-    timeout: float = 10,
-    attempts: int = 3,
-) -> Any:
-    """Perform one retried JSON request and close its session afterward."""
-    client = JsonHttpClient()
-    try:
-        result = client.get_json(
-            url,
-            params=params,
-            timeout=timeout,
-            attempts=attempts,
-        )
-    except BaseException:
-        try:
-            client.close()
-        except BaseException:
-            # Keep the request failure as the actionable root cause.
-            pass
-        raise
-    else:
-        client.close()
-        return result
 
 
 def _retry_after_seconds(value: str) -> float | None:
