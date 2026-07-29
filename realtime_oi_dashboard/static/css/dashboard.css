@@ -444,8 +444,21 @@ button {
 }
 
 .signal-wrap {
-  max-height: 230px;
+  height: 242px;
+  max-height: 242px;
   scrollbar-width: none;
+}
+
+.signal-table thead tr {
+  height: 42px;
+}
+
+.signal-table tbody tr {
+  height: 50px;
+}
+
+.ranking-wrap {
+  height: calc(100vh - 292px);
 }
 
 .signal-wrap::-webkit-scrollbar {

@@ -33,9 +33,7 @@ export function createFilterBar({
       "aria-pressed",
       String(state.favoritesOnly),
     );
-    elements.favoritesOnlyBtn.textContent = state.favoritesOnly
-      ? "收藏"
-      : "只看收藏";
+    elements.favoritesOnlyBtn.textContent = "只看收藏";
   }
 
   return { render };
