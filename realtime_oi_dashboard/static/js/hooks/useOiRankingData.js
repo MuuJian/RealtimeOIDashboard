@@ -1,6 +1,6 @@
 import { applyLivePriceToRow } from "../utils/rankingRows.js";
 
-const OI_API_SCHEMA_VERSION = 4;
+const OI_API_SCHEMA_VERSION = 5;
 const OPTIONAL_NUMBER_FIELDS = [
   "priceChangePercent",
   "price7dChangePercent",
@@ -117,6 +117,10 @@ export async function loadOiSnapshot({ signal } = {}) {
     }
     if (
       !payload
+      || !Array.isArray(payload.active_symbols)
+      || !Number.isSafeInteger(payload.total_symbols)
+      || payload.total_symbols !== payload.active_symbols.length
+      || !payload.active_symbols.every(isSymbol)
       || !Array.isArray(payload.rows)
       || !payload.rows.every(isOiRow)
     ) {
@@ -140,9 +144,7 @@ function isOiRow(item) {
   if (
     !item
     || typeof item !== "object"
-    || typeof item.symbol !== "string"
-    || !item.symbol.trim()
-    || item.symbol !== item.symbol.trim()
+    || !isSymbol(item.symbol)
     || !isPositiveNumber(item.price)
     || !isNonNegativeNumber(item.currentOi)
     || !isNonNegativeNumber(item.currentOiValue)
@@ -156,6 +158,13 @@ function isOiRow(item) {
   return OPTIONAL_NUMBER_FIELDS.every(
     field => Object.hasOwn(item, field) && isOptionalNumber(item[field]),
   );
+}
+
+function isSymbol(value) {
+  return typeof value === "string"
+    && Boolean(value)
+    && value === value.trim()
+    && value === value.toUpperCase();
 }
 
 function isPositiveNumber(value) {

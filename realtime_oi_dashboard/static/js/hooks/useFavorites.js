@@ -1,12 +1,19 @@
 export function useFavorites(
   storageKey,
   {
+    removedSeedSymbols = [],
     seedSymbols = [],
     seedVersion = "",
   } = {},
 ) {
   const favorites = readFavorites(storageKey);
-  seedFavorites(storageKey, favorites, seedSymbols, seedVersion);
+  seedFavorites(
+    storageKey,
+    favorites,
+    seedSymbols,
+    removedSeedSymbols,
+    seedVersion,
+  );
 
   function save() {
     try {
@@ -29,7 +36,24 @@ export function useFavorites(
     return true;
   }
 
+  function pruneInactive(activeSymbols) {
+    const active = new Set(
+      activeSymbols.map(normalizeSymbol).filter(Boolean),
+    );
+    if (!active.size) return false;
+
+    let changed = false;
+    for (const symbol of favorites) {
+      if (active.has(symbol)) continue;
+      favorites.delete(symbol);
+      changed = true;
+    }
+    if (changed) save();
+    return changed;
+  }
+
   return {
+    pruneInactive,
     toggle,
     getSet() {
       return favorites;
@@ -40,7 +64,13 @@ export function useFavorites(
   };
 }
 
-function seedFavorites(storageKey, favorites, symbols, version) {
+function seedFavorites(
+  storageKey,
+  favorites,
+  symbols,
+  removedSymbols,
+  version,
+) {
   if (!version) return;
 
   const markerKey = `${storageKey}:seed:${version}`;
@@ -50,6 +80,10 @@ function seedFavorites(storageKey, favorites, symbols, version) {
     // Continue with in-memory favorites when storage is unavailable.
   }
 
+  for (const symbol of removedSymbols) {
+    const normalizedSymbol = normalizeSymbol(symbol);
+    if (normalizedSymbol) favorites.delete(normalizedSymbol);
+  }
   for (const symbol of symbols) {
     const normalizedSymbol = normalizeSymbol(symbol);
     if (normalizedSymbol) favorites.add(normalizedSymbol);

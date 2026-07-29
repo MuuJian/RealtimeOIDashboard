@@ -33,7 +33,7 @@ CLOCK_DISCONTINUITY_TOLERANCE_SECONDS = 60
 EMPTY_BATCH_ERROR = "本批次没有成功更新任何 OI 数据"
 CLOCK_RESET_ERROR = "检测到系统休眠或时钟跳变，正在重新获取 OI 数据"
 STALE_ROWS_ERROR = "OI 数据已超过 15 分钟，等待重新获取"
-OI_API_SCHEMA_VERSION = 4
+OI_API_SCHEMA_VERSION = 5
 
 
 class OIPoller:
@@ -515,7 +515,8 @@ class OIPoller:
             self.prune_stale_data()
             state = dict(self.state)
             state["schema_version"] = OI_API_SCHEMA_VERSION
-            state["total_symbols"] = len(self.symbols)
+            state["active_symbols"] = list(self.symbols)
+            state["total_symbols"] = len(state["active_symbols"])
             rows = self.oi_state.copy_rows()
             if rows and self._wall_clock_rows_are_stale(time.time()):
                 rows = []

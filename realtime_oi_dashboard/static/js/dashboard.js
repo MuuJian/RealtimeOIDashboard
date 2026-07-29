@@ -49,11 +49,10 @@ const FAVORITE_SEED_SYMBOLS = Object.freeze([
   "ENAUSDT",
   "ZROUSDT",
   "AAVEUSDT",
-  "FFUSDT",
-  "HOLOUSDT",
-  "METUSDT",
   "ZBTUSDT",
   "ENSOUSDT",
+  "FFUSDT",
+  "HOLOUSDT",
 ]);
 
 const elements = {
@@ -78,8 +77,9 @@ const elements = {
 
 const rankingData = useOiRankingData();
 const favorites = useFavorites("oiFavorites", {
+  removedSeedSymbols: ["METUSDT"],
   seedSymbols: FAVORITE_SEED_SYMBOLS,
-  seedVersion: "screenshots-2026-07-28",
+  seedVersion: "watchlist-2026-07-29",
 });
 const filters = useTableFilters({
   query: elements.searchInput.value.trim().toUpperCase(),
@@ -240,6 +240,7 @@ function handlePageShow(event) {
 }
 
 function handleOiPayload(payload) {
+  const favoritesChanged = favorites.pruneInactive(payload.active_symbols);
   rankingData.setRows(payload.rows, priceFeed.getPrices());
   renderOiStatus(payload);
   requestRankingView({
@@ -247,7 +248,10 @@ function handleOiPayload(payload) {
     changedSymbols: rankingData.getRows().map(row => row.symbol),
     forceFull: !visibleRows.length,
   });
-  scheduleUiRender({ stats: true });
+  scheduleUiRender({
+    controls: favoritesChanged,
+    stats: true,
+  });
 }
 
 function handleOiError(error, { dataExpired }) {
