@@ -390,6 +390,10 @@ select {
   cursor: pointer;
 }
 
+.sort-select {
+  min-width: 190px;
+}
+
 button {
   cursor: pointer;
 }
@@ -880,9 +884,17 @@ tbody tr:last-child td {
     width: 100%;
   }
 
+  input {
+    font-size: 16px;
+  }
+
   #favoritesOnlyBtn {
     min-width: 0;
     flex-basis: auto;
+  }
+
+  .sort-select {
+    min-width: 0;
   }
 
   .controls {

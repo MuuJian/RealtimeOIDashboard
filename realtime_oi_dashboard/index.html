@@ -93,8 +93,18 @@
           <div class="sub">默认按持仓(24h%)从高到低排序；价格及其 24h / 7d 变化实时跳动，OI 变化按批次更新。</div>
         </div>
         <div class="controls">
-          <input id="searchInput" type="search" placeholder="搜索币种" aria-label="搜索币种">
           <button id="favoritesOnlyBtn" class="ghost-btn" type="button" aria-pressed="false">只看收藏</button>
+          <input id="searchInput" type="search" placeholder="搜索币种" aria-label="搜索币种">
+          <select id="sortSelect" class="sort-select" aria-label="排行排序方式">
+            <option value="oi24hChangePercent">排序：持仓(24h%) 高 → 低</option>
+            <option value="oi7dChangePercent">排序：持仓(7d%) 高 → 低</option>
+            <option value="priceChangePercent">排序：价格(24h%) 高 → 低</option>
+            <option value="price7dChangePercent">排序：价格(7d%) 高 → 低</option>
+            <option value="fundingRatePercent">排序：资金费率 高 → 低</option>
+            <option value="currentOiValue">排序：持仓价值 高 → 低</option>
+            <option value="volume24h">排序：成交额(24h) 高 → 低</option>
+            <option value="price">排序：价格 高 → 低</option>
+          </select>
           <select id="oiValueFilter" aria-label="最低持仓价值">
             <option value="0">持仓价值: 全部</option>
             <option value="1000000">持仓价值 ≥ $100万</option>
@@ -112,6 +122,7 @@
             <option value="100000000">成交额 ≥ $1亿</option>
           </select>
           <select id="limitSelect" aria-label="显示数量">
+            <option value="20">前 20</option>
             <option value="50">前 50</option>
             <option value="100">前 100</option>
             <option value="99999" selected>全部</option>

@@ -24,17 +24,26 @@ export function useTableSort({
 
   function setSortKey(sortKey) {
     if (!VALID_SORT_KEYS.has(sortKey)) return false;
-    if (state.sortKey === sortKey) {
-      state.sortDir = state.sortDir === "desc" ? "asc" : "desc";
-    } else {
-      state.sortKey = sortKey;
-      state.sortDir = "desc";
-    }
+    const sortDir = state.sortKey === sortKey && state.sortDir === "desc"
+      ? "asc"
+      : "desc";
+    return setSort(sortKey, sortDir);
+  }
+
+  function setSort(sortKey, sortDir) {
+    if (
+      !VALID_SORT_KEYS.has(sortKey)
+      || !["asc", "desc"].includes(sortDir)
+      || (state.sortKey === sortKey && state.sortDir === sortDir)
+    ) return false;
+    state.sortKey = sortKey;
+    state.sortDir = sortDir;
     saveSortState(storageKey, state);
     return true;
   }
 
   return {
+    setSort,
     setSortKey,
     getState() {
       return state;

@@ -63,6 +63,7 @@ const elements = {
   topDecrease: document.getElementById("topDecrease"),
   topDecreaseNote: document.getElementById("topDecreaseNote"),
   searchInput: document.getElementById("searchInput"),
+  sortSelect: document.getElementById("sortSelect"),
   favoritesOnlyBtn: document.getElementById("favoritesOnlyBtn"),
   oiValueFilter: document.getElementById("oiValueFilter"),
   volumeFilter: document.getElementById("volumeFilter"),
@@ -120,6 +121,7 @@ const filterBar = createFilterBar({
 
 const sortableHeaders = createSortableHeaders({
   headers: elements.sortableHeaders,
+  select: elements.sortSelect,
   sort,
   onChange: resetTableAndRequestView,
   signal: lifecycleController.signal,

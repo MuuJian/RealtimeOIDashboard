@@ -1,4 +1,10 @@
-export function createSortableHeaders({ headers, sort, onChange, signal }) {
+export function createSortableHeaders({
+  headers,
+  select,
+  sort,
+  onChange,
+  signal,
+}) {
   headers.forEach(th => {
     th.tabIndex = 0;
     th.addEventListener("click", () => activate(th), { signal });
@@ -9,6 +15,13 @@ export function createSortableHeaders({ headers, sort, onChange, signal }) {
     }, { signal });
   });
 
+  select.addEventListener("change", () => {
+    const sortKey = select.value;
+    if (!sort.setSort(sortKey, "desc")) return;
+    render();
+    onChange();
+  }, { signal });
+
   function activate(th) {
     sort.setSortKey(th.dataset.sort);
     render();
@@ -17,6 +30,7 @@ export function createSortableHeaders({ headers, sort, onChange, signal }) {
 
   function render() {
     const state = sort.getState();
+    select.value = state.sortKey;
     headers.forEach(th => {
       th.classList.remove("sorted-asc", "sorted-desc");
       th.setAttribute("aria-sort", "none");
