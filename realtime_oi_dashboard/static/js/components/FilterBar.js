@@ -1,7 +1,6 @@
 export function createFilterBar({
   elements,
   filters,
-  favorites,
   onChange,
   signal,
 }) {
@@ -35,7 +34,7 @@ export function createFilterBar({
       String(state.favoritesOnly),
     );
     elements.favoritesOnlyBtn.textContent = state.favoritesOnly
-      ? `收藏 ${favorites.size}`
+      ? "收藏"
       : "只看收藏";
   }
 

@@ -1,6 +1,5 @@
 import {
   binanceFuturesUrl,
-  coinGlassUrl,
   formatCurrency,
   formatFundingRate,
   formatFundingTitle,
@@ -8,6 +7,7 @@ import {
   formatPrice,
   heatStyle,
   signClass,
+  tradingViewUrl,
 } from "../utils/format.js";
 import {
   createOiUpdateSignalCell,
@@ -62,7 +62,7 @@ export function createMarketRowCells() {
 export function updateMarketRowCells(cells, row, heatMax = null) {
   cells.symbolLink.href = binanceFuturesUrl(row.symbol);
   cells.symbolLink.textContent = row.symbol;
-  cells.priceLink.href = coinGlassUrl(row.symbol);
+  cells.priceLink.href = tradingViewUrl(row.symbol);
   cells.priceLink.textContent = formatPrice(row.price);
   cells.oiValueCell.textContent = formatCurrency(row.currentOiValue);
   cells.volumeCell.textContent = formatCurrency(row.volume24h);

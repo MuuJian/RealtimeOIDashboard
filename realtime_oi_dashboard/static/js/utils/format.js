@@ -81,8 +81,17 @@ export function formatOiUpdateTitle(value) {
   return `OI 获取时间：${date.toLocaleString()}`;
 }
 
-export function coinGlassUrl(symbol) {
-  return `https://www.coinglass.com/tv/zh/Binance_${encodeURIComponent(symbol)}`;
+const TRADINGVIEW_SYMBOL_MAP = {
+  "币安人生USDT": "BIANRENSHENGUSDT",
+  "龙虾USDT": "LONGXIAUSDT",
+  "我踏马来了USDT": "WOTAMALAILIAOUSDT",
+};
+
+export function tradingViewUrl(symbol) {
+  const tradingViewSymbol = TRADINGVIEW_SYMBOL_MAP[symbol] || symbol;
+  return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(
+    `BINANCE:${tradingViewSymbol}.P`,
+  )}`;
 }
 
 export function binanceFuturesUrl(symbol) {

@@ -52,7 +52,6 @@ const FAVORITE_SEED_SYMBOLS = Object.freeze([
   "ZBTUSDT",
   "ENSOUSDT",
   "FFUSDT",
-  "HOLOUSDT",
 ]);
 
 const elements = {
@@ -77,9 +76,9 @@ const elements = {
 
 const rankingData = useOiRankingData();
 const favorites = useFavorites("oiFavorites", {
-  removedSeedSymbols: ["METUSDT"],
+  removedSeedSymbols: ["METUSDT", "HOLOUSDT"],
   seedSymbols: FAVORITE_SEED_SYMBOLS,
-  seedVersion: "watchlist-2026-07-29",
+  seedVersion: "watchlist-2026-07-29-v3",
 });
 const filters = useTableFilters({
   query: elements.searchInput.value.trim().toUpperCase(),
@@ -115,7 +114,6 @@ const marketTooltip = createMarketTooltip({
 const filterBar = createFilterBar({
   elements,
   filters,
-  favorites,
   onChange: resetTableAndRequestView,
   signal: lifecycleController.signal,
 });

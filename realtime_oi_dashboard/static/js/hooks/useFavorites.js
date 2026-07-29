@@ -58,9 +58,6 @@ export function useFavorites(
     getSet() {
       return favorites;
     },
-    get size() {
-      return favorites.size;
-    },
   };
 }
 
