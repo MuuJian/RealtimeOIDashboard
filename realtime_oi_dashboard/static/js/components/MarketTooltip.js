@@ -20,15 +20,18 @@ export function createMarketTooltip({ containers, getRowBySymbol }) {
 
   for (const container of containers) {
     listen(container, "pointerover", event => {
+      if (event.pointerType === "touch") return;
       const tr = findRow(container, event.target);
       if (!tr) return;
       show(tr.dataset.symbol, event.clientX, event.clientY);
     });
     listen(container, "pointermove", event => {
+      if (event.pointerType === "touch") return;
       if (!activeSymbol) return;
       positionTooltip(tooltip, event.clientX, event.clientY);
     });
     listen(container, "pointerout", event => {
+      if (event.pointerType === "touch") return;
       const tr = findRow(container, event.target);
       if (!tr) return;
       if (
@@ -37,7 +40,19 @@ export function createMarketTooltip({ containers, getRowBySymbol }) {
       ) return;
       hide();
     });
-    listen(container, "pointerleave", hide);
+    listen(container, "pointerleave", event => {
+      if (event.pointerType !== "touch") hide();
+    });
+    listen(container, "pointerup", event => {
+      if (event.pointerType !== "touch" || isInteractiveTarget(event.target)) return;
+      const tr = findRow(container, event.target);
+      if (!tr) return;
+      if (activeSymbol === tr.dataset.symbol) {
+        hide();
+        return;
+      }
+      show(tr.dataset.symbol, event.clientX, event.clientY);
+    });
     listen(container, "focusin", event => {
       const tr = findRow(container, event.target);
       if (!tr) return;
@@ -63,6 +78,13 @@ export function createMarketTooltip({ containers, getRowBySymbol }) {
   }
   listen(window, "resize", hide);
   listen(window, "scroll", hide, { passive: true });
+  listen(document, "pointerdown", event => {
+    if (event.pointerType !== "touch") return;
+    const tappedRow = containers.some(
+      container => findRow(container, event.target),
+    );
+    if (!tappedRow) hide();
+  });
 
   function show(symbol, clientX, clientY) {
     const row = getRowBySymbol(symbol);
@@ -180,4 +202,9 @@ function findRow(container, target) {
   if (!(target instanceof Element)) return null;
   const tr = target.closest("tr[data-symbol]");
   return tr && container.contains(tr) ? tr : null;
+}
+
+function isInteractiveTarget(target) {
+  return target instanceof Element
+    && Boolean(target.closest("a, button, input, select, textarea"));
 }

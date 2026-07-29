@@ -24,6 +24,14 @@ HOST = "127.0.0.1"
 PORT = 8777
 
 
+class DashboardHTTPServer(ThreadingHTTPServer):
+    def handle_error(self, request, client_address) -> None:
+        _, error, _ = sys.exc_info()
+        if isinstance(error, ConnectionError):
+            return
+        super().handle_error(request, client_address)
+
+
 class DashboardHandler(DashboardRequestHandler):
     index_file = INDEX_FILE
     static_dir = STATIC_DIR
@@ -149,7 +157,7 @@ def main(argv=None):
         snapshot_save_interval=args.snapshot_save_interval,
     )
     try:
-        server = ThreadingHTTPServer((args.host, args.port), DashboardHandler)
+        server = DashboardHTTPServer((args.host, args.port), DashboardHandler)
     except OSError as exc:
         print(f"无法启动面板: {exc}")
         _close_poller_after_start_failure(poller)

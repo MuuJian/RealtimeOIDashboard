@@ -421,8 +421,12 @@ button {
 .table-wrap {
   max-height: calc(100vh - 292px);
   overflow: auto;
+  overscroll-behavior: none;
   scrollbar-color: rgba(111, 140, 255, .38) transparent;
   scrollbar-width: thin;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .table-wrap::-webkit-scrollbar {
@@ -452,7 +456,8 @@ button {
 
 table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-variant-numeric: tabular-nums;
   table-layout: fixed;
 }
@@ -495,7 +500,9 @@ th {
   top: 0;
   z-index: 2;
   background: var(--head);
-  box-shadow: 0 1px 0 var(--line);
+  box-shadow:
+    0 -2px 0 var(--head),
+    0 1px 0 var(--line);
   color: #8f9ab0;
   font-size: 11px;
   font-weight: 700;

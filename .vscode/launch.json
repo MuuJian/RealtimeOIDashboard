@@ -10,6 +10,10 @@
       "console": "integratedTerminal",
       "justMyCode": true,
       "args": [
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8777",
         "--oi-batch-size",
         "25",
         "--oi-batch-delay",
@@ -18,8 +22,8 @@
         "3"
       ],
       "serverReadyAction": {
-        "pattern": "Dashboard running at (http://\\S+)",
-        "uriFormat": "%s",
+        "pattern": "Dashboard running at http://\\S+:(\\d+)",
+        "uriFormat": "http://127.0.0.1:%s",
         "action": "openExternally"
       }
     }
