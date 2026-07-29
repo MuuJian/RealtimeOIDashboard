@@ -29,30 +29,6 @@ const PRICE_STATUS_LABELS = Object.freeze({
   paused: "暂停",
   reconnecting: "重连中",
 });
-const FAVORITE_SEED_SYMBOLS = Object.freeze([
-  "AIGENSYNUSDT",
-  "XPLUSDT",
-  "WLFIUSDT",
-  "OPENUSDT",
-  "HYPEUSDT",
-  "EIGENUSDT",
-  "PUMPUSDT",
-  "PENDLEUSDT",
-  "PENGUUSDT",
-  "TIAUSDT",
-  "BTWUSDT",
-  "MITOUSDT",
-  "KAITOUSDT",
-  "LUMIAUSDT",
-  "LDOUSDT",
-  "SAGAUSDT",
-  "ENAUSDT",
-  "ZROUSDT",
-  "AAVEUSDT",
-  "ZBTUSDT",
-  "ENSOUSDT",
-  "FFUSDT",
-]);
 
 const elements = {
   statusTitle: document.getElementById("statusTitle"),
@@ -76,11 +52,7 @@ const elements = {
 };
 
 const rankingData = useOiRankingData();
-const favorites = useFavorites("oiFavorites", {
-  removedSeedSymbols: ["METUSDT", "HOLOUSDT"],
-  seedSymbols: FAVORITE_SEED_SYMBOLS,
-  seedVersion: "watchlist-2026-07-29-v3",
-});
+const favorites = useFavorites("oiFavorites");
 const filters = useTableFilters({
   query: elements.searchInput.value.trim().toUpperCase(),
   limit: Number(elements.limitSelect.value),
