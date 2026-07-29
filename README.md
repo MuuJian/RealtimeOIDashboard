@@ -16,16 +16,21 @@ python3 -m venv .venv
 
 ## 代码结构
 
-- `poller.py`：批次轮询、OI 状态与运行生命周期。
-- `binance_client.py`：Binance Futures 请求与 ticker、资金费率缓存。
-- `errors.py`：轮询停机时跨模块传递的内部取消信号。
-- `market_cache.py`：ticker 与资金费率的缓存状态。
-- `market_data.py`：Binance 行情、资金费率和历史 OI 响应解析。
-- `oi_history.py`：历史 OI 请求结果的基线选择、缓存与变化计算。
-- `oi_state.py`：同步维护页面行及其更新时间。
-- `snapshot_store.py`：持久化合约集合和历史基线缓存。
-- `server.py`：命令行参数、本地 HTTP 服务与启动/停止流程。
-- `static/`：浏览器端价格 WebSocket、筛选、排序、页面渲染与 Motion 动效。
+- `main.py`：项目根目录启动入口。
+- `realtime_oi_dashboard/server.py`：命令行参数、HTTP 服务与启动/停止流程。
+- `realtime_oi_dashboard/poller.py`：批次轮询、OI 状态与运行生命周期。
+- `realtime_oi_dashboard/binance_client.py`：Binance Futures 请求和市场缓存协调。
+- `realtime_oi_dashboard/http.py`：多线程安全的 Binance JSON 请求与重试。
+- `realtime_oi_dashboard/market_cache.py`：ticker 与资金费率缓存状态。
+- `realtime_oi_dashboard/market_data.py`：行情、资金费率和历史 OI 响应解析。
+- `realtime_oi_dashboard/oi_history.py`：历史 OI 基线选择、缓存与变化计算。
+- `realtime_oi_dashboard/oi_state.py`：同步维护页面行及其更新时间。
+- `realtime_oi_dashboard/snapshot_store.py`：持久化合约集合和历史基线缓存。
+- `realtime_oi_dashboard/file_io.py`：缓存文件原子写入。
+- `realtime_oi_dashboard/parsing.py`：严格数值解析。
+- `realtime_oi_dashboard/symbols.py`：Binance 合约名称校验。
+- `realtime_oi_dashboard/web.py`：静态文件与 JSON 响应处理。
+- `realtime_oi_dashboard/static/`：价格 WebSocket、筛选、排序、渲染与动效。
 
 页面会从 jsDelivr 按固定版本加载 Motion；加载失败时自动保留完整功能并退回无 Motion 动效。页面使用纯黑底色和不透明的中性黑灰面板，不创建全屏 Canvas 粒子、背景光团或毛玻璃效果。标签页不可见或所在窗口失去焦点时只暂停 CSS 与 Motion 动画，价格 WebSocket 和 OI 定时刷新保持运行；重新切回 OI 页面时还会立即补一次 OI 刷新。系统开启“减少动态效果”后也会停用进入和表格行级动画。
 
@@ -57,7 +62,7 @@ python main.py --host 0.0.0.0 --port "$PORT"
   --ticker-cache-seconds 30
 ```
 
-页面只显示本次启动后刚获取的数据，并按批次逐步填充。默认每批轮询 25 个交易对，批次完成后等待 1 秒；约 530 个交易对完整一轮至少需要二十多秒，实际还要加上接口耗时。缓存文件默认每 10 秒原子写入 `data/latest_oi.json`，只保存最后一次完整合约集合和仍在有效期内的 24 小时/7 天历史基线，不保存或立即显示旧页面行。短时间重启会复用未过期的历史基线，减少对 Binance 历史接口的重复请求。可用 `--snapshot-save-interval` 调整间隔，正常停止时还会保存一次最后完成的批次。损坏、嵌套过深或异常超过 5 MiB 的缓存会被忽略，并在新数据到达后重建，不会阻断服务启动。
+页面只显示本次启动后刚获取的数据，并按批次逐步填充。默认每批轮询 25 个交易对，批次完成后等待 1 秒；约 530 个交易对完整一轮至少需要二十多秒，实际还要加上接口耗时。缓存文件默认每 10 秒原子写入 `realtime_oi_dashboard/data/latest_oi.json`，只保存最后一次完整合约集合和仍在有效期内的 24 小时/7 天历史基线，不保存或立即显示旧页面行。短时间重启会复用未过期的历史基线，减少对 Binance 历史接口的重复请求。可用 `--snapshot-save-interval` 调整间隔，正常停止时还会保存一次最后完成的批次。损坏、嵌套过深或异常超过 5 MiB 的缓存会被忽略，并在新数据到达后重建，不会阻断服务启动。
 
 单个合约短暂更新失败时会保留最后一行，避免页面闪烁；连续 15 分钟没有成功更新时，该行会自动清理，恢复成功后重新出现。合约名称仍会保留在独立集合中，仅用于名单缩水检查。
 每个合约的有效期从其当前 OI 响应到达时单独计算；同批其他合约的慢请求或历史 OI 重试不会延长这 15 分钟。
@@ -77,3 +82,11 @@ API 返回数据前还会独立检查最近成功批次的墙上时钟时间；�
 悬停任意合约行会显示完整行情、OI 与更新时间详情。主排行的排序字段和升降序保存在当前浏览器中，刷新页面后继续沿用。
 
 浏览器端价格流与页面渲染分离：Binance WebSocket 先在独立数据源中合并同一帧的 ticker，再发布批次更新；OI 定时请求和过期判断由独立刷新控制器管理；筛选、排序、高 OI 信号和热力范围由 Web Worker 计算，Worker 不可用时自动回退主线程。UI 使用独立调度器合并到单一 `requestAnimationFrame` 队列提交更新，两张表共用同一套行情单元格并复用已有行节点，不通过 `innerHTML` 重建。
+
+## 前端检查
+
+无需安装前端依赖，在仓库根目录运行：
+
+```bash
+node realtime_oi_dashboard/scripts/check-static-js.mjs
+```
