@@ -399,6 +399,12 @@ button {
   color: var(--muted-bright);
 }
 
+#favoritesOnlyBtn {
+  width: 78px;
+  min-width: 78px;
+  flex: 0 0 78px;
+}
+
 .ghost-btn:hover {
   border-color: rgba(111, 140, 255, .5);
   background: rgba(111, 140, 255, .14);
@@ -852,6 +858,11 @@ tbody tr:last-child td {
   select,
   .ghost-btn {
     width: 100%;
+  }
+
+  #favoritesOnlyBtn {
+    min-width: 0;
+    flex-basis: auto;
   }
 
   .controls {
