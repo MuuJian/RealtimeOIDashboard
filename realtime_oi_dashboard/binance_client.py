@@ -279,9 +279,10 @@ class BinanceFuturesClient:
             if lookup.hit:
                 return lookup.value
 
-        try:
-            markets: list = []
-            for page in range(1, COINGECKO_PAGE_COUNT + 1):
+        markets: list = []
+        page_error: Exception | None = None
+        for page in range(1, COINGECKO_PAGE_COUNT + 1):
+            try:
                 response = self.request_json(
                     COINGECKO_MARKETS_URL,
                     params={
@@ -295,14 +296,16 @@ class BinanceFuturesClient:
                 )
                 if not isinstance(response, list):
                     raise ValueError("unexpected CoinGecko markets response")
-                markets.extend(response)
-                if page < COINGECKO_PAGE_COUNT:
-                    self._wait_for_retry(COINGECKO_PAGE_DELAY_SECONDS)
-            response_time = time.monotonic()
-            market_caps = build_market_cap_map(markets, active_symbols)
-        except PollingStopped:
-            raise
-        except Exception as exc:
+            except PollingStopped:
+                raise
+            except Exception as exc:
+                page_error = exc
+                break
+            markets.extend(response)
+            if page < COINGECKO_PAGE_COUNT:
+                self._wait_for_retry(COINGECKO_PAGE_DELAY_SECONDS)
+
+        if not markets:
             failure_time = time.monotonic()
             with self.market_cache_lock:
                 fallback = self.market_cap_cache.fallback_after_failure(
@@ -310,8 +313,19 @@ class BinanceFuturesClient:
                     self.market_cap_cache.cache_seconds,
                     throttle_without_value=True,
                 )
-            self.record_error("marketCap", exc)
+            self.record_error(
+                "marketCap",
+                page_error or ValueError("no CoinGecko market-cap pages fetched"),
+            )
             return fallback.value if fallback.hit else {}
+
+        if page_error is not None:
+            # Partial page failure (e.g. rate limited mid-fetch): keep the
+            # pages already fetched rather than discarding everything.
+            self.record_error("marketCap", page_error)
+
+        response_time = time.monotonic()
+        market_caps = build_market_cap_map(markets, active_symbols)
 
         with self.market_cache_lock:
             self.market_cap_cache.store(
