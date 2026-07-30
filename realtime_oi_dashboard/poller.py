@@ -33,7 +33,7 @@ CLOCK_DISCONTINUITY_TOLERANCE_SECONDS = 60
 EMPTY_BATCH_ERROR = "本批次没有成功更新任何 OI 数据"
 CLOCK_RESET_ERROR = "检测到系统休眠或时钟跳变，正在重新获取 OI 数据"
 STALE_ROWS_ERROR = "OI 数据已超过 15 分钟，等待重新获取"
-OI_API_SCHEMA_VERSION = 5
+OI_API_SCHEMA_VERSION = 6
 
 
 class OIPoller:
@@ -46,6 +46,7 @@ class OIPoller:
         oi_history_cache_seconds=300,
         ticker_cache_seconds=10,
         funding_cache_seconds=3600,
+        market_cap_cache_seconds=900,
         snapshot_save_interval=10,
         snapshot_file=None,
         http_client=None,
@@ -68,6 +69,10 @@ class OIPoller:
         funding_cache_seconds = _non_negative_seconds(
             "funding_cache_seconds",
             funding_cache_seconds,
+        )
+        market_cap_cache_seconds = _non_negative_seconds(
+            "market_cap_cache_seconds",
+            market_cap_cache_seconds,
         )
         self.snapshot_save_interval = _non_negative_seconds(
             "snapshot_save_interval",
@@ -93,6 +98,7 @@ class OIPoller:
             oi_history_cache_seconds=oi_history_cache_seconds,
             ticker_cache_seconds=ticker_cache_seconds,
             funding_cache_seconds=funding_cache_seconds,
+            market_cap_cache_seconds=market_cap_cache_seconds,
             http_client=http_client,
         )
         self.last_snapshot_save = None
@@ -177,6 +183,11 @@ class OIPoller:
         with self.lock:
             active_symbols = set(self.symbols)
         return self.binance.get_funding_rates(active_symbols)
+
+    def get_market_caps(self):
+        with self.lock:
+            active_symbols = set(self.symbols)
+        return self.binance.get_market_caps(active_symbols)
 
     def get_open_interest(self, symbol):
         return self.binance.get_open_interest(symbol)
@@ -321,6 +332,9 @@ class OIPoller:
         funding_rates = self.get_funding_rates()
         if self.stop_event.is_set():
             return
+        market_caps = self.get_market_caps()
+        if self.stop_event.is_set():
+            return
         batch_start = self.symbol_index
         batch = self.next_batch()
         if not batch:
@@ -330,6 +344,7 @@ class OIPoller:
                 batch,
                 tickers,
                 funding_rates,
+                market_caps,
                 executor=executor,
             )
         except BaseException:
@@ -359,14 +374,16 @@ class OIPoller:
             }
         self.save_state()
 
-    def update_symbols(self, batch, tickers, funding_rates, executor=None):
+    def update_symbols(self, batch, tickers, funding_rates, market_caps, executor=None):
         if self.oi_workers <= 1 or len(batch) <= 1:
             results = []
             for symbol in batch:
                 if self.stop_event.is_set():
                     break
                 try:
-                    results.append(self.build_symbol_update(symbol, tickers, funding_rates))
+                    results.append(
+                        self.build_symbol_update(symbol, tickers, funding_rates, market_caps)
+                    )
                 except PollingStopped:
                     break
                 except Exception as exc:
@@ -375,7 +392,9 @@ class OIPoller:
             return results
 
         if executor is not None:
-            return self._update_symbols_parallel(batch, tickers, funding_rates, executor)
+            return self._update_symbols_parallel(
+                batch, tickers, funding_rates, market_caps, executor
+            )
 
         max_workers = min(self.oi_workers, len(batch))
         with ThreadPoolExecutor(max_workers=max_workers) as temporary_executor:
@@ -383,10 +402,11 @@ class OIPoller:
                 batch,
                 tickers,
                 funding_rates,
+                market_caps,
                 temporary_executor,
             )
 
-    def _update_symbols_parallel(self, batch, tickers, funding_rates, executor):
+    def _update_symbols_parallel(self, batch, tickers, funding_rates, market_caps, executor):
         futures = {}
         try:
             for symbol in batch:
@@ -395,6 +415,7 @@ class OIPoller:
                     symbol,
                     tickers,
                     funding_rates,
+                    market_caps,
                 )
                 futures[future] = symbol
         except BaseException:
@@ -418,7 +439,7 @@ class OIPoller:
                 self.record_symbol_error(symbol, exc)
         return [results_by_symbol[symbol] for symbol in batch]
 
-    def build_symbol_update(self, symbol, tickers, funding_rates):
+    def build_symbol_update(self, symbol, tickers, funding_rates, market_caps=None):
         if self.stop_event.is_set():
             return None
 
@@ -444,12 +465,15 @@ class OIPoller:
 
         oi_history = self.get_oi_history_changes(symbol, current_oi, price)
 
+        market_cap = (market_caps or {}).get(symbol, {}).get("marketCap")
+
         row = {
             "symbol": symbol,
             "price": price,
             "volume24h": volume_24h,
             "currentOi": current_oi,
             "currentOiValue": current_oi_value,
+            "marketCap": market_cap,
             "oiUpdatedAt": now_ms,
             "priceChangePercent": ticker.get("priceChangePercent"),
             "fundingRatePercent": funding_rate_percent,
