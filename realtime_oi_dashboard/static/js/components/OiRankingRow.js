@@ -15,7 +15,7 @@ export function createRankingRow(row, context) {
   favoriteButton.textContent = "★";
   favoriteCell.append(favoriteButton);
 
-  const marketCells = createMarketRowCells();
+  const marketCells = createMarketRowCells({ includeMarketCap: true });
   tr.append(favoriteCell, ...marketCells.orderedCells);
 
   tr._cells = {

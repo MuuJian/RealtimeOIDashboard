@@ -14,7 +14,7 @@ import {
   updateOiUpdateSignalCell,
 } from "./OiUpdateSignal.js";
 
-export function createMarketRowCells() {
+export function createMarketRowCells({ includeMarketCap = false } = {}) {
   const symbolCell = document.createElement("td");
   symbolCell.className = "symbol";
   const symbolLink = createLink();
@@ -28,6 +28,7 @@ export function createMarketRowCells() {
   const priceChangeCell = document.createElement("td");
   const price7dChangeCell = document.createElement("td");
   const oiValueCell = document.createElement("td");
+  const marketCapCell = includeMarketCap ? document.createElement("td") : null;
   const volumeCell = document.createElement("td");
   const oi24hChangeCell = document.createElement("td");
   const oi7dChangeCell = document.createElement("td");
@@ -41,6 +42,7 @@ export function createMarketRowCells() {
       priceChangeCell,
       price7dChangeCell,
       oiValueCell,
+      ...(marketCapCell ? [marketCapCell] : []),
       volumeCell,
       oi24hChangeCell,
       oi7dChangeCell,
@@ -52,6 +54,7 @@ export function createMarketRowCells() {
     priceChangeCell,
     price7dChangeCell,
     oiValueCell,
+    marketCapCell,
     volumeCell,
     oi24hChangeCell,
     oi7dChangeCell,
@@ -65,6 +68,9 @@ export function updateMarketRowCells(cells, row, heatMax = null) {
   cells.priceLink.href = tradingViewUrl(row.symbol);
   cells.priceLink.textContent = formatPrice(row.price);
   cells.oiValueCell.textContent = formatCurrency(row.currentOiValue);
+  if (cells.marketCapCell) {
+    cells.marketCapCell.textContent = formatCurrency(row.marketCap);
+  }
   cells.volumeCell.textContent = formatCurrency(row.volume24h);
   updateOiUpdateSignalCell(cells.oiUpdatedAtCell, row.oiUpdatedAt);
 
