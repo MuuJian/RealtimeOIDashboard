@@ -137,6 +137,12 @@ def parse_args(argv=None):
         help="fallback funding-rate cache duration; 0 disables the cache",
     )
     parser.add_argument(
+        "--market-cap-cache-seconds",
+        type=non_negative_float,
+        default=900,
+        help="market-cap cache duration (CoinGecko); 0 disables the cache",
+    )
+    parser.add_argument(
         "--snapshot-save-interval",
         type=non_negative_float,
         default=10,
@@ -154,6 +160,7 @@ def main(argv=None):
         oi_history_cache_seconds=args.oi_history_cache_seconds,
         ticker_cache_seconds=args.ticker_cache_seconds,
         funding_cache_seconds=args.funding_cache_seconds,
+        market_cap_cache_seconds=args.market_cap_cache_seconds,
         snapshot_save_interval=args.snapshot_save_interval,
     )
     try:
