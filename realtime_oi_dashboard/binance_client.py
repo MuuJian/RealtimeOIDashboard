@@ -271,7 +271,7 @@ class BinanceFuturesClient:
     def get_market_caps(
         self,
         active_symbols: set[str],
-    ) -> dict[str, dict[str, float]]:
+    ) -> dict[str, dict[str, float]] | None:
         now = time.monotonic()
         with self.market_cache_lock:
             lookup = self.market_cap_cache.get_fresh(now)
@@ -290,6 +290,7 @@ class BinanceFuturesClient:
                         "page": page,
                     },
                     timeout=12,
+                    attempts=1,
                 )
                 if not isinstance(response, list):
                     raise ValueError("unexpected CoinGecko markets response")
@@ -303,10 +304,7 @@ class BinanceFuturesClient:
             with self.market_cache_lock:
                 fallback = self.market_cap_cache.fallback_after_failure(
                     failure_time,
-                    min(
-                        self.market_cap_cache.cache_seconds,
-                        PARTIAL_RESPONSE_RETRY_SECONDS,
-                    ),
+                    self.market_cap_cache.cache_seconds,
                     throttle_without_value=True,
                 )
             self.record_error("marketCap", exc)
@@ -379,6 +377,7 @@ class BinanceFuturesClient:
             if reset_market_caches:
                 self.ticker_cache.clear()
                 self.funding_cache.clear()
+                self.market_cap_cache.clear()
                 return
 
             self.ticker_cache.retain_symbols(active_symbols)

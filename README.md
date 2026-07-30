@@ -28,6 +28,7 @@ python3 -m venv .venv
 - `realtime_oi_dashboard/snapshot_store.py`：持久化合约集合和历史基线缓存。
 - `realtime_oi_dashboard/file_io.py`：缓存文件原子写入。
 - `realtime_oi_dashboard/parsing.py`：严格数值解析。
+- `realtime_oi_dashboard/market_cap.py`：Binance 合约代码与 CoinGecko 币种的匹配逻辑。
 - `realtime_oi_dashboard/symbols.py`：Binance 合约名称校验。
 - `realtime_oi_dashboard/web.py`：静态文件与 JSON 响应处理。
 - `realtime_oi_dashboard/static/`：价格 WebSocket、筛选、排序、渲染与动效。
@@ -51,6 +52,8 @@ python main.py --host 0.0.0.0 --port "$PORT"
 ```
 
 默认每批更新 25 个交易对，批次之间等待 1 秒，并使用 3 个 OI worker。资金费率正常情况下会在 Binance 返回的下一次结算时间后刷新；`--funding-cache-seconds` 只在结算时间缺失时作为兜底，已经过去的结算时间不会继续显示。
+
+市值数据来自 CoinGecko 公开 API（`--market-cap-cache-seconds` 控制缓存时长，默认 900 秒），按 Binance 合约代码去除倍数前缀与 `USDT` 后缀后与 CoinGecko 币种代码匹配；匹配不到时显示 `-`。请求失败时不会重试，只保留上次已获取的市值数据并按完整缓存周期后再次尝试，不会阻塞或减慢 OI 轮询；恢复后按正常缓存周期继续更新。
 
 限频时可以降速：
 
@@ -90,4 +93,10 @@ API 返回数据前还会独立检查最近成功批次的墙上时钟时间；�
 
 ```bash
 node realtime_oi_dashboard/scripts/check-static-js.mjs
+```
+
+## 测试
+
+```bash
+python -m unittest discover -s tests -v
 ```

@@ -7,6 +7,7 @@ const OPTIONAL_NUMBER_FIELDS = [
   "fundingRatePercent",
   "oi24hChangePercent",
   "oi7dChangePercent",
+  "marketCap",
 ];
 const LIVE_MARKET_FIELDS = [
   "price",
