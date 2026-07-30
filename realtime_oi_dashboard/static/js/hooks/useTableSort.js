@@ -5,6 +5,7 @@ const VALID_SORT_KEYS = new Set([
   "priceChangePercent",
   "price7dChangePercent",
   "currentOiValue",
+  "marketCap",
   "volume24h",
   "oi24hChangePercent",
   "oi7dChangePercent",

@@ -1,6 +1,6 @@
 import { applyLivePriceToRow } from "../utils/rankingRows.js";
 
-const OI_API_SCHEMA_VERSION = 5;
+const OI_API_SCHEMA_VERSION = 6;
 const OPTIONAL_NUMBER_FIELDS = [
   "priceChangePercent",
   "price7dChangePercent",
