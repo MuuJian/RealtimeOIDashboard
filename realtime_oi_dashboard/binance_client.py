@@ -26,7 +26,7 @@ from realtime_oi_dashboard.symbols import is_valid_binance_symbol
 PARTIAL_RESPONSE_RETRY_SECONDS = 60
 MARKET_CACHE_STALE_GRACE_SECONDS = 15 * 60
 COINGECKO_MARKETS_URL = "https://api.coingecko.com/api/v3/coins/markets"
-COINGECKO_PAGE_COUNT = 4
+COINGECKO_PAGE_COUNT = 8
 COINGECKO_PER_PAGE = 250
 
 
