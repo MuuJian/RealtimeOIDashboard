@@ -20,14 +20,14 @@ The user wants a **market cap** column. Binance's futures API has no circulating
 
 ## Architecture
 
-### 1. New module: `realtime_oi_dashboard/market_cap_cache.py`
+### 1. New module: `realtime_oi_dashboard/market_cap.py`
 
-Mirrors the existing `market_cache.py` pattern (a `dataclass` cache with `cache_seconds` / staleness tracking), but holds a single flat `symbol_ticker -> market_cap` dict rather than per-request funding/ticker payloads.
+`market_cache.py`'s existing `MarketCache` class is already generic (`dict[str, dict[str, Any]]` with refresh/stale-deadline tracking) and is reused as-is for market caps — no new cache class needed. `market_cap.py` instead holds the pure matching logic: symbol normalization and building a `{binance_symbol: {"marketCap": value}}` map from a raw CoinGecko response, keeping the highest-market-cap entry when a ticker collides. Being pure/network-free, this is the one piece of this feature with real unit-test value.
 
-Responsibilities:
-- Fetch `GET https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1` and `page=2` (500 coins total — covers effectively every coin with an active Binance perpetual).
-- Build a `{TICKER: market_cap}` map from the response (`symbol` field uppercased), keeping the highest-market-cap entry when a ticker collides.
-- On fetch failure: keep serving the last good snapshot (same "stale-but-served" behavior as `market_cache.py`); log the error; never raise into the polling loop.
+`BinanceFuturesClient` gets a new `market_cap_cache: MarketCache` instance (same construction as `ticker_cache`/`funding_cache`) and a `get_market_caps(active_symbols)` method that:
+- Fetches `GET https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1` and `page=2` (500 coins total — covers effectively every coin with an active Binance perpetual) through the existing `JsonHttpClient`.
+- Delegates matching to `market_cap.py`.
+- On fetch failure: keep serving the last good snapshot via `MarketCache.fallback_after_failure` (same "stale-but-served" behavior already used for funding rates); log the error via `record_error`; never raise into the polling loop.
 - Refresh interval: configurable via new CLI flag `--market-cap-cache-seconds` (default `900`, i.e. 15 minutes — market cap doesn't need to be fresher than that).
 
 ### 2. Symbol matching (`poller.py` or a small helper in the new module)
@@ -77,8 +77,8 @@ poller.py: build_symbol_update()  →  row["marketCap"]
 
 ## Testing
 
-- Unit-test the ticker-normalization function (prefix/suffix stripping) with a handful of real symbols (`1000PEPEUSDT`, `1000000BOBUSDT`, `BTCUSDT`, an unmatchable made-up symbol).
-- Unit-test `market_cap_cache.py`'s stale-serving behavior on a simulated fetch failure, following the existing test patterns for `market_cache.py` if present.
+- Unit-test `market_cap.py`'s ticker-normalization and matching functions (prefix/suffix stripping, ticker-collision resolution, malformed-entry handling) with `unittest` — the repo has no existing test framework, so no new dependency (e.g. `pytest`) is introduced.
+- The stale-serving/fallback behavior itself lives entirely in the existing, reused `MarketCache` class, which the repo has never had tests for — adding coverage for it is out of scope for this feature.
 - Manual check after deploying: confirm the "市值" column populates for major symbols (BTC, ETH) and shows `-` for at least one obscure/newly-listed symbol, and that sorting by it works.
 
 ## Deployment note
