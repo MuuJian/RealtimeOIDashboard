@@ -28,6 +28,7 @@ MARKET_CACHE_STALE_GRACE_SECONDS = 15 * 60
 COINGECKO_MARKETS_URL = "https://api.coingecko.com/api/v3/coins/markets"
 COINGECKO_PAGE_COUNT = 8
 COINGECKO_PER_PAGE = 250
+COINGECKO_PAGE_DELAY_SECONDS = 1.5
 
 
 class BinanceFuturesClient:
@@ -295,6 +296,8 @@ class BinanceFuturesClient:
                 if not isinstance(response, list):
                     raise ValueError("unexpected CoinGecko markets response")
                 markets.extend(response)
+                if page < COINGECKO_PAGE_COUNT:
+                    self._wait_for_retry(COINGECKO_PAGE_DELAY_SECONDS)
             response_time = time.monotonic()
             market_caps = build_market_cap_map(markets, active_symbols)
         except PollingStopped:
