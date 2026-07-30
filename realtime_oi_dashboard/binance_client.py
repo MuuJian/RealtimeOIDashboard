@@ -8,6 +8,7 @@ from collections.abc import Callable
 
 from realtime_oi_dashboard.errors import PollingStopped
 from realtime_oi_dashboard.market_cache import MarketCache
+from realtime_oi_dashboard.market_cap import build_market_cap_map
 from realtime_oi_dashboard.market_data import (
     incomplete_funding_symbols,
     incomplete_market_ticker_symbols,
@@ -24,6 +25,9 @@ from realtime_oi_dashboard.symbols import is_valid_binance_symbol
 
 PARTIAL_RESPONSE_RETRY_SECONDS = 60
 MARKET_CACHE_STALE_GRACE_SECONDS = 15 * 60
+COINGECKO_MARKETS_URL = "https://api.coingecko.com/api/v3/coins/markets"
+COINGECKO_PAGE_COUNT = 2
+COINGECKO_PER_PAGE = 250
 
 
 class BinanceFuturesClient:
@@ -37,6 +41,7 @@ class BinanceFuturesClient:
         oi_history_cache_seconds: float,
         ticker_cache_seconds: float,
         funding_cache_seconds: float,
+        market_cap_cache_seconds: float = 900,
         http_client=None,
     ) -> None:
         self.stop_event = stop_event
@@ -63,6 +68,10 @@ class BinanceFuturesClient:
         )
         self.funding_cache = MarketCache(
             funding_cache_seconds,
+            MARKET_CACHE_STALE_GRACE_SECONDS,
+        )
+        self.market_cap_cache = MarketCache(
+            market_cap_cache_seconds,
             MARKET_CACHE_STALE_GRACE_SECONDS,
         )
         self.oi_history = OiHistoryService(
@@ -259,6 +268,58 @@ class BinanceFuturesClient:
             )
         return funding_rates
 
+    def get_market_caps(
+        self,
+        active_symbols: set[str],
+    ) -> dict[str, dict[str, float]]:
+        now = time.monotonic()
+        with self.market_cache_lock:
+            lookup = self.market_cap_cache.get_fresh(now)
+            if lookup.hit:
+                return lookup.value
+
+        try:
+            markets: list = []
+            for page in range(1, COINGECKO_PAGE_COUNT + 1):
+                response = self.request_json(
+                    COINGECKO_MARKETS_URL,
+                    params={
+                        "vs_currency": "usd",
+                        "order": "market_cap_desc",
+                        "per_page": COINGECKO_PER_PAGE,
+                        "page": page,
+                    },
+                    timeout=12,
+                )
+                if not isinstance(response, list):
+                    raise ValueError("unexpected CoinGecko markets response")
+                markets.extend(response)
+            response_time = time.monotonic()
+            market_caps = build_market_cap_map(markets, active_symbols)
+        except PollingStopped:
+            raise
+        except Exception as exc:
+            failure_time = time.monotonic()
+            with self.market_cache_lock:
+                fallback = self.market_cap_cache.fallback_after_failure(
+                    failure_time,
+                    min(
+                        self.market_cap_cache.cache_seconds,
+                        PARTIAL_RESPONSE_RETRY_SECONDS,
+                    ),
+                    throttle_without_value=True,
+                )
+            self.record_error("marketCap", exc)
+            return fallback.value if fallback.hit else {}
+
+        with self.market_cache_lock:
+            self.market_cap_cache.store(
+                market_caps,
+                response_time,
+                self.market_cap_cache.cache_seconds,
+            )
+        return market_caps
+
     def _next_funding_refresh_at(
         self,
         now: float,
@@ -328,6 +389,7 @@ class BinanceFuturesClient:
         with self.market_cache_lock:
             self.ticker_cache.clear()
             self.funding_cache.clear()
+            self.market_cap_cache.clear()
 
     def export_oi_history_cache(self) -> dict[str, dict[str, object]]:
         return self.oi_history.export_cache()
