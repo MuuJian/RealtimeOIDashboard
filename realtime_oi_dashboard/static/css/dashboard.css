@@ -462,7 +462,13 @@ button {
 }
 
 .ranking-wrap {
+  --ranking-header-height: 42px;
   height: calc(100vh - 292px);
+  scrollbar-gutter: stable;
+}
+
+.ranking-wrap::-webkit-scrollbar-track {
+  margin-top: var(--ranking-header-height);
 }
 
 .signal-wrap::-webkit-scrollbar {
@@ -648,7 +654,7 @@ tbody tr:last-child td {
 }
 
 .oi-update-cell {
-  text-align: center;
+  text-align: left;
 }
 
 .oi-update-signal {
@@ -859,6 +865,10 @@ tbody tr:last-child td {
 }
 
 @media (max-width: 640px) {
+  .ranking-wrap {
+    --ranking-header-height: 36px;
+  }
+
   .shell {
     width: calc(100vw - 16px);
     padding-top: 12px;
