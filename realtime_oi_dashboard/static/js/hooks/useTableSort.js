@@ -16,7 +16,7 @@ export function useTableSort({
 } = {}) {
   const persistedState = readSortState(storageKey);
   const state = {
-    sortKey: "oi24hChangePercent",
+    sortKey: "currentOiValue",
     sortDir: "desc",
     ...initialState,
     ...persistedState,
