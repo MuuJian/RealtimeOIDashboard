@@ -17,7 +17,7 @@ python3 -m venv .venv
 ## 代码结构
 
 - `main.py`：项目根目录启动入口。
-- `realtime_oi_dashboard/cli.py`：命令行参数与 Railway 环境变量默认值。
+- `realtime_oi_dashboard/cli.py`：命令行参数与公网托管环境变量默认值。
 - `realtime_oi_dashboard/server.py`：HTTP 服务、轮询线程与启动/停止流程。
 - `realtime_oi_dashboard/poller.py`：合约刷新、批次轮询、OI 状态与运行生命周期。
 - `realtime_oi_dashboard/oi_batch.py`：单币种 OI 行计算与并行批处理。
@@ -42,6 +42,14 @@ python3 -m venv .venv
 - `realtime_oi_dashboard/static/js/services/`：页面生命周期、OI 刷新、排行 Worker、视图协调与 UI 调度。
 - `realtime_oi_dashboard/static/js/hooks/`：收藏、筛选和排序状态。
 - `realtime_oi_dashboard/static/js/utils/`：格式化、排行计算与 OI 统计等纯函数。
+- `realtime_oi_dashboard/static/css/dashboard.css`：样式统一入口，按原有级联顺序加载 CSS 模块。
+- `realtime_oi_dashboard/static/css/base.css`：主题变量、页面骨架、页头与连接状态。
+- `realtime_oi_dashboard/static/css/metrics.css`：顶部指标卡。
+- `realtime_oi_dashboard/static/css/panels.css`：面板、工具栏和筛选控件。
+- `realtime_oi_dashboard/static/css/tables.css`：表格容器、虚拟行、表头与排序控件。
+- `realtime_oi_dashboard/static/css/table-cells.css`：币种、收藏、热力、更新信号和提示框。
+- `realtime_oi_dashboard/static/css/motion-responsive.css`：动画、移动端布局和减少动态效果适配。
+- `tests/`：命令行参数、市值匹配、OI 批处理、历史基线缓存与轮询健康状态测试。
 
 页面会从 jsDelivr 按固定版本加载 Motion；加载失败时自动保留完整功能并退回无 Motion 动效。页面使用纯黑底色和不透明的中性黑灰面板，不创建全屏 Canvas 粒子、背景光团或毛玻璃效果。标签页不可见或所在窗口失去焦点时只暂停 CSS 与 Motion 动画，价格 WebSocket 和 OI 定时刷新保持运行；重新切回 OI 页面时还会立即补一次 OI 刷新。系统开启“减少动态效果”后也会停用进入和表格行级动画。
 
@@ -56,7 +64,7 @@ python3 -m venv .venv
 打开 <http://127.0.0.1:8777>。
 
 公网托管时会自动读取平台提供的 `PORT` 环境变量，并监听
-`0.0.0.0:$PORT`。Railway 的 Start Command 可以直接填写：
+`0.0.0.0:$PORT`。Start Command 可以直接填写：
 
 ```bash
 python main.py
@@ -100,9 +108,15 @@ API 返回数据前还会独立检查最近成功批次的墙上时钟时间；�
 
 浏览器端价格流与页面渲染分离：Binance WebSocket 先在独立数据源中合并同一帧的 ticker，再发布批次更新；OI 定时请求和过期判断由独立刷新控制器管理；筛选、排序、高 OI 信号和热力范围由 Web Worker 计算，Worker 不可用时自动回退主线程。UI 使用独立调度器合并到单一 `requestAnimationFrame` 队列提交更新，两张表共用同一套行情单元格并复用已有行节点，不通过 `innerHTML` 重建。
 
-## 前端检查
+## 测试与前端检查
 
-无需安装前端依赖，在仓库根目录运行：
+运行后端单元测试：
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+前端静态检查无需安装依赖，会验证 JavaScript 模块、HTML 元素引用及拆分后的 CSS 文件：
 
 ```bash
 node realtime_oi_dashboard/scripts/check-static-js.mjs
