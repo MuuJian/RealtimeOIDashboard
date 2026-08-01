@@ -623,6 +623,8 @@ tbody tr:last-child td {
 }
 
 .favorite-cell {
+  padding-right: 0;
+  padding-left: 0;
   text-align: center;
 }
 
@@ -782,7 +784,7 @@ tbody tr:last-child td {
 .oi-table th:nth-child(12),
 .oi-table td:nth-child(12) { width: 135px; }
 .oi-table th:nth-child(13),
-.oi-table td:nth-child(13) { width: 110px; }
+.oi-table td:nth-child(13) { width: 90px; }
 
 .signal-table th:nth-child(1),
 .signal-table td:nth-child(1) { width: 160px; }
@@ -803,7 +805,7 @@ tbody tr:last-child td {
 .signal-table th:nth-child(9),
 .signal-table td:nth-child(9) { width: 135px; }
 .signal-table th:nth-child(10),
-.signal-table td:nth-child(10) { width: 110px; }
+.signal-table td:nth-child(10) { width: 90px; }
 
 .pos {
   color: var(--green-ink);
