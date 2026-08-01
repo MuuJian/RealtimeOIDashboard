@@ -11,6 +11,11 @@ from pathlib import Path
 
 from realtime_oi_dashboard.binance_client import BinanceFuturesClient
 from realtime_oi_dashboard.errors import PollingStopped
+from realtime_oi_dashboard.http import JsonHttpClient
+from realtime_oi_dashboard.market_cap_client import (
+    DEFAULT_MARKET_CAP_REFRESH_SECONDS,
+    CoinGeckoMarketCapClient,
+)
 from realtime_oi_dashboard.market_data import validate_symbol_refresh
 from realtime_oi_dashboard.oi_batch import OiBatchUpdater
 from realtime_oi_dashboard.poller_health import PollerClock, RecentErrorLog
@@ -42,7 +47,7 @@ class OIPoller:
         oi_history_cache_seconds=300,
         ticker_cache_seconds=10,
         funding_cache_seconds=3600,
-        market_cap_cache_seconds=60 * 60,
+        market_cap_cache_seconds=DEFAULT_MARKET_CAP_REFRESH_SECONDS,
         snapshot_save_interval=10,
         snapshot_file=None,
         market_cap_file=None,
@@ -94,15 +99,29 @@ class OIPoller:
         self.symbols_refresh_retry_at = 0.0
         self.pending_symbols_confirmation = None
         self.error_log = RecentErrorLog(self.stop_event)
+        self._owns_http_client = http_client is None
+        self.http_client = (
+            JsonHttpClient(
+                sleep=self._wait_for_retry,
+                check_cancelled=self._raise_if_stopped,
+            )
+            if http_client is None
+            else http_client
+        )
         self.binance = BinanceFuturesClient(
             self.stop_event,
             self.record_symbol_error,
             oi_history_cache_seconds=oi_history_cache_seconds,
             ticker_cache_seconds=ticker_cache_seconds,
             funding_cache_seconds=funding_cache_seconds,
-            market_cap_cache_seconds=market_cap_cache_seconds,
-            market_cap_file=self.market_cap_file,
-            http_client=http_client,
+            http_client=self.http_client,
+        )
+        self.market_caps = CoinGeckoMarketCapClient(
+            self.request_json,
+            self._wait_for_retry,
+            self.record_symbol_error,
+            cache_seconds=market_cap_cache_seconds,
+            store_path=self.market_cap_file,
         )
         self.batch_updater = OiBatchUpdater(
             self.binance,
@@ -167,6 +186,23 @@ class OIPoller:
     def get_active_symbols(self):
         return self.binance.get_active_symbols()
 
+    def _raise_if_stopped(self):
+        if self.stop_event.is_set():
+            raise PollingStopped
+
+    def _wait_for_retry(self, delay):
+        if self.stop_event.wait(delay):
+            raise PollingStopped
+
+    def request_json(self, url, params=None, timeout=10, attempts=3):
+        self._raise_if_stopped()
+        return self.http_client.get_json(
+            url,
+            params=params,
+            timeout=timeout,
+            attempts=attempts,
+        )
+
     def get_market_tickers(self):
         with self.lock:
             active_symbols = set(self.symbols)
@@ -180,7 +216,7 @@ class OIPoller:
     def get_market_caps(self):
         with self.lock:
             active_symbols = set(self.symbols)
-        return self.binance.get_market_caps(active_symbols)
+        return self.market_caps.get(active_symbols)
 
     def active_symbols_snapshot(self):
         with self.lock:
@@ -257,6 +293,7 @@ class OIPoller:
             active,
             reset_market_caches=reset_market_caches,
         )
+        self.market_caps.retain_symbols(active)
 
     def prune_stale_data(self, now=None):
         """Drop rows that exceeded the retention window."""
@@ -396,7 +433,7 @@ class OIPoller:
             if self.stop_event.is_set():
                 return
             market_cap_thread = threading.Thread(
-                target=self.binance.refresh_market_caps_forever,
+                target=self.market_caps.run_forever,
                 args=(self.active_symbols_snapshot,),
                 name="market-cap-refresher",
                 daemon=True,
@@ -444,7 +481,11 @@ class OIPoller:
 
     def close(self):
         """Release owned network resources after polling has stopped."""
-        self.binance.close()
+        try:
+            self.binance.close()
+        finally:
+            if self._owns_http_client:
+                self.http_client.close()
 
     def _close_after_polling(self):
         try:
@@ -459,7 +500,7 @@ class OIPoller:
             state["schema_version"] = OI_API_SCHEMA_VERSION
             state["active_symbols"] = list(self.symbols)
             state["total_symbols"] = len(state["active_symbols"])
-            state["market_cap_loaded_symbols"] = self.binance.count_market_caps(
+            state["market_cap_loaded_symbols"] = self.market_caps.count(
                 set(state["active_symbols"])
             )
             rows = self.oi_state.copy_rows()

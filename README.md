@@ -19,7 +19,7 @@ python3 -m venv .venv
 - `main.py`：项目根目录启动入口。
 - `realtime_oi_dashboard/cli.py`：命令行参数与公网托管环境变量默认值。
 - `realtime_oi_dashboard/server.py`：HTTP 服务、轮询线程与启动/停止流程。
-- `realtime_oi_dashboard/poller.py`：合约刷新、批次轮询、OI 状态与运行生命周期。
+- `realtime_oi_dashboard/poller.py`：并列协调 Binance 与 CoinGecko 客户端、批次轮询、OI 状态与运行生命周期。
 - `realtime_oi_dashboard/oi_batch.py`：单币种 OI 行计算与并行批处理。
 - `realtime_oi_dashboard/poller_health.py`：近期错误与系统时钟连续性状态。
 - `realtime_oi_dashboard/binance_client.py`：Binance Futures 请求和市场缓存协调。

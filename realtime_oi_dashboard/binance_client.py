@@ -5,11 +5,9 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
-from pathlib import Path
 
 from realtime_oi_dashboard.errors import PollingStopped
 from realtime_oi_dashboard.market_cache import MarketCache
-from realtime_oi_dashboard.market_cap_client import CoinGeckoMarketCapClient
 from realtime_oi_dashboard.market_data import (
     incomplete_funding_symbols,
     incomplete_market_ticker_symbols,
@@ -26,9 +24,6 @@ from realtime_oi_dashboard.symbols import is_valid_binance_symbol
 
 PARTIAL_RESPONSE_RETRY_SECONDS = 60
 MARKET_CACHE_STALE_GRACE_SECONDS = 15 * 60
-DEFAULT_MARKET_CAP_FILE = (
-    Path(__file__).resolve().parent / "data" / "market_caps.json"
-)
 
 
 class BinanceFuturesClient:
@@ -42,8 +37,6 @@ class BinanceFuturesClient:
         oi_history_cache_seconds: float,
         ticker_cache_seconds: float,
         funding_cache_seconds: float,
-        market_cap_cache_seconds: float = 60 * 60,
-        market_cap_file=None,
         http_client=None,
     ) -> None:
         self.stop_event = stop_event
@@ -76,13 +69,6 @@ class BinanceFuturesClient:
             self._fetch_oi_history,
             record_error,
             cache_seconds=oi_history_cache_seconds,
-        )
-        self.market_caps = CoinGeckoMarketCapClient(
-            self.request_json,
-            self._wait_for_retry,
-            record_error,
-            cache_seconds=market_cap_cache_seconds,
-            store_path=market_cap_file or DEFAULT_MARKET_CAP_FILE,
         )
 
     def request_json(self, url, params=None, timeout=10, attempts=3):
@@ -273,21 +259,6 @@ class BinanceFuturesClient:
             )
         return funding_rates
 
-    def get_market_caps(
-        self,
-        active_symbols: set[str],
-    ) -> dict[str, dict[str, float]]:
-        return self.market_caps.get(active_symbols)
-
-    def refresh_market_caps_forever(
-        self,
-        active_symbols_provider: Callable[[], set[str]],
-    ) -> None:
-        self.market_caps.run_forever(active_symbols_provider)
-
-    def count_market_caps(self, active_symbols: set[str]) -> int:
-        return self.market_caps.count(active_symbols)
-
     def _next_funding_refresh_at(
         self,
         now: float,
@@ -350,8 +321,6 @@ class BinanceFuturesClient:
             else:
                 self.ticker_cache.retain_symbols(active_symbols)
                 self.funding_cache.retain_symbols(active_symbols)
-
-        self.market_caps.retain_symbols(active_symbols)
 
     def clear_caches(self) -> None:
         self.oi_history.clear()
