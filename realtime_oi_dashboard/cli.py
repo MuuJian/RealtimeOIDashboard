@@ -6,6 +6,10 @@ import argparse
 import os
 from math import isfinite
 
+from realtime_oi_dashboard.market_cap_client import (
+    DEFAULT_MARKET_CAP_REFRESH_SECONDS,
+)
+
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8777
@@ -97,7 +101,7 @@ def parse_args(argv=None):
         "--market-cap-cache-seconds",
         dest="market_cap_cache_seconds",
         type=non_negative_float,
-        default=60 * 60,
+        default=DEFAULT_MARKET_CAP_REFRESH_SECONDS,
         help=(
             "seconds between background CoinGecko refresh rounds; "
             "0 uses only the minimum per-page interval"
