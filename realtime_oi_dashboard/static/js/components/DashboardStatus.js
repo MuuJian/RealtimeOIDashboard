@@ -12,8 +12,10 @@ export function createDashboardStatus({ title, detail }) {
       : "";
     const savedAt = payload.saved_at || "尚无 OI";
     const totalSymbols = payload.total_symbols || 0;
+    const marketCapSymbols = payload.market_cap_loaded_symbols || 0;
     detail.textContent = [
-      `${savedAt} · 已加载 ${loadedSymbols}/${totalSymbols}`,
+      `${savedAt} · OI 已加载 ${loadedSymbols}/${totalSymbols}`,
+      ` · 市值已加载 ${marketCapSymbols}/${totalSymbols}`,
       errorText,
       batchError,
     ].join("");

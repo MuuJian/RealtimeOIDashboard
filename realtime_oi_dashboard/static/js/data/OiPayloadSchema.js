@@ -1,4 +1,4 @@
-export const OI_API_SCHEMA_VERSION = 6;
+export const OI_API_SCHEMA_VERSION = 7;
 
 const OPTIONAL_NUMBER_FIELDS = [
   "priceChangePercent",
@@ -25,6 +25,9 @@ export function isOiPayload(payload) {
     && Array.isArray(payload.active_symbols)
     && Number.isSafeInteger(payload.total_symbols)
     && payload.total_symbols === payload.active_symbols.length
+    && Number.isSafeInteger(payload.market_cap_loaded_symbols)
+    && payload.market_cap_loaded_symbols >= 0
+    && payload.market_cap_loaded_symbols <= payload.total_symbols
     && payload.active_symbols.every(isSymbol)
     && Array.isArray(payload.rows)
     && payload.rows.every(isOiRow),

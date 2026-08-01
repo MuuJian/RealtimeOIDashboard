@@ -26,6 +26,21 @@
         "uriFormat": "http://127.0.0.1:%s",
         "action": "openExternally"
       }
+    },
+    {
+      "name": "Tests: All Unit Tests",
+      "type": "python",
+      "request": "launch",
+      "module": "unittest",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "args": [
+        "discover",
+        "-s",
+        "tests",
+        "-v"
+      ]
     }
   ]
 }

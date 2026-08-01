@@ -93,10 +93,15 @@ def parse_args(argv=None):
         help="fallback funding-rate cache duration; 0 disables the cache",
     )
     parser.add_argument(
+        "--market-cap-refresh-seconds",
         "--market-cap-cache-seconds",
+        dest="market_cap_cache_seconds",
         type=non_negative_float,
-        default=900,
-        help="market-cap cache duration (CoinGecko); 0 disables the cache",
+        default=3 * 60 * 60,
+        help=(
+            "seconds between background CoinGecko refresh rounds; "
+            "0 uses only the minimum per-page interval"
+        ),
     )
     parser.add_argument(
         "--snapshot-save-interval",
