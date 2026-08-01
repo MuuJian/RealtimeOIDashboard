@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
-import argparse
-import os
 import sys
 import threading
 from http.server import ThreadingHTTPServer
-from math import isfinite
 from pathlib import Path
 from urllib.parse import urlparse
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from realtime_oi_dashboard.cli import (
+    DEFAULT_HOST as HOST,
+    DEFAULT_PORT as PORT,
+    parse_args,
+)
 from realtime_oi_dashboard.poller import OIPoller, timestamp
 from realtime_oi_dashboard.web import DashboardRequestHandler
 
@@ -21,8 +23,6 @@ from realtime_oi_dashboard.web import DashboardRequestHandler
 ROOT_DIR = Path(__file__).resolve().parent
 INDEX_FILE = ROOT_DIR / "index.html"
 STATIC_DIR = ROOT_DIR / "static"
-HOST = "127.0.0.1"
-PORT = 8777
 
 
 class DashboardHTTPServer(ThreadingHTTPServer):
@@ -74,89 +74,14 @@ class DashboardHandler(DashboardRequestHandler):
             self.send_json({"error": "OI state unavailable"}, status=503)
 
 
-def positive_int(value):
-    parsed = int(value)
-    if parsed <= 0:
-        raise argparse.ArgumentTypeError("must be greater than 0")
-    return parsed
-
-
-def port_number(value):
-    parsed = int(value)
-    if not 1 <= parsed <= 65535:
-        raise argparse.ArgumentTypeError("must be between 1 and 65535")
-    return parsed
-
-
-def positive_float(value):
-    parsed = float(value)
-    if not isfinite(parsed) or parsed <= 0:
-        raise argparse.ArgumentTypeError("must be greater than 0")
-    return parsed
-
-
-def non_negative_float(value):
-    parsed = float(value)
-    if not isfinite(parsed) or parsed < 0:
-        raise argparse.ArgumentTypeError("must be 0 or greater")
-    return parsed
-
-
-def parse_args(argv=None):
-    parser = argparse.ArgumentParser(description="Realtime price + batched OI dashboard")
-    platform_port = os.environ.get("PORT")
-    default_host = os.environ.get("HOST") or ("0.0.0.0" if platform_port else HOST)
-    parser.add_argument("--host", default=default_host)
-    parser.add_argument("--port", type=port_number, default=platform_port or PORT)
-    parser.add_argument("--oi-batch-size", type=positive_int, default=25, help="symbols per batch")
-    parser.add_argument(
-        "--oi-batch-delay",
-        type=positive_float,
-        default=1.0,
-        help="seconds between batches",
-    )
-    parser.add_argument("--oi-workers", type=positive_int, default=3, help="parallel OI requests")
-    parser.add_argument(
-        "--oi-history-cache-seconds",
-        "--oi-24h-cache-seconds",
-        dest="oi_history_cache_seconds",
-        type=non_negative_float,
-        default=300,
-        help=(
-            "maximum seconds to cache 24h/7d OI baselines; "
-            "source tolerance may expire sooner; 0 disables the cache"
-        ),
-    )
-    parser.add_argument(
-        "--ticker-cache-seconds",
-        type=non_negative_float,
-        default=10,
-        help="seconds to cache futures 24h ticker; 0 disables the cache",
-    )
-    parser.add_argument(
-        "--funding-cache-seconds",
-        type=non_negative_float,
-        default=3600,
-        help="fallback funding-rate cache duration; 0 disables the cache",
-    )
-    parser.add_argument(
-        "--market-cap-cache-seconds",
-        type=non_negative_float,
-        default=900,
-        help="market-cap cache duration (CoinGecko); 0 disables the cache",
-    )
-    parser.add_argument(
-        "--snapshot-save-interval",
-        type=non_negative_float,
-        default=10,
-        help="seconds between atomic cache writes; 0 writes every batch",
-    )
-    return parser.parse_args(argv)
-
-
 def main(argv=None):
     args = parse_args(argv)
-    poller = OIPoller(
+    poller = create_poller(args)
+    return run_dashboard(args, poller)
+
+
+def create_poller(args):
+    return OIPoller(
         batch_size=args.oi_batch_size,
         batch_delay=args.oi_batch_delay,
         oi_workers=args.oi_workers,
@@ -166,6 +91,9 @@ def main(argv=None):
         market_cap_cache_seconds=args.market_cap_cache_seconds,
         snapshot_save_interval=args.snapshot_save_interval,
     )
+
+
+def run_dashboard(args, poller):
     try:
         server = DashboardHTTPServer((args.host, args.port), DashboardHandler)
     except OSError as exc:
@@ -175,11 +103,7 @@ def main(argv=None):
 
     with server:
         server.poller = poller
-        thread = threading.Thread(
-            target=poller.run_forever,
-            name="oi-poller",
-            daemon=True,
-        )
+        thread = create_poller_thread(poller)
         server.poller_thread = thread
         try:
             thread.start()
@@ -189,12 +113,7 @@ def main(argv=None):
             return 1
 
         try:
-            print(f"Dashboard running at http://{args.host}:{args.port}")
-            print("Price uses Binance futures WebSocket in the browser.")
-            print(
-                f"OI updates {args.oi_batch_size} symbols every "
-                f"{args.oi_batch_delay} seconds with {args.oi_workers} workers."
-            )
+            log_startup(args)
             try:
                 server.serve_forever()
             except KeyboardInterrupt:
@@ -202,6 +121,23 @@ def main(argv=None):
         finally:
             _stop_poller(poller, thread)
     return 0
+
+
+def create_poller_thread(poller):
+    return threading.Thread(
+        target=poller.run_forever,
+        name="oi-poller",
+        daemon=True,
+    )
+
+
+def log_startup(args):
+    print(f"Dashboard running at http://{args.host}:{args.port}")
+    print("Price uses Binance futures WebSocket in the browser.")
+    print(
+        f"OI updates {args.oi_batch_size} symbols every "
+        f"{args.oi_batch_delay} seconds with {args.oi_workers} workers."
+    )
 
 
 def _close_poller_after_start_failure(poller):
