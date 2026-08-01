@@ -29,7 +29,7 @@ SYMBOL_REFRESH_RETRY_SECONDS = 60
 EMPTY_BATCH_ERROR = "本批次没有成功更新任何 OI 数据"
 CLOCK_RESET_ERROR = "检测到系统休眠或时钟跳变，正在重新获取 OI 数据"
 STALE_ROWS_ERROR = "OI 数据已超过 15 分钟，等待重新获取"
-OI_API_SCHEMA_VERSION = 6
+OI_API_SCHEMA_VERSION = 7
 
 
 class OIPoller:
@@ -42,9 +42,10 @@ class OIPoller:
         oi_history_cache_seconds=300,
         ticker_cache_seconds=10,
         funding_cache_seconds=3600,
-        market_cap_cache_seconds=900,
+        market_cap_cache_seconds=3 * 60 * 60,
         snapshot_save_interval=10,
         snapshot_file=None,
+        market_cap_file=None,
         http_client=None,
     ):
         self.batch_size = _positive_int("batch_size", batch_size)
@@ -79,6 +80,11 @@ class OIPoller:
             if snapshot_file
             else DATA_DIR / "latest_oi.json"
         )
+        self.market_cap_file = (
+            Path(market_cap_file)
+            if market_cap_file
+            else DATA_DIR / "market_caps.json"
+        )
         self.stop_event = threading.Event()
         self.lock = threading.RLock()
         self.save_lock = threading.Lock()
@@ -95,6 +101,7 @@ class OIPoller:
             ticker_cache_seconds=ticker_cache_seconds,
             funding_cache_seconds=funding_cache_seconds,
             market_cap_cache_seconds=market_cap_cache_seconds,
+            market_cap_file=self.market_cap_file,
             http_client=http_client,
         )
         self.batch_updater = OiBatchUpdater(
@@ -174,6 +181,10 @@ class OIPoller:
         with self.lock:
             active_symbols = set(self.symbols)
         return self.binance.get_market_caps(active_symbols)
+
+    def active_symbols_snapshot(self):
+        with self.lock:
+            return set(self.symbols)
 
     def get_open_interest(self, symbol):
         return self.binance.get_open_interest(symbol)
@@ -380,9 +391,17 @@ class OIPoller:
 
     def run_forever(self):
         executor = None
+        market_cap_thread = None
         try:
             if self.stop_event.is_set():
                 return
+            market_cap_thread = threading.Thread(
+                target=self.binance.refresh_market_caps_forever,
+                args=(self.active_symbols_snapshot,),
+                name="market-cap-refresher",
+                daemon=True,
+            )
+            market_cap_thread.start()
             if self.oi_workers > 1:
                 executor = ThreadPoolExecutor(
                     max_workers=self.oi_workers,
@@ -407,6 +426,13 @@ class OIPoller:
                 if executor is not None:
                     executor.shutdown(wait=True, cancel_futures=True)
             finally:
+                if market_cap_thread is not None:
+                    market_cap_thread.join(timeout=5)
+                    if market_cap_thread.is_alive():
+                        print(
+                            f"{timestamp()} market-cap refresher did not stop "
+                            "within 5 seconds"
+                        )
                 self._close_after_polling()
 
     def stop(self):
@@ -433,6 +459,9 @@ class OIPoller:
             state["schema_version"] = OI_API_SCHEMA_VERSION
             state["active_symbols"] = list(self.symbols)
             state["total_symbols"] = len(state["active_symbols"])
+            state["market_cap_loaded_symbols"] = self.binance.count_market_caps(
+                set(state["active_symbols"])
+            )
             rows = self.oi_state.copy_rows()
             if rows and self.clock.rows_are_stale(time.time()):
                 rows = []

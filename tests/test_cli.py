@@ -14,6 +14,7 @@ class ParseArgsTests(unittest.TestCase):
 
         self.assertEqual(args.host, "127.0.0.1")
         self.assertEqual(args.port, 8777)
+        self.assertEqual(args.market_cap_cache_seconds, 10_800)
 
     def test_platform_port_enables_public_bind(self):
         with patch.dict(os.environ, {"PORT": "8080"}, clear=True):
@@ -47,6 +48,11 @@ class ParseArgsTests(unittest.TestCase):
     def test_invalid_worker_count_is_rejected(self):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             parse_args(["--oi-workers", "0"])
+
+    def test_legacy_market_cap_option_remains_supported(self):
+        args = parse_args(["--market-cap-cache-seconds", "7200"])
+
+        self.assertEqual(args.market_cap_cache_seconds, 7200)
 
 
 if __name__ == "__main__":
