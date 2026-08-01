@@ -4,19 +4,17 @@ from __future__ import annotations
 
 import threading
 import time
-from collections import deque
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from math import isfinite
 from pathlib import Path
 
 from realtime_oi_dashboard.binance_client import BinanceFuturesClient
 from realtime_oi_dashboard.errors import PollingStopped
-from realtime_oi_dashboard.market_data import (
-    future_timestamp_ms,
-    validate_symbol_refresh,
-)
-from realtime_oi_dashboard.oi_state import OiStateStore, OiUpdate
+from realtime_oi_dashboard.market_data import validate_symbol_refresh
+from realtime_oi_dashboard.oi_batch import OiBatchUpdater
+from realtime_oi_dashboard.poller_health import PollerClock, RecentErrorLog
+from realtime_oi_dashboard.oi_state import OiStateStore
 from realtime_oi_dashboard.snapshot_store import (
     LoadedSnapshot,
     load_snapshot_file,
@@ -27,9 +25,7 @@ from realtime_oi_dashboard.snapshot_store import (
 DATA_DIR = Path(__file__).resolve().parent / "data"
 ROW_MAX_AGE_SECONDS = 15 * 60
 CLOCK_SKEW_SECONDS = 60
-RECENT_ERROR_SECONDS = 60
 SYMBOL_REFRESH_RETRY_SECONDS = 60
-CLOCK_DISCONTINUITY_TOLERANCE_SECONDS = 60
 EMPTY_BATCH_ERROR = "本批次没有成功更新任何 OI 数据"
 CLOCK_RESET_ERROR = "检测到系统休眠或时钟跳变，正在重新获取 OI 数据"
 STALE_ROWS_ERROR = "OI 数据已超过 15 分钟，等待重新获取"
@@ -91,7 +87,7 @@ class OIPoller:
         self.last_symbols_refresh = None
         self.symbols_refresh_retry_at = 0.0
         self.pending_symbols_confirmation = None
-        self.error_events = deque(maxlen=10)
+        self.error_log = RecentErrorLog(self.stop_event)
         self.binance = BinanceFuturesClient(
             self.stop_event,
             self.record_symbol_error,
@@ -100,6 +96,12 @@ class OIPoller:
             funding_cache_seconds=funding_cache_seconds,
             market_cap_cache_seconds=market_cap_cache_seconds,
             http_client=http_client,
+        )
+        self.batch_updater = OiBatchUpdater(
+            self.binance,
+            self.stop_event,
+            self.record_symbol_error,
+            workers=self.oi_workers,
         )
         self.last_snapshot_save = None
         loaded_cache = self.load_previous_cache()
@@ -112,9 +114,11 @@ class OIPoller:
             "saved_at": None,
             "error": None,
         }
-        self._last_success_wall_clock = None
-        self._last_wall_clock = time.time()
-        self._last_monotonic_clock = time.monotonic()
+        self.clock = PollerClock(
+            row_max_age_seconds=ROW_MAX_AGE_SECONDS,
+            clock_skew_seconds=CLOCK_SKEW_SECONDS,
+            discontinuity_tolerance_seconds=60,
+        )
 
     def load_previous_cache(self):
         try:
@@ -124,29 +128,11 @@ class OIPoller:
             return LoadedSnapshot()
 
     def record_symbol_error(self, symbol, exc):
-        if self.stop_event.is_set():
-            return
-        with self.lock:
-            if self.stop_event.is_set():
-                return
-            self.error_events.append(
-                {
-                    "symbol": symbol,
-                    "error": str(exc),
-                    "recorded_at": time.monotonic(),
-                }
-            )
-        print(f"{timestamp()} {symbol} update failed: {exc}")
+        if self.error_log.record(symbol, exc):
+            print(f"{timestamp()} {symbol} update failed: {exc}")
 
     def recent_errors(self):
-        with self.lock:
-            cutoff = time.monotonic() - RECENT_ERROR_SECONDS
-            while self.error_events and self.error_events[0]["recorded_at"] < cutoff:
-                self.error_events.popleft()
-            return [
-                {"symbol": item["symbol"], "error": item["error"]}
-                for item in self.error_events
-            ]
+        return self.error_log.recent()
 
     def save_state(self, *, force=False):
         with self.save_lock:
@@ -273,25 +259,15 @@ class OIPoller:
         monotonic_now=None,
     ):
         """Discard volatile state when wall and monotonic clocks diverge."""
-        current_wall = time.time() if wall_now is None else wall_now
-        current_monotonic = (
-            time.monotonic() if monotonic_now is None else monotonic_now
-        )
-
         with self.lock:
-            wall_elapsed = current_wall - self._last_wall_clock
-            monotonic_elapsed = current_monotonic - self._last_monotonic_clock
-            self._last_wall_clock = current_wall
-            self._last_monotonic_clock = current_monotonic
-
-            if (
-                abs(wall_elapsed - monotonic_elapsed)
-                <= CLOCK_DISCONTINUITY_TOLERANCE_SECONDS
+            if not self.clock.observe_discontinuity(
+                wall_now=wall_now,
+                monotonic_now=monotonic_now,
             ):
                 return False
 
             self.oi_state.clear()
-            self.error_events.clear()
+            self.error_log.clear()
             self.symbol_index = 0
             self.last_symbols_refresh = None
             self.symbols_refresh_retry_at = 0.0
@@ -301,7 +277,7 @@ class OIPoller:
                 "saved_at": None,
                 "error": CLOCK_RESET_ERROR,
             }
-            self._last_success_wall_clock = None
+            self.clock.clear_success()
             self.binance.clear_caches()
             return True
 
@@ -367,7 +343,7 @@ class OIPoller:
                 return
 
             saved_at_wall_clock = time.time()
-            self._last_success_wall_clock = saved_at_wall_clock
+            self.clock.mark_success(saved_at_wall_clock)
             self.state = {
                 "saved_at": iso_now(saved_at_wall_clock),
                 "error": None,
@@ -375,115 +351,31 @@ class OIPoller:
         self.save_state()
 
     def update_symbols(self, batch, tickers, funding_rates, market_caps, executor=None):
-        if self.oi_workers <= 1 or len(batch) <= 1:
-            results = []
-            for symbol in batch:
-                if self.stop_event.is_set():
-                    break
-                try:
-                    results.append(
-                        self.build_symbol_update(symbol, tickers, funding_rates, market_caps)
-                    )
-                except PollingStopped:
-                    break
-                except Exception as exc:
-                    self.record_symbol_error(symbol, exc)
-                    results.append(None)
-            return results
-
-        if executor is not None:
-            return self._update_symbols_parallel(
-                batch, tickers, funding_rates, market_caps, executor
-            )
-
-        max_workers = min(self.oi_workers, len(batch))
-        with ThreadPoolExecutor(max_workers=max_workers) as temporary_executor:
-            return self._update_symbols_parallel(
-                batch,
-                tickers,
-                funding_rates,
-                market_caps,
-                temporary_executor,
-            )
+        return self.batch_updater.update_symbols(
+            batch,
+            tickers,
+            funding_rates,
+            market_caps,
+            executor=executor,
+            build_update=self.build_symbol_update,
+        )
 
     def _update_symbols_parallel(self, batch, tickers, funding_rates, market_caps, executor):
-        futures = {}
-        try:
-            for symbol in batch:
-                future = executor.submit(
-                    self.build_symbol_update,
-                    symbol,
-                    tickers,
-                    funding_rates,
-                    market_caps,
-                )
-                futures[future] = symbol
-        except BaseException:
-            for future in futures:
-                future.cancel()
-            raise
-        results_by_symbol = {symbol: None for symbol in batch}
-        for future in as_completed(futures):
-            if self.stop_event.is_set():
-                for pending in futures:
-                    pending.cancel()
-                break
-            symbol = futures[future]
-            try:
-                results_by_symbol[symbol] = future.result()
-            except PollingStopped:
-                for pending in futures:
-                    pending.cancel()
-                break
-            except Exception as exc:
-                self.record_symbol_error(symbol, exc)
-        return [results_by_symbol[symbol] for symbol in batch]
+        return self.batch_updater._update_in_parallel(
+            batch,
+            tickers,
+            funding_rates,
+            market_caps,
+            executor,
+            self.build_symbol_update,
+        )
 
     def build_symbol_update(self, symbol, tickers, funding_rates, market_caps=None):
-        if self.stop_event.is_set():
-            return None
-
-        ticker = tickers.get(symbol)
-        if not ticker:
-            raise ValueError("ticker data unavailable")
-        price = ticker["price"]
-        volume_24h = ticker["volume24h"]
-
-        current_oi = self.get_open_interest(symbol)
-        measured_wall_time = time.time()
-        measured_at = time.monotonic()
-        if self.stop_event.is_set():
-            return None
-        current_oi_value = current_oi * price
-        if not isfinite(current_oi_value):
-            raise ValueError("open-interest value is not finite")
-
-        funding = funding_rates.get(symbol, {}) if funding_rates else {}
-        funding_rate_percent = funding.get("fundingRatePercent")
-        now_ms = int(measured_wall_time * 1000)
-        next_funding_time = future_timestamp_ms(funding.get("nextFundingTime"), now_ms)
-
-        oi_history = self.get_oi_history_changes(symbol, current_oi, price)
-
-        market_cap = (market_caps or {}).get(symbol, {}).get("marketCap")
-
-        row = {
-            "symbol": symbol,
-            "price": price,
-            "volume24h": volume_24h,
-            "currentOi": current_oi,
-            "currentOiValue": current_oi_value,
-            "marketCap": market_cap,
-            "oiUpdatedAt": now_ms,
-            "priceChangePercent": ticker.get("priceChangePercent"),
-            "fundingRatePercent": funding_rate_percent,
-            "nextFundingTime": next_funding_time,
-            **oi_history,
-        }
-        return OiUpdate(
-            symbol=symbol,
-            row=row,
-            measured_at=measured_at,
+        return self.batch_updater.build_symbol_update(
+            symbol,
+            tickers,
+            funding_rates,
+            market_caps,
         )
 
     def run_forever(self):
@@ -542,23 +434,12 @@ class OIPoller:
             state["active_symbols"] = list(self.symbols)
             state["total_symbols"] = len(state["active_symbols"])
             rows = self.oi_state.copy_rows()
-            if rows and self._wall_clock_rows_are_stale(time.time()):
+            if rows and self.clock.rows_are_stale(time.time()):
                 rows = []
                 state["error"] = STALE_ROWS_ERROR
             state["rows"] = rows
             state["recent_errors"] = self.recent_errors()
             return state
-
-    def _wall_clock_rows_are_stale(self, wall_now):
-        if self._last_success_wall_clock is None:
-            return True
-        age = wall_now - self._last_success_wall_clock
-        return (
-            not isfinite(age)
-            or age < -CLOCK_SKEW_SECONDS
-            or age > ROW_MAX_AGE_SECONDS
-        )
-
 
 def _positive_int(name, value):
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
