@@ -48,6 +48,43 @@ class BuildMarketCapMapTests(unittest.TestCase):
 
         self.assertEqual(result["ABCUSDT"]["marketCap"], 100)
 
+    def test_falls_back_to_fdv_when_market_cap_is_unavailable(self):
+        markets = [
+            {
+                "symbol": "abc",
+                "market_cap": None,
+                "fully_diluted_valuation": 250,
+            }
+        ]
+
+        result = build_market_cap_map(markets, {"ABCUSDT"})
+
+        self.assertEqual(result, {"ABCUSDT": {"marketCap": 250}})
+
+    def test_prefers_market_cap_over_fdv(self):
+        markets = [
+            {
+                "symbol": "abc",
+                "market_cap": 100,
+                "fully_diluted_valuation": 250,
+            }
+        ]
+
+        result = build_market_cap_map(markets, {"ABCUSDT"})
+
+        self.assertEqual(result, {"ABCUSDT": {"marketCap": 100}})
+
+    def test_skips_entry_when_market_cap_and_fdv_are_unavailable(self):
+        markets = [
+            {
+                "symbol": "abc",
+                "market_cap": None,
+                "fully_diluted_valuation": None,
+            }
+        ]
+
+        self.assertEqual(build_market_cap_map(markets, {"ABCUSDT"}), {})
+
     def test_skips_malformed_entries_without_raising(self):
         markets = [
             {"symbol": "btc"},  # missing market_cap

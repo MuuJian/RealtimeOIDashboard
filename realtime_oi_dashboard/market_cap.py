@@ -35,23 +35,38 @@ def build_market_cap_map(
     when multiple coins share a ticker, the first one seen is the one with
     the larger market cap.
     """
-    ticker_to_market_cap: dict[str, float] = {}
+    ticker_to_market_value: dict[str, float] = {}
     for entry in coingecko_markets:
         if not isinstance(entry, dict):
             continue
         symbol = entry.get("symbol")
         if not isinstance(symbol, str) or not symbol:
             continue
-        market_cap = optional_float(entry.get("market_cap"))
-        if market_cap is None or market_cap <= 0:
+        market_value = market_value_from_entry(entry)
+        if market_value is None:
             continue
         ticker = symbol.upper()
-        if ticker not in ticker_to_market_cap:
-            ticker_to_market_cap[ticker] = market_cap
+        if ticker not in ticker_to_market_value:
+            ticker_to_market_value[ticker] = market_value
 
     result: dict[str, dict[str, float]] = {}
     for binance_symbol in active_symbols:
-        market_cap = ticker_to_market_cap.get(normalize_ticker(binance_symbol))
-        if market_cap is not None:
-            result[binance_symbol] = {"marketCap": market_cap}
+        market_value = ticker_to_market_value.get(
+            normalize_ticker(binance_symbol)
+        )
+        if market_value is not None:
+            result[binance_symbol] = {"marketCap": market_value}
     return result
+
+
+def market_value_from_entry(
+    entry: dict[str, Any],
+) -> float | None:
+    """Prefer circulating market cap and fall back to FDV."""
+    market_cap = optional_float(entry.get("market_cap"))
+    if market_cap is not None and market_cap > 0:
+        return market_cap
+    fdv = optional_float(entry.get("fully_diluted_valuation"))
+    if fdv is not None and fdv > 0:
+        return fdv
+    return None
