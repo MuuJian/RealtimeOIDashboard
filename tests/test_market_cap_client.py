@@ -33,7 +33,7 @@ class CoinGeckoMarketCapClientTests(unittest.TestCase):
             request_json,
             self.waits.append,
             lambda key, error: self.errors.append((key, str(error))),
-            cache_seconds=10_800,
+            cache_seconds=3_600,
             store_path=self.path,
             record_progress=self.progress.append,
         )
@@ -255,7 +255,7 @@ class CoinGeckoMarketCapClientTests(unittest.TestCase):
             request_json,
             wait,
             lambda *_args: None,
-            cache_seconds=10_800,
+            cache_seconds=3_600,
             store_path=self.path,
             record_progress=self.progress.append,
         )
@@ -274,7 +274,7 @@ class CoinGeckoMarketCapClientTests(unittest.TestCase):
 
         self.assertEqual(requested_pages, [1, 2])
         self.assertEqual(self.waits, [])
-        self.assertEqual(waits, [30, 10_790])
+        self.assertEqual(waits, [30, 3_590])
         self.assertEqual(
             self.progress,
             [
@@ -305,7 +305,7 @@ class CoinGeckoMarketCapClientTests(unittest.TestCase):
             request_json,
             wait,
             lambda key, error: self.errors.append((key, str(error))),
-            cache_seconds=10_800,
+            cache_seconds=3_600,
             store_path=self.path,
             record_progress=self.progress.append,
         )

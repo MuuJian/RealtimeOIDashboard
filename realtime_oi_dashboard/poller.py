@@ -42,7 +42,7 @@ class OIPoller:
         oi_history_cache_seconds=300,
         ticker_cache_seconds=10,
         funding_cache_seconds=3600,
-        market_cap_cache_seconds=3 * 60 * 60,
+        market_cap_cache_seconds=60 * 60,
         snapshot_save_interval=10,
         snapshot_file=None,
         market_cap_file=None,
