@@ -8,22 +8,24 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from realtime_oi_dashboard.errors import PollingStopped
-from realtime_oi_dashboard.market_data import (
-    HISTORY_BASELINE_TOLERANCE_MS,
+from realtime_oi_dashboard.oi_history_cache import (
+    HistoryPoint,
+    OiHistoryCacheEntry,
+    export_history_cache,
+    remaining_valid_seconds,
+    restore_history_cache,
+)
+from realtime_oi_dashboard.oi_history_points import (
     HOUR_MS,
-    MAX_SAFE_INTEGER,
     calculate_change_percent,
     history_open_interest_point,
     history_point_price,
     history_point_value,
     parse_oi_history_points,
 )
-from realtime_oi_dashboard.parsing import optional_float, optional_int
-from realtime_oi_dashboard.symbols import is_valid_binance_symbol
 
 
 OI_HISTORY_RETRY_SECONDS = 60
-HistoryPoint = tuple[int, float, float | None]
 
 
 class OiHistoryService:
@@ -40,7 +42,7 @@ class OiHistoryService:
         self._record_error = record_error
         self._cache_seconds = cache_seconds
         self._lock = threading.Lock()
-        self._cache: dict[str, _CacheEntry] = {}
+        self._cache: dict[str, OiHistoryCacheEntry] = {}
 
     def get_changes(
         self,
@@ -151,7 +153,7 @@ class OiHistoryService:
     def _get_cached(
         self,
         symbol: str,
-    ) -> _CacheEntry | None:
+    ) -> OiHistoryCacheEntry | None:
         with self._lock:
             return self._cache.get(symbol)
 
@@ -193,14 +195,14 @@ class OiHistoryService:
                 (past_24h_point, target_24h_ms),
                 (past_7d_point, target_7d_ms),
             ):
-                remaining_seconds = _remaining_valid_seconds(
+                remaining_seconds = remaining_valid_seconds(
                     point,
                     target_timestamp_ms,
                 )
                 if remaining_seconds is not None:
                     refresh_in = min(refresh_in, remaining_seconds)
         with self._lock:
-            self._cache[symbol] = _CacheEntry(
+            self._cache[symbol] = OiHistoryCacheEntry(
                 refresh_deadline=time.monotonic() + refresh_in,
                 past_24h_point=past_24h_point,
                 past_7d_point=past_7d_point,
@@ -220,18 +222,11 @@ class OiHistoryService:
         wall_now = time.time()
         with self._lock:
             cache = dict(self._cache)
-
-        exported = {}
-        for symbol, entry in cache.items():
-            remaining_seconds = entry.refresh_deadline - monotonic_now
-            if remaining_seconds <= 0:
-                continue
-            exported[symbol] = {
-                "refreshAt": wall_now + remaining_seconds,
-                "past24hPoint": _serialize_point(entry.past_24h_point),
-                "past7dPoint": _serialize_point(entry.past_7d_point),
-            }
-        return exported
+        return export_history_cache(
+            cache,
+            monotonic_now=monotonic_now,
+            wall_now=wall_now,
+        )
 
     def restore_cache(self, records: object) -> int:
         """Restore still-fresh baselines without extending their cache life."""
@@ -241,52 +236,14 @@ class OiHistoryService:
         wall_now = time.time()
         monotonic_now = time.monotonic()
         target_24h_ms, target_7d_ms = _target_timestamps()
-        restored = {}
-
-        for symbol, item in records.items():
-            if not is_valid_binance_symbol(symbol) or not isinstance(item, dict):
-                continue
-
-            refresh_at = optional_float(item.get("refreshAt"))
-            if refresh_at is None:
-                continue
-            remaining_cache_seconds = refresh_at - wall_now
-            if remaining_cache_seconds <= 0:
-                continue
-
-            past_24h_point = _usable_restored_point(
-                item.get("past24hPoint"),
-                target_24h_ms,
-            )
-            past_7d_point = _usable_restored_point(
-                item.get("past7dPoint"),
-                target_7d_ms,
-            )
-            if past_24h_point is None and past_7d_point is None:
-                continue
-
-            refresh_in = min(
-                self._cache_seconds,
-                remaining_cache_seconds,
-            )
-            for point, target_timestamp_ms in (
-                (past_24h_point, target_24h_ms),
-                (past_7d_point, target_7d_ms),
-            ):
-                remaining_valid_seconds = _remaining_valid_seconds(
-                    point,
-                    target_timestamp_ms,
-                )
-                if remaining_valid_seconds is not None:
-                    refresh_in = min(refresh_in, remaining_valid_seconds)
-            if refresh_in <= 0:
-                continue
-
-            restored[symbol] = _CacheEntry(
-                refresh_deadline=monotonic_now + refresh_in,
-                past_24h_point=past_24h_point,
-                past_7d_point=past_7d_point,
-            )
+        restored = restore_history_cache(
+            records,
+            cache_seconds=self._cache_seconds,
+            target_24h_ms=target_24h_ms,
+            target_7d_ms=target_7d_ms,
+            wall_now=wall_now,
+            monotonic_now=monotonic_now,
+        )
 
         with self._lock:
             self._cache.update(restored)
@@ -295,16 +252,6 @@ class OiHistoryService:
     def clear(self) -> None:
         with self._lock:
             self._cache.clear()
-
-
-@dataclass(frozen=True, slots=True)
-class _CacheEntry:
-    refresh_deadline: float
-    past_24h_point: HistoryPoint | None
-    past_7d_point: HistoryPoint | None
-
-    def is_fresh(self, now: float) -> bool:
-        return now < self.refresh_deadline
 
 
 @dataclass(frozen=True, slots=True)
@@ -318,49 +265,3 @@ class _Baselines:
 def _target_timestamps() -> tuple[int, int]:
     now_ms = int(time.time() * 1000)
     return now_ms - 24 * HOUR_MS, now_ms - 7 * 24 * HOUR_MS
-
-
-def _remaining_valid_seconds(
-    point: HistoryPoint | None,
-    target_timestamp_ms: int,
-) -> float | None:
-    if point is None:
-        return None
-    remaining_ms = (
-        point[0]
-        + HISTORY_BASELINE_TOLERANCE_MS
-        - target_timestamp_ms
-    )
-    return max(remaining_ms / 1000, 0)
-
-
-def _serialize_point(point: HistoryPoint | None) -> list[float | int | None] | None:
-    return list(point) if point is not None else None
-
-
-def _usable_restored_point(
-    value: object,
-    target_timestamp_ms: int,
-) -> HistoryPoint | None:
-    point = _deserialize_point(value)
-    if history_point_value(point, target_timestamp_ms) is None:
-        return None
-    return point
-
-
-def _deserialize_point(value: object) -> HistoryPoint | None:
-    if not isinstance(value, list) or len(value) != 3:
-        return None
-
-    timestamp_ms = optional_int(value[0])
-    open_interest = optional_float(value[1])
-    implied_price = optional_float(value[2])
-    if (
-        timestamp_ms is None
-        or not 0 < timestamp_ms <= MAX_SAFE_INTEGER
-        or open_interest is None
-        or open_interest < 0
-        or (implied_price is not None and implied_price <= 0)
-    ):
-        return None
-    return timestamp_ms, open_interest, implied_price
