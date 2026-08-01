@@ -5,6 +5,7 @@ import {
   formatOiUpdateTitle,
   formatPercent,
   formatPrice,
+  formatRatioPercent,
   signClass,
 } from "../utils/format.js";
 
@@ -134,6 +135,8 @@ function createTooltip() {
     "价格 24h",
     "价格 7d",
     "持仓价值",
+    "市值",
+    "持仓/市值",
     "成交额 24h",
     "持仓 24h",
     "持仓 7d",
@@ -163,6 +166,8 @@ function renderTooltip(tooltip, row) {
     [formatPercent(row.priceChangePercent), row.priceChangePercent],
     [formatPercent(row.price7dChangePercent), row.price7dChangePercent],
     [formatCurrency(row.currentOiValue)],
+    [formatCurrency(row.marketCap)],
+    [formatRatioPercent(row.oiToMarketCapRatio)],
     [formatCurrency(row.volume24h)],
     [formatPercent(row.oi24hChangePercent), row.oi24hChangePercent],
     [formatPercent(row.oi7dChangePercent), row.oi7dChangePercent],

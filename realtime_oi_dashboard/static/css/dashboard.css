@@ -774,13 +774,15 @@ tbody tr:last-child td {
 .oi-table th:nth-child(8),
 .oi-table td:nth-child(8) { width: 120px; }
 .oi-table th:nth-child(9),
-.oi-table td:nth-child(9) { width: 125px; }
+.oi-table td:nth-child(9) { width: 120px; }
 .oi-table th:nth-child(10),
-.oi-table td:nth-child(10) { width: 130px; }
+.oi-table td:nth-child(10) { width: 125px; }
 .oi-table th:nth-child(11),
-.oi-table td:nth-child(11) { width: 135px; }
+.oi-table td:nth-child(11) { width: 130px; }
 .oi-table th:nth-child(12),
-.oi-table td:nth-child(12) { width: 110px; }
+.oi-table td:nth-child(12) { width: 135px; }
+.oi-table th:nth-child(13),
+.oi-table td:nth-child(13) { width: 110px; }
 
 .signal-table th:nth-child(1),
 .signal-table td:nth-child(1) { width: 160px; }
