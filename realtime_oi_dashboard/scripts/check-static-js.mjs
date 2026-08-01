@@ -37,7 +37,7 @@ if (!existsSync(stylesheetPath)) {
   throw new Error(`Missing dashboard stylesheet: ${stylesheetPath}`);
 }
 checkReachableModules(entryPath, files, importsByFile);
-checkDomIds(htmlPath, entryPath);
+checkDomIds(htmlPath, files);
 console.log(`Checked ${files.length} reachable dashboard JavaScript files and stylesheet entry.`);
 
 function collectJavaScriptFiles(root) {
@@ -117,9 +117,8 @@ function checkReachableModules(entryPath, files, importsByFile) {
   }
 }
 
-function checkDomIds(htmlPath, entryPath) {
+function checkDomIds(htmlPath, sourceFiles) {
   const html = readFileSync(htmlPath, "utf8");
-  const source = readFileSync(entryPath, "utf8");
   const htmlIds = [...html.matchAll(/\bid=["']([^"']+)["']/g)].map(match => match[1]);
   const duplicateIds = htmlIds.filter((id, index) => htmlIds.indexOf(id) !== index);
   if (duplicateIds.length) {
@@ -127,9 +126,11 @@ function checkDomIds(htmlPath, entryPath) {
   }
 
   const knownIds = new Set(htmlIds);
-  const requiredIds = [
-    ...source.matchAll(/getElementById\(["']([^"']+)["']\)/g),
-  ].map(match => match[1]);
+  const requiredIds = sourceFiles.flatMap(file => {
+    const source = readFileSync(file, "utf8");
+    return [...source.matchAll(/getElementById\(["']([^"']+)["']\)/g)]
+      .map(match => match[1]);
+  });
   const missingIds = requiredIds.filter(id => !knownIds.has(id));
   if (missingIds.length) {
     throw new Error(`Missing dashboard HTML ids: ${missingIds.join(", ")}`);

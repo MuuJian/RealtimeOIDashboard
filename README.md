@@ -17,13 +17,19 @@ python3 -m venv .venv
 ## 代码结构
 
 - `main.py`：项目根目录启动入口。
-- `realtime_oi_dashboard/server.py`：命令行参数、HTTP 服务与启动/停止流程。
-- `realtime_oi_dashboard/poller.py`：批次轮询、OI 状态与运行生命周期。
+- `realtime_oi_dashboard/cli.py`：命令行参数与 Railway 环境变量默认值。
+- `realtime_oi_dashboard/server.py`：HTTP 服务、轮询线程与启动/停止流程。
+- `realtime_oi_dashboard/poller.py`：合约刷新、批次轮询、OI 状态与运行生命周期。
+- `realtime_oi_dashboard/oi_batch.py`：单币种 OI 行计算与并行批处理。
+- `realtime_oi_dashboard/poller_health.py`：近期错误与系统时钟连续性状态。
 - `realtime_oi_dashboard/binance_client.py`：Binance Futures 请求和市场缓存协调。
-- `realtime_oi_dashboard/http.py`：多线程安全的 Binance JSON 请求与重试。
+- `realtime_oi_dashboard/market_cap_client.py`：CoinGecko 分页、市值缓存与失败回退。
+- `realtime_oi_dashboard/http.py`：多线程安全的 JSON 请求与重试。
 - `realtime_oi_dashboard/market_cache.py`：ticker 与资金费率缓存状态。
-- `realtime_oi_dashboard/market_data.py`：行情、资金费率和历史 OI 响应解析。
+- `realtime_oi_dashboard/market_data.py`：实时行情与资金费率响应解析。
+- `realtime_oi_dashboard/oi_history_points.py`：历史 OI 数据点解析与变化计算。
 - `realtime_oi_dashboard/oi_history.py`：历史 OI 基线选择、缓存与变化计算。
+- `realtime_oi_dashboard/oi_history_cache.py`：历史基线的重启缓存编解码。
 - `realtime_oi_dashboard/oi_state.py`：同步维护页面行及其更新时间。
 - `realtime_oi_dashboard/snapshot_store.py`：持久化合约集合和历史基线缓存。
 - `realtime_oi_dashboard/file_io.py`：缓存文件原子写入。
@@ -31,7 +37,11 @@ python3 -m venv .venv
 - `realtime_oi_dashboard/market_cap.py`：Binance 合约代码与 CoinGecko 币种的匹配逻辑。
 - `realtime_oi_dashboard/symbols.py`：Binance 合约名称校验。
 - `realtime_oi_dashboard/web.py`：静态文件与 JSON 响应处理。
-- `realtime_oi_dashboard/static/`：价格 WebSocket、筛选、排序、渲染与动效。
+- `realtime_oi_dashboard/static/js/data/`：价格 WebSocket、OI API 契约与排行数据仓库。
+- `realtime_oi_dashboard/static/js/components/`：表格、筛选器、提示框与状态卡渲染。
+- `realtime_oi_dashboard/static/js/services/`：页面生命周期、OI 刷新、排行 Worker、视图协调与 UI 调度。
+- `realtime_oi_dashboard/static/js/hooks/`：收藏、筛选和排序状态。
+- `realtime_oi_dashboard/static/js/utils/`：格式化、排行计算与 OI 统计等纯函数。
 
 页面会从 jsDelivr 按固定版本加载 Motion；加载失败时自动保留完整功能并退回无 Motion 动效。页面使用纯黑底色和不透明的中性黑灰面板，不创建全屏 Canvas 粒子、背景光团或毛玻璃效果。标签页不可见或所在窗口失去焦点时只暂停 CSS 与 Motion 动画，价格 WebSocket 和 OI 定时刷新保持运行；重新切回 OI 页面时还会立即补一次 OI 刷新。系统开启“减少动态效果”后也会停用进入和表格行级动画。
 
@@ -96,10 +106,4 @@ API 返回数据前还会独立检查最近成功批次的墙上时钟时间；�
 
 ```bash
 node realtime_oi_dashboard/scripts/check-static-js.mjs
-```
-
-## 测试
-
-```bash
-python -m unittest discover -s tests -v
 ```
