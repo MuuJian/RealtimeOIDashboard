@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import threading
 from http.server import ThreadingHTTPServer
@@ -103,8 +104,10 @@ def non_negative_float(value):
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Realtime price + batched OI dashboard")
-    parser.add_argument("--host", default=HOST)
-    parser.add_argument("--port", type=port_number, default=PORT)
+    platform_port = os.environ.get("PORT")
+    default_host = os.environ.get("HOST") or ("0.0.0.0" if platform_port else HOST)
+    parser.add_argument("--host", default=default_host)
+    parser.add_argument("--port", type=port_number, default=platform_port or PORT)
     parser.add_argument("--oi-batch-size", type=positive_int, default=25, help="symbols per batch")
     parser.add_argument(
         "--oi-batch-delay",

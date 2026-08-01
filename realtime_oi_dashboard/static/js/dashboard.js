@@ -59,7 +59,7 @@ const filters = useTableFilters({
   minOiValue: Number(elements.oiValueFilter.value),
   minVolume: Number(elements.volumeFilter.value),
 });
-const sort = useTableSort({ storageKey: "oiTableSort" });
+const sort = useTableSort({ storageKey: "oiTableSortV2" });
 const motionEffects = createMotionEffects();
 const priceFeed = createBinancePriceFeed();
 const rankingProcessor = createRankingProcessor();

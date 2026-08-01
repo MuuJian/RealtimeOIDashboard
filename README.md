@@ -45,11 +45,14 @@ python3 -m venv .venv
 
 打开 <http://127.0.0.1:8777>。
 
-公网托管时需要监听平台提供的端口，例如：
+公网托管时会自动读取平台提供的 `PORT` 环境变量，并监听
+`0.0.0.0:$PORT`。Railway 的 Start Command 可以直接填写：
 
 ```bash
-python main.py --host 0.0.0.0 --port "$PORT"
+python main.py
 ```
+
+也可以显式指定：`python main.py --host 0.0.0.0 --port "$PORT"`。
 
 默认每批更新 25 个交易对，批次之间等待 1 秒，并使用 3 个 OI worker。资金费率正常情况下会在 Binance 返回的下一次结算时间后刷新；`--funding-cache-seconds` 只在结算时间缺失时作为兜底，已经过去的结算时间不会继续显示。
 

@@ -463,8 +463,10 @@ button {
 
 .ranking-wrap {
   height: calc(100vh - 292px);
+  scrollbar-width: none;
 }
 
+.ranking-wrap::-webkit-scrollbar,
 .signal-wrap::-webkit-scrollbar {
   display: none;
   width: 0;
@@ -614,6 +616,12 @@ tbody tr:last-child td {
   text-shadow: 0 0 16px rgba(86, 231, 255, .4);
 }
 
+@media (hover: none) and (pointer: coarse) {
+  .symbol-link {
+    pointer-events: none;
+  }
+}
+
 .favorite-cell {
   text-align: center;
 }
@@ -648,7 +656,7 @@ tbody tr:last-child td {
 }
 
 .oi-update-cell {
-  text-align: center;
+  text-align: left;
 }
 
 .oi-update-signal {
