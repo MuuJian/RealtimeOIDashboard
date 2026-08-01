@@ -18,3 +18,6 @@ __pycache__/
 # Local tool state
 .codex/
 .superpowers/
+
+# Railway
+Procfile
