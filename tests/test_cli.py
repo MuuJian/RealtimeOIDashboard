@@ -14,7 +14,7 @@ class ParseArgsTests(unittest.TestCase):
 
         self.assertEqual(args.host, "127.0.0.1")
         self.assertEqual(args.port, 8777)
-        self.assertEqual(args.market_cap_cache_seconds, 10_800)
+        self.assertEqual(args.market_cap_cache_seconds, 3_600)
 
     def test_platform_port_enables_public_bind(self):
         with patch.dict(os.environ, {"PORT": "8080"}, clear=True):

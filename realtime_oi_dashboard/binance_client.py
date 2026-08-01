@@ -42,7 +42,7 @@ class BinanceFuturesClient:
         oi_history_cache_seconds: float,
         ticker_cache_seconds: float,
         funding_cache_seconds: float,
-        market_cap_cache_seconds: float = 3 * 60 * 60,
+        market_cap_cache_seconds: float = 60 * 60,
         market_cap_file=None,
         http_client=None,
     ) -> None:
