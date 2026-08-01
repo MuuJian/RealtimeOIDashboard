@@ -21,6 +21,12 @@ export function formatPercent(value) {
   return (number >= 0 ? "+" : "") + number.toFixed(2) + "%";
 }
 
+export function formatRatioPercent(value) {
+  const number = finiteNumber(value);
+  if (number == null || number < 0) return "-";
+  return (number * 100).toFixed(2) + "%";
+}
+
 export function formatFundingRate(value) {
   const number = finiteNumber(value);
   if (number == null) return "-";

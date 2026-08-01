@@ -1,4 +1,7 @@
-import { applyLivePriceToRow } from "../utils/rankingRows.js";
+import {
+  applyLivePriceToRow,
+  syncOiToMarketCapRatio,
+} from "../utils/rankingRows.js";
 
 const OI_API_SCHEMA_VERSION = 6;
 const OPTIONAL_NUMBER_FIELDS = [
@@ -89,7 +92,7 @@ function restoreServerMarketData(row, serverRow) {
     row[field] = serverRow[field];
     changed = true;
   }
-  return changed;
+  return syncOiToMarketCapRatio(row) || changed;
 }
 
 export async function loadOiSnapshot({ signal } = {}) {

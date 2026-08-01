@@ -5,7 +5,10 @@ function sortableNumber(value) {
 }
 
 export function applyLivePriceToRow(row, live) {
-  if (!row || !live || !Number.isFinite(live.price) || live.price <= 0) return false;
+  if (!row) return false;
+  if (!live || !Number.isFinite(live.price) || live.price <= 0) {
+    return syncOiToMarketCapRatio(row);
+  }
 
   let changed = false;
   const price = live.price;
@@ -54,7 +57,22 @@ export function applyLivePriceToRow(row, live) {
     changed = true;
   }
 
-  return changed;
+  return syncOiToMarketCapRatio(row) || changed;
+}
+
+export function syncOiToMarketCapRatio(row) {
+  const oiValue = Number(row.currentOiValue);
+  const marketCap = Number(row.marketCap);
+  const nextRatio = Number.isFinite(oiValue)
+    && oiValue >= 0
+    && Number.isFinite(marketCap)
+    && marketCap > 0
+    ? oiValue / marketCap
+    : null;
+
+  if (row.oiToMarketCapRatio === nextRatio) return false;
+  row.oiToMarketCapRatio = nextRatio;
+  return true;
 }
 
 function filterRankingRows(rows, filters, favorites) {
