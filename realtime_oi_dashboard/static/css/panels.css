@@ -1,0 +1,116 @@
+.panel {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.panel::before {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 4;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(121, 147, 255, .48), transparent);
+  content: "";
+  pointer-events: none;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .017), transparent);
+}
+
+.panel-title > strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -.01em;
+}
+
+.panel-kicker {
+  color: var(--cyan);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .17em;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+input,
+select,
+button {
+  height: 36px;
+  padding: 0 11px;
+  border: 1px solid var(--line-bright);
+  border-radius: 9px;
+  outline: none;
+  background: rgba(5, 8, 15, .62);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
+}
+
+input {
+  min-width: 130px;
+}
+
+input::placeholder {
+  color: #687187;
+}
+
+input:focus,
+select:focus,
+button:focus-visible {
+  border-color: rgba(86, 231, 255, .65);
+  box-shadow: 0 0 0 3px rgba(86, 231, 255, .1);
+}
+
+select {
+  cursor: pointer;
+}
+
+.sort-select {
+  min-width: 190px;
+}
+
+button {
+  cursor: pointer;
+}
+
+.ghost-btn {
+  background: rgba(111, 140, 255, .08);
+  color: var(--muted-bright);
+}
+
+#favoritesOnlyBtn {
+  width: 78px;
+  min-width: 78px;
+  flex: 0 0 78px;
+}
+
+.ghost-btn:hover {
+  border-color: rgba(111, 140, 255, .5);
+  background: rgba(111, 140, 255, .14);
+  color: #dbe2ff;
+}
+
+.ghost-btn.active {
+  border-color: rgba(240, 189, 89, .55);
+  background: rgba(240, 189, 89, .13);
+  color: #ffd77b;
+  box-shadow: 0 0 22px rgba(240, 189, 89, .08);
+}

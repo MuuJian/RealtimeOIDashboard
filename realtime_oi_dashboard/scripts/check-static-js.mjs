@@ -36,9 +36,13 @@ checkIndexEntry(htmlPath, '<link rel="stylesheet" href="/static/css/dashboard.cs
 if (!existsSync(stylesheetPath)) {
   throw new Error(`Missing dashboard stylesheet: ${stylesheetPath}`);
 }
+const stylesheetCount = checkStylesheetImports(stylesheetPath);
 checkReachableModules(entryPath, files, importsByFile);
 checkDomIds(htmlPath, files);
-console.log(`Checked ${files.length} reachable dashboard JavaScript files and stylesheet entry.`);
+console.log(
+  `Checked ${files.length} reachable dashboard JavaScript files and `
+  + `${stylesheetCount} stylesheets.`,
+);
 
 function collectJavaScriptFiles(root) {
   return readdirSync(root, { withFileTypes: true }).flatMap(entry => {
@@ -81,6 +85,25 @@ function checkIndexEntry(htmlPath, expectedEntry) {
   if (!html.includes(expectedEntry)) {
     throw new Error(`${htmlPath} must load ${expectedEntry}`);
   }
+}
+
+function checkStylesheetImports(entryPath) {
+  const source = readFileSync(entryPath, "utf8");
+  const imports = [...source.matchAll(/@import\s+url\(["']([^"']+)["']\)\s*;/g)]
+    .map(match => match[1]);
+  const stylesheets = new Set([entryPath]);
+
+  for (const specifier of imports) {
+    if (!specifier.startsWith(".")) {
+      throw new Error(`Dashboard stylesheet import must be relative: ${specifier}`);
+    }
+    const target = resolve(dirname(entryPath), specifier);
+    if (!target.endsWith(".css") || !existsSync(target)) {
+      throw new Error(`Missing dashboard stylesheet import: ${specifier}`);
+    }
+    stylesheets.add(target);
+  }
+  return stylesheets.size;
 }
 
 function checkReachableModules(entryPath, files, importsByFile) {
