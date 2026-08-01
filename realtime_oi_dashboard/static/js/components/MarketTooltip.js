@@ -13,11 +13,11 @@ const TOOLTIP_OFFSET = 14;
 const VIEWPORT_MARGIN = 10;
 
 export function createMarketTooltip({ containers, getRowBySymbol }) {
-  const tooltip = createTooltip();
+  const tooltip = createTooltipView();
   const listeners = [];
   let activeSymbol = null;
 
-  document.body.append(tooltip);
+  document.body.append(tooltip.element);
 
   for (const container of containers) {
     listen(container, "pointerover", event => {
@@ -29,7 +29,7 @@ export function createMarketTooltip({ containers, getRowBySymbol }) {
     listen(container, "pointermove", event => {
       if (event.pointerType === "touch") return;
       if (!activeSymbol) return;
-      positionTooltip(tooltip, event.clientX, event.clientY);
+      positionTooltip(tooltip.element, event.clientX, event.clientY);
     });
     listen(container, "pointerout", event => {
       if (event.pointerType === "touch") return;
@@ -96,13 +96,13 @@ export function createMarketTooltip({ containers, getRowBySymbol }) {
 
     activeSymbol = symbol;
     renderTooltip(tooltip, row);
-    tooltip.hidden = false;
-    positionTooltip(tooltip, clientX, clientY);
+    tooltip.element.hidden = false;
+    positionTooltip(tooltip.element, clientX, clientY);
   }
 
   function hide() {
     activeSymbol = null;
-    tooltip.hidden = true;
+    tooltip.element.hidden = true;
   }
 
   function listen(target, type, listener, options) {
@@ -112,17 +112,17 @@ export function createMarketTooltip({ containers, getRowBySymbol }) {
 
   function dispose() {
     for (const removeListener of listeners) removeListener();
-    tooltip.remove();
+    tooltip.element.remove();
   }
 
   return { dispose };
 }
 
-function createTooltip() {
-  const tooltip = document.createElement("aside");
-  tooltip.className = "market-tooltip";
-  tooltip.hidden = true;
-  tooltip.setAttribute("role", "tooltip");
+function createTooltipView() {
+  const element = document.createElement("aside");
+  element.className = "market-tooltip";
+  element.hidden = true;
+  element.setAttribute("role", "tooltip");
 
   const title = document.createElement("strong");
   title.className = "market-tooltip-title";
@@ -151,15 +151,12 @@ function createTooltip() {
     return detail;
   });
 
-  tooltip.append(title, grid);
-  tooltip._title = title;
-  tooltip._grid = grid;
-  tooltip._fields = fields;
-  return tooltip;
+  element.append(title, grid);
+  return { element, fields, grid, title };
 }
 
 function renderTooltip(tooltip, row) {
-  tooltip._title.textContent = row.symbol;
+  tooltip.title.textContent = row.symbol;
   const values = [
     [formatPrice(row.price)],
     [formatFundingRate(row.fundingRatePercent), row.fundingRatePercent],
@@ -175,13 +172,13 @@ function renderTooltip(tooltip, row) {
   ];
 
   values.forEach(([value, signedValue], index) => {
-    const detail = tooltip._fields[index];
+    const detail = tooltip.fields[index];
     detail.textContent = value;
     detail.className = signedValue == null ? "" : signClass(signedValue);
   });
 
   const updatedTitle = formatOiUpdateTitle(row.oiUpdatedAt);
-  tooltip._grid.title = updatedTitle;
+  tooltip.grid.title = updatedTitle;
 }
 
 function positionTooltip(tooltip, clientX, clientY) {

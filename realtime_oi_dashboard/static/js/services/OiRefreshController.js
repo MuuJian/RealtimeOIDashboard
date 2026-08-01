@@ -1,4 +1,4 @@
-import { loadOiSnapshot } from "../hooks/useOiRankingData.js";
+import { loadOiSnapshot } from "../data/OiApiClient.js";
 
 const DEFAULT_REFRESH_INTERVAL_MS = 10000;
 const DEFAULT_MAX_STALE_MS = 15 * 60 * 1000;

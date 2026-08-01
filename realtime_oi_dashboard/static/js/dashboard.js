@@ -1,57 +1,31 @@
 import { createFilterBar } from "./components/FilterBar.js";
+import { createDashboardStatus } from "./components/DashboardStatus.js";
 import { createHighOi7dTable } from "./components/HighOi7dTable.js";
 import { createMarketTooltip } from "./components/MarketTooltip.js";
 import { createOiRankingTable } from "./components/OiRankingTable.js";
 import { createSortableHeaders } from "./components/SortableHeader.js";
-import { renderStatCards, renderWsState } from "./components/StatCard.js";
 import { createBinancePriceFeed } from "./data/BinancePriceFeed.js";
+import { getDashboardElements } from "./data/DashboardElements.js";
+import { createOiRankingStore } from "./data/OiRankingStore.js";
 import { useFavorites } from "./hooks/useFavorites.js";
-import { useOiRankingData } from "./hooks/useOiRankingData.js";
 import { useTableFilters } from "./hooks/useTableFilters.js";
 import { useTableSort } from "./hooks/useTableSort.js";
 import { createMotionEffects } from "./motionEffects.js";
 import { createOiRefreshController } from "./services/OiRefreshController.js";
+import { createPageLifecycle } from "./services/PageLifecycle.js";
+import { createDashboardRenderer } from "./services/DashboardRenderer.js";
 import { createRankingProcessor } from "./services/RankingProcessor.js";
+import { createRankingViewController } from "./services/RankingViewController.js";
 import { createUiRenderScheduler } from "./services/UiRenderScheduler.js";
 
 const lifecycleController = new AbortController();
-const EMPTY_HEAT_MAX = Object.freeze({
-  fundingRatePercent: 0,
-  priceChangePercent: 0,
-  price7dChangePercent: 0,
-  oi24hChangePercent: 0,
-  oi7dChangePercent: 0,
-});
-const PRICE_STATUS_LABELS = Object.freeze({
-  connecting: "连接中",
-  error: "异常",
-  live: "实时",
-  paused: "暂停",
-  reconnecting: "重连中",
+const elements = getDashboardElements();
+const dashboardStatus = createDashboardStatus({
+  title: elements.statusTitle,
+  detail: elements.statusText,
 });
 
-const elements = {
-  statusTitle: document.getElementById("statusTitle"),
-  statusText: document.getElementById("statusText"),
-  wsState: document.getElementById("wsState"),
-  topIncrease: document.getElementById("topIncrease"),
-  topIncreaseNote: document.getElementById("topIncreaseNote"),
-  topDecrease: document.getElementById("topDecrease"),
-  topDecreaseNote: document.getElementById("topDecreaseNote"),
-  searchInput: document.getElementById("searchInput"),
-  sortSelect: document.getElementById("sortSelect"),
-  favoritesOnlyBtn: document.getElementById("favoritesOnlyBtn"),
-  oiValueFilter: document.getElementById("oiValueFilter"),
-  volumeFilter: document.getElementById("volumeFilter"),
-  limitSelect: document.getElementById("limitSelect"),
-  signalOi7dFilter: document.getElementById("signalOi7dFilter"),
-  signalOiValueFilter: document.getElementById("signalOiValueFilter"),
-  rankBody: document.getElementById("rankBody"),
-  highOi7dBody: document.getElementById("highOi7dBody"),
-  sortableHeaders: document.querySelectorAll("th[data-sort]"),
-};
-
-const rankingData = useOiRankingData();
+const rankingData = createOiRankingStore();
 const favorites = useFavorites("oiFavorites");
 const filters = useTableFilters({
   query: elements.searchInput.value.trim().toUpperCase(),
@@ -63,12 +37,6 @@ const sort = useTableSort({ storageKey: "oiTableSortV2" });
 const motionEffects = createMotionEffects();
 const priceFeed = createBinancePriceFeed();
 const rankingProcessor = createRankingProcessor();
-
-let heatMax = EMPTY_HEAT_MAX;
-let visibleRows = [];
-let highOi7dRows = [];
-let disposed = false;
-let latestViewRequest = 0;
 
 const table = createOiRankingTable({
   tbody: elements.rankBody,
@@ -99,16 +67,47 @@ const sortableHeaders = createSortableHeaders({
   signal: lifecycleController.signal,
 });
 
-const uiScheduler = createUiRenderScheduler(flushUiRender);
+const dashboardRenderer = createDashboardRenderer({
+  elements,
+  motionEffects,
+  rankingData,
+  favorites,
+  table,
+  highOi7dTable,
+  filterBar,
+  sortableHeaders,
+  getVisibleRows: () => rankingView.getVisibleRows(),
+  getHighOi7dRows: () => rankingView.getHighOi7dRows(),
+  getHeatMax: () => rankingView.getHeatMax(),
+  getSignalFilters,
+});
+const uiScheduler = createUiRenderScheduler(dashboardRenderer.render);
 const scheduleUiRender = uiScheduler.schedule;
+const rankingView = createRankingViewController({
+  processor: rankingProcessor,
+  rankingData,
+  filters,
+  sort,
+  favorites,
+  getSignalFilters,
+  scheduleRender: scheduleUiRender,
+  onError: handleRankingError,
+});
 const oiRefresh = createOiRefreshController({
   onPayload: handleOiPayload,
   onError: handleOiError,
   onSettled: handleOiSettled,
 });
+const pageLifecycle = createPageLifecycle({
+  onBackgroundChange: setBackgrounded,
+  onForeground: refreshAfterForeground,
+  onStart: startLiveUpdates,
+  onStop: stopLiveUpdates,
+  onDispose: disposeResources,
+});
 
 const unsubscribePriceStatus = priceFeed.subscribeStatus(status => {
-  if (disposed) return;
+  if (pageLifecycle.isDisposed()) return;
   scheduleUiRender({ priceStatus: status });
 });
 const unsubscribePrices = priceFeed.subscribePrices(handlePriceBatch);
@@ -146,46 +145,33 @@ scheduleUiRender({
   full: true,
   high: true,
 });
-document.addEventListener("visibilitychange", syncAnimationState);
-window.addEventListener("focus", syncAnimationState);
-window.addEventListener("blur", syncAnimationState);
-window.addEventListener("pagehide", handlePageHide);
-window.addEventListener("pageshow", handlePageShow);
-syncAnimationState();
-startLiveUpdates();
+pageLifecycle.start();
 motionEffects.playEntrance();
 
-function dispose() {
-  if (disposed) return;
-  disposed = true;
-  document.removeEventListener("visibilitychange", syncAnimationState);
-  window.removeEventListener("focus", syncAnimationState);
-  window.removeEventListener("blur", syncAnimationState);
-  window.removeEventListener("pagehide", handlePageHide);
-  window.removeEventListener("pageshow", handlePageShow);
+function disposeResources() {
   lifecycleController.abort();
   unsubscribePriceStatus();
   unsubscribePrices();
-  rankingProcessor.dispose();
+  rankingView.dispose();
   marketTooltip.dispose();
   motionEffects.dispose();
   table.dispose();
   stopLiveUpdates();
   oiRefresh.dispose();
-  latestViewRequest += 1;
   uiScheduler.dispose();
 }
 
-function syncAnimationState() {
-  if (disposed) return;
-  const backgrounded = document.hidden || !document.hasFocus();
+function setBackgrounded(backgrounded) {
   document.documentElement.classList.toggle("page-hidden", backgrounded);
   motionEffects.setPaused(backgrounded);
-  if (!backgrounded && oiRefresh.isRunning()) oiRefresh.refresh();
+}
+
+function refreshAfterForeground() {
+  if (oiRefresh.isRunning()) oiRefresh.refresh();
 }
 
 function startLiveUpdates() {
-  if (disposed || oiRefresh.isRunning()) return;
+  if (oiRefresh.isRunning()) return;
   priceFeed.connect();
   oiRefresh.start();
 }
@@ -195,30 +181,14 @@ function stopLiveUpdates() {
   priceFeed.close();
 }
 
-function handlePageHide(event) {
-  document.documentElement.classList.add("page-hidden");
-  motionEffects.setPaused(true);
-  if (event.persisted) {
-    stopLiveUpdates();
-    return;
-  }
-  dispose();
-}
-
-function handlePageShow(event) {
-  if (!event.persisted) return;
-  syncAnimationState();
-  startLiveUpdates();
-}
-
 function handleOiPayload(payload) {
   const favoritesChanged = favorites.pruneInactive(payload.active_symbols);
   rankingData.setRows(payload.rows, priceFeed.getPrices());
-  renderOiStatus(payload);
+  dashboardStatus.renderPayload(payload);
   requestRankingView({
     replaceRows: rankingData.getRows(),
     changedSymbols: rankingData.getRows().map(row => row.symbol),
-    forceFull: !visibleRows.length,
+    forceFull: !rankingView.getVisibleRows().length,
   });
   scheduleUiRender({
     controls: favoritesChanged,
@@ -235,34 +205,14 @@ function handleOiError(error, { dataExpired }) {
     });
     scheduleUiRender({ stats: true });
   }
-  elements.statusTitle.textContent = "OI 连接异常";
-  elements.statusText.textContent = error.message;
+  dashboardStatus.renderConnectionError(error);
 }
 
 function handleOiSettled() {
   scheduleUiRender({
     high: true,
-    patchSymbols: visibleRows.map(row => row.symbol),
+    patchSymbols: rankingView.getVisibleRows().map(row => row.symbol),
   });
-}
-
-function renderOiStatus(payload) {
-  const loadedSymbols = payload.rows.length;
-  elements.statusTitle.textContent = payload.error
-    ? "OI 更新异常"
-    : loadedSymbols ? "实时 OI 变化" : "等待本次 OI 数据";
-  const errorCount = payload.recent_errors?.length || 0;
-  const errorText = errorCount ? ` · 错误 ${errorCount}` : "";
-  const batchError = typeof payload.error === "string" && payload.error
-    ? ` · ${payload.error}`
-    : "";
-  const savedAt = payload.saved_at || "尚无 OI";
-  const totalSymbols = payload.total_symbols || 0;
-  elements.statusText.textContent = [
-    `${savedAt} · 已加载 ${loadedSymbols}/${totalSymbols}`,
-    errorText,
-    batchError,
-  ].join("");
 }
 
 function resetTableAndRequestView() {
@@ -283,7 +233,7 @@ function getSignalFilters() {
 }
 
 function handlePriceBatch(changedSymbols, priceMap) {
-  if (disposed) return;
+  if (pageLifecycle.isDisposed()) return;
   const affectedSymbols = rankingData.applyPriceUpdates(changedSymbols, priceMap);
   if (!affectedSymbols.length) return;
 
@@ -295,124 +245,11 @@ function handlePriceBatch(changedSymbols, priceMap) {
   });
 }
 
-function requestRankingView({
-  replaceRows,
-  patchRows = [],
-  changedSymbols = [],
-  forceFull = false,
-  forceHigh = false,
-} = {}) {
-  const requestVersion = ++latestViewRequest;
-  const previousVisibleSymbols = visibleRows.map(row => row.symbol);
-  const previousHighSymbols = highOi7dRows.map(row => row.symbol);
-  const previousHeatMax = heatMax;
-
-  rankingProcessor.request({
-    replaceRows,
-    patchRows,
-    filters: filters.getState(),
-    sort: sort.getState(),
-    favorites: favorites.getSet(),
-    signalFilters: getSignalFilters(),
-  }).then(view => {
-    if (disposed || requestVersion !== latestViewRequest) return;
-
-    const nextVisibleRows = rowsForSymbols(view.visibleSymbols);
-    const nextHighRows = rowsForSymbols(view.highOi7dSymbols);
-    const visibleOrderChanged = !sameSymbols(
-      previousVisibleSymbols,
-      view.visibleSymbols,
-    );
-    const highRowsChanged = !sameSymbols(
-      previousHighSymbols,
-      view.highOi7dSymbols,
-    );
-    const heatChanged = !sameHeatMax(previousHeatMax, view.heatMax);
-
-    visibleRows = nextVisibleRows;
-    highOi7dRows = nextHighRows;
-    heatMax = view.heatMax;
-
-    scheduleUiRender({
-      full: forceFull || visibleOrderChanged || replaceRows !== undefined,
-      high: forceFull || forceHigh || highRowsChanged || replaceRows !== undefined
-        || patchRows.length > 0,
-      patchSymbols: heatChanged ? view.visibleSymbols : changedSymbols,
-    });
-  }).catch(error => {
-    if (disposed) return;
-    elements.statusTitle.textContent = "排行计算异常";
-    elements.statusText.textContent = error.message;
-  });
+function requestRankingView(options) {
+  rankingView.request(options);
 }
 
-function rowsForSymbols(symbols) {
-  const rows = [];
-  for (const symbol of symbols) {
-    const row = rankingData.getRow(symbol);
-    if (row) rows.push(row);
-  }
-  return rows;
-}
-
-function sameSymbols(previous, next) {
-  if (previous.length !== next.length) return false;
-  return previous.every((symbol, index) => symbol === next[index]);
-}
-
-function sameHeatMax(previous, next) {
-  return Object.keys(EMPTY_HEAT_MAX).every(
-    key => previous[key] === next[key],
-  );
-}
-
-function flushUiRender({
-  full,
-  high,
-  controls,
-  stats,
-  priceStatus,
-  patchSymbols,
-}) {
-  if (priceStatus) {
-    const label = PRICE_STATUS_LABELS[priceStatus] || "连接中";
-    motionEffects.pulseValues(renderWsState(elements.wsState, label));
-  }
-
-  if (stats) {
-    motionEffects.pulseValues(
-      renderStatCards(elements, rankingData.getStats()),
-    );
-  }
-
-  if (full) {
-    motionEffects.revealRows(
-      table.render(visibleRows, getRowRenderContext()),
-    );
-  } else if (patchSymbols.size) {
-    table.patchRows(patchSymbols, getRowRenderContext());
-  }
-
-  if (high) {
-    motionEffects.revealRows(
-      highOi7dTable.render(
-        highOi7dRows,
-        rankingData.getRows().length > 0,
-        getSignalFilters(),
-      ),
-    );
-  }
-
-  if (controls) {
-    filterBar.render();
-    sortableHeaders.render();
-  }
-}
-
-function getRowRenderContext() {
-  return {
-    favorites: favorites.getSet(),
-    hasSourceRows: rankingData.getRows().length > 0,
-    heatMax,
-  };
+function handleRankingError(error) {
+  if (pageLifecycle.isDisposed()) return;
+  dashboardStatus.renderRankingError(error);
 }
