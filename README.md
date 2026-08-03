@@ -122,3 +122,4 @@ node realtime_oi_dashboard/scripts/check-static-js.mjs
 
 - Binance Futures：价格、OI、成交量、资金费率及历史数据
 - CoinGecko：币种市值和 FDV
+- TradingView: 图表
