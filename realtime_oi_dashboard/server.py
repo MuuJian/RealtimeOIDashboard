@@ -17,6 +17,7 @@ from realtime_oi_dashboard.cli import (
     parse_args,
 )
 from realtime_oi_dashboard.poller import OIPoller, timestamp
+from realtime_oi_dashboard.signal_scan import SignalScanPoller
 from realtime_oi_dashboard.web import DashboardRequestHandler
 
 
@@ -54,6 +55,9 @@ class DashboardHandler(DashboardRequestHandler):
         if parsed.path == "/api/oi":
             self.send_oi_state()
             return
+        if parsed.path == "/api/signal-scan":
+            self.send_signal_scan_state()
+            return
         self.send_error(404)
 
     def send_oi_state(self):
@@ -73,11 +77,29 @@ class DashboardHandler(DashboardRequestHandler):
             print(f"{timestamp()} failed to serve OI state: {exc}")
             self.send_json({"error": "OI state unavailable"}, status=503)
 
+    def send_signal_scan_state(self):
+        poller = getattr(self.server, "signal_scan_poller", None)
+        if poller is None:
+            self.send_json({"error": "Signal scan poller unavailable"}, status=503)
+            return
+
+        poller_thread = getattr(self.server, "signal_scan_thread", None)
+        if poller_thread is not None and not poller_thread.is_alive():
+            self.send_json({"error": "Signal scan poller stopped"}, status=503)
+            return
+
+        try:
+            self.send_json(poller.get_state())
+        except Exception as exc:
+            print(f"{timestamp()} failed to serve signal scan state: {exc}")
+            self.send_json({"error": "Signal scan state unavailable"}, status=503)
+
 
 def main(argv=None):
     args = parse_args(argv)
     poller = create_poller(args)
-    return run_dashboard(args, poller)
+    signal_scan_poller = create_signal_scan_poller(args)
+    return run_dashboard(args, poller, signal_scan_poller)
 
 
 def create_poller(args):
@@ -93,23 +115,33 @@ def create_poller(args):
     )
 
 
-def run_dashboard(args, poller):
+def create_signal_scan_poller(args):
+    return SignalScanPoller(interval_seconds=args.signal_scan_interval)
+
+
+def run_dashboard(args, poller, signal_scan_poller):
     try:
         server = DashboardHTTPServer((args.host, args.port), DashboardHandler)
     except OSError as exc:
         print(f"无法启动面板: {exc}")
         _close_poller_after_start_failure(poller)
+        _close_signal_scan_poller_after_start_failure(signal_scan_poller)
         return 1
 
     with server:
         server.poller = poller
+        server.signal_scan_poller = signal_scan_poller
         thread = create_poller_thread(poller)
+        signal_scan_thread = create_signal_scan_thread(signal_scan_poller)
         server.poller_thread = thread
+        server.signal_scan_thread = signal_scan_thread
         try:
             thread.start()
+            signal_scan_thread.start()
         except RuntimeError as exc:
-            print(f"无法启动 OI 轮询: {exc}")
+            print(f"无法启动轮询线程: {exc}")
             _close_poller_after_start_failure(poller)
+            _close_signal_scan_poller_after_start_failure(signal_scan_poller)
             return 1
 
         try:
@@ -120,6 +152,7 @@ def run_dashboard(args, poller):
                 print("\nDashboard stopped.")
         finally:
             _stop_poller(poller, thread)
+            _stop_signal_scan_poller(signal_scan_poller, signal_scan_thread)
     return 0
 
 
@@ -127,6 +160,14 @@ def create_poller_thread(poller):
     return threading.Thread(
         target=poller.run_forever,
         name="oi-poller",
+        daemon=True,
+    )
+
+
+def create_signal_scan_thread(signal_scan_poller):
+    return threading.Thread(
+        target=signal_scan_poller.run_forever,
+        name="signal-scan-poller",
         daemon=True,
     )
 
@@ -157,6 +198,20 @@ def _stop_poller(poller, thread):
         poller.save_state(force=True)
     except Exception as exc:
         print(f"{timestamp()} failed to save final OI cache: {exc}")
+
+
+def _close_signal_scan_poller_after_start_failure(signal_scan_poller):
+    try:
+        signal_scan_poller.close()
+    except Exception as exc:
+        print(f"{timestamp()} failed to close signal scan poller: {exc}")
+
+
+def _stop_signal_scan_poller(signal_scan_poller, thread):
+    signal_scan_poller.stop()
+    thread.join(timeout=15)
+    if thread.is_alive():
+        print(f"{timestamp()} signal scan poller did not stop within 15 seconds")
 
 
 if __name__ == "__main__":
