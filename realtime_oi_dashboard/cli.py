@@ -113,4 +113,10 @@ def parse_args(argv=None):
         default=10,
         help="seconds between atomic cache writes; 0 writes every batch",
     )
+    parser.add_argument(
+        "--signal-scan-interval",
+        type=positive_float,
+        default=60,
+        help="seconds between signal-scan (trend/volatility) refreshes",
+    )
     return parser.parse_args(argv)

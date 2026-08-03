@@ -54,6 +54,13 @@ class ParseArgsTests(unittest.TestCase):
 
         self.assertEqual(args.market_cap_cache_seconds, 7200)
 
+    def test_signal_scan_interval_has_a_default_and_is_validated(self):
+        args = parse_args([])
+        self.assertEqual(args.signal_scan_interval, 60)
+
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parse_args(["--signal-scan-interval", "0"])
+
 
 if __name__ == "__main__":
     unittest.main()
