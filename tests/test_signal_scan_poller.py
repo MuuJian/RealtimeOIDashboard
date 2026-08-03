@@ -123,6 +123,26 @@ class SignalScanPollerTests(unittest.TestCase):
         self.assertEqual(state["spikes"], [])
         self.assertIsNotNone(state["error"])
 
+    def test_longer_interval_widens_the_stale_window(self):
+        symbols = ["AUSDT"]
+        tickers = [{"symbol": "AUSDT", "quoteVolume": "1000", "priceChangePercent": "1.5"}]
+        client = FakeHttpClient(tickers, make_exchange_info(symbols), {"AUSDT": make_klines()})
+        poller = SignalScanPoller(http_client=client, interval_seconds=120)
+        poller.run_scan()
+        fresh_state = poller.get_state()
+
+        # 100s old: past the default 90s floor, but within 120 * 1.5 = 180s,
+        # so a --signal-scan-interval 120 run should not be treated as stale.
+        poller.last_success_wall_clock -= 100
+
+        state = poller.get_state()
+
+        self.assertIsNone(state["error"])
+        self.assertEqual(state["saved_at"], fresh_state["saved_at"])
+        self.assertEqual(state["bulls"], fresh_state["bulls"])
+        self.assertEqual(state["bears"], fresh_state["bears"])
+        self.assertEqual(state["spikes"], fresh_state["spikes"])
+
     def test_stop_before_run_forever_returns_immediately(self):
         client = FakeHttpClient([], make_exchange_info([]), {})
         poller = SignalScanPoller(http_client=client, interval_seconds=0.01)

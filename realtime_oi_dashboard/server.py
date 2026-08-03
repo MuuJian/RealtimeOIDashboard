@@ -135,12 +135,17 @@ def run_dashboard(args, poller, signal_scan_poller):
         signal_scan_thread = create_signal_scan_thread(signal_scan_poller)
         server.poller_thread = thread
         server.signal_scan_thread = signal_scan_thread
+        oi_thread_started = False
         try:
             thread.start()
+            oi_thread_started = True
             signal_scan_thread.start()
         except RuntimeError as exc:
             print(f"无法启动轮询线程: {exc}")
-            _stop_poller(poller, thread)
+            if oi_thread_started:
+                _stop_poller(poller, thread)
+            else:
+                _close_poller_after_start_failure(poller)
             _close_signal_scan_poller_after_start_failure(signal_scan_poller)
             return 1
 

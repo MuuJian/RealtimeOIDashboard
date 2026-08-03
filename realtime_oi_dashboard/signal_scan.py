@@ -127,7 +127,6 @@ KLINES_URL = f"{FAPI_BASE_URL}/fapi/v1/klines"
 SCAN_MAX_AGE_SECONDS = 90
 SIGNAL_SCAN_API_SCHEMA_VERSION = 1
 SCAN_FAILED_ERROR = "本次掃描沒有取得任何幣種資料"
-STALE_SCAN_ERROR = "訊號資料已超過 90 秒，等待重新掃描"
 
 
 class SignalScanPoller:
@@ -135,6 +134,7 @@ class SignalScanPoller:
 
     def __init__(self, *, interval_seconds=60, http_client=None):
         self.interval_seconds = _positive_seconds("interval_seconds", interval_seconds)
+        self.max_age_seconds = max(SCAN_MAX_AGE_SECONDS, self.interval_seconds * 1.5)
         self.stop_event = threading.Event()
         self.lock = threading.RLock()
         self._owns_http_client = http_client is None
@@ -259,14 +259,16 @@ class SignalScanPoller:
                 state["bulls"] = []
                 state["bears"] = []
                 state["spikes"] = []
-                state["error"] = STALE_SCAN_ERROR
+                state["error"] = (
+                    f"訊號資料已超過 {int(self.max_age_seconds)} 秒，等待重新掃描"
+                )
             return state
 
     def _is_stale(self):
         if self.last_success_wall_clock is None:
             return True
         age = time.time() - self.last_success_wall_clock
-        return not isfinite(age) or age > SCAN_MAX_AGE_SECONDS
+        return not isfinite(age) or age > self.max_age_seconds
 
 
 def _positive_seconds(name, value):
