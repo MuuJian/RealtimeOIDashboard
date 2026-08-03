@@ -27,12 +27,6 @@ python3 -m venv .venv
 http://127.0.0.1:8777
 ```
 
-也可以直接使用系统 Python：
-
-```bash
-python main.py
-```
-
 ## 公网部署
 
 程序会自动读取托管平台提供的 `PORT` 环境变量，并监听：
@@ -128,4 +122,3 @@ node realtime_oi_dashboard/scripts/check-static-js.mjs
 
 - Binance Futures：价格、OI、成交量、资金费率及历史数据
 - CoinGecko：币种市值和 FDV
-- TradingView：价格列的外部图表链接
