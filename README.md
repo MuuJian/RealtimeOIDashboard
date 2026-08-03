@@ -1,30 +1,8 @@
 # Realtime OI Dashboard
 
-监控 **Binance USDT 永续合约持仓量（Open Interest，OI）** 的实时数据面板。
+监控 **Binance USDT 永续合约** 的实时数据面板。
 
 > 本项目只提供市场数据展示，不构成投资建议。
-
-## 页面功能
-
-主排行表会显示：
-
-- 实时价格
-- 当前 OI 数量和持仓价值
-- 24 小时和 7 天 OI 和价格变化
-- 24 小时成交量
-- 资金费率
-- CoinGecko 市值
-- OI 持仓价值占市值的比例
-
-页面支持：
-
-- 按任意指标排序
-- 搜索指定合约
-- 设置最低 OI、成交量等筛选条件
-- 收藏关注的币种
-- 查看 7 天 OI 异动信号
-- 悬停查看完整行情和更新时间
-- 点击价格跳转到 CoinGlass 图表
 
 ## 安装
 
@@ -47,12 +25,6 @@ python3 -m venv .venv
 
 ```text
 http://127.0.0.1:8777
-```
-
-也可以直接使用系统 Python：
-
-```bash
-python main.py
 ```
 
 ## 公网部署
@@ -150,4 +122,4 @@ node realtime_oi_dashboard/scripts/check-static-js.mjs
 
 - Binance Futures：价格、OI、成交量、资金费率及历史数据
 - CoinGecko：币种市值和 FDV
-- TradingView：价格列的外部图表链接
+- TradingView: 图表
