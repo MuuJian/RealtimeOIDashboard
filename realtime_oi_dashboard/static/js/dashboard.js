@@ -17,6 +17,8 @@ import { createDashboardRenderer } from "./services/DashboardRenderer.js";
 import { createRankingProcessor } from "./services/RankingProcessor.js";
 import { createRankingViewController } from "./services/RankingViewController.js";
 import { createUiRenderScheduler } from "./services/UiRenderScheduler.js";
+import { createSignalScanPanel } from "./components/SignalScanPanel.js";
+import { createSignalScanRefreshController } from "./services/SignalScanRefreshController.js";
 
 const lifecycleController = new AbortController();
 const elements = getDashboardElements();
@@ -50,6 +52,18 @@ const highOi7dTable = createHighOi7dTable({
 const marketTooltip = createMarketTooltip({
   containers: [elements.rankBody, elements.highOi7dBody],
   getRowBySymbol: rankingData.getRow,
+});
+
+const signalScanPanel = createSignalScanPanel({
+  bullsBody: elements.signalScanBullsBody,
+  bearsBody: elements.signalScanBearsBody,
+  spikesBody: elements.signalScanSpikesBody,
+  statusEl: elements.signalScanStatus,
+});
+
+const signalScanRefresh = createSignalScanRefreshController({
+  onPayload: payload => signalScanPanel.render(payload),
+  onError: error => signalScanPanel.renderError(error),
 });
 
 const filterBar = createFilterBar({
@@ -140,6 +154,13 @@ elements.rankBody.addEventListener("click", event => {
   }
 }, { signal: lifecycleController.signal });
 
+elements.tabOi.addEventListener("click", () => activateTab("oi"), {
+  signal: lifecycleController.signal,
+});
+elements.tabSignalScan.addEventListener("click", () => activateTab("signalScan"), {
+  signal: lifecycleController.signal,
+});
+
 scheduleUiRender({
   controls: true,
   full: true,
@@ -158,6 +179,7 @@ function disposeResources() {
   table.dispose();
   stopLiveUpdates();
   oiRefresh.dispose();
+  signalScanRefresh.dispose();
   uiScheduler.dispose();
 }
 
@@ -252,4 +274,20 @@ function requestRankingView(options) {
 function handleRankingError(error) {
   if (pageLifecycle.isDisposed()) return;
   dashboardStatus.renderRankingError(error);
+}
+
+function activateTab(name) {
+  const isSignalScan = name === "signalScan";
+  elements.oiPage.hidden = isSignalScan;
+  elements.signalScanPage.hidden = !isSignalScan;
+  elements.tabOi.classList.toggle("active", !isSignalScan);
+  elements.tabOi.setAttribute("aria-selected", String(!isSignalScan));
+  elements.tabSignalScan.classList.toggle("active", isSignalScan);
+  elements.tabSignalScan.setAttribute("aria-selected", String(isSignalScan));
+
+  if (isSignalScan) {
+    signalScanRefresh.start();
+  } else {
+    signalScanRefresh.stop();
+  }
 }

@@ -18,5 +18,13 @@ export function getDashboardElements(root = document) {
     rankBody: root.getElementById("rankBody"),
     highOi7dBody: root.getElementById("highOi7dBody"),
     sortableHeaders: root.querySelectorAll("th[data-sort]"),
+    tabOi: root.getElementById("tabOi"),
+    tabSignalScan: root.getElementById("tabSignalScan"),
+    oiPage: root.getElementById("oiPage"),
+    signalScanPage: root.getElementById("signalScanPage"),
+    signalScanBullsBody: root.getElementById("signalScanBullsBody"),
+    signalScanBearsBody: root.getElementById("signalScanBearsBody"),
+    signalScanSpikesBody: root.getElementById("signalScanSpikesBody"),
+    signalScanStatus: root.getElementById("signalScanStatus"),
   };
 }
