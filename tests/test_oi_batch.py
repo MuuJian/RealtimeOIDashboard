@@ -15,7 +15,7 @@ class FakeClient:
         return {"oiChangePercent24h": 25.0, "oiChangePercent7d": 50.0}
 
 
-class OiBatchUpdaterTests(unittest.TestCase):
+class OIBatchRunnerTests(unittest.TestCase):
     def setUp(self):
         self.stop_event = threading.Event()
         self.errors = []
@@ -164,6 +164,18 @@ class OiBatchUpdaterTests(unittest.TestCase):
 
     def test_old_updater_name_remains_compatible(self):
         self.assertIs(OiBatchUpdater, OIBatchRunner)
+
+    def test_old_update_method_delegates_to_runner(self):
+        runner = self.updater()
+
+        result = runner.update_symbols(
+            ["BTCUSDT"],
+            {"BTCUSDT": {"price": 10.0, "volume24h": 1.0}},
+            {},
+            {},
+        )
+
+        self.assertEqual(result[0].symbol, "BTCUSDT")
 
 
 if __name__ == "__main__":

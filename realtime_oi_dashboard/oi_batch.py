@@ -28,7 +28,7 @@ class OIBatchRunner:
         self.workers = workers
         self.row_builder = row_builder or OIRowBuilder()
 
-    def update_symbols(
+    def run(
         self,
         batch,
         tickers,
@@ -68,6 +68,26 @@ class OIBatchRunner:
                 temporary_executor,
                 build_update,
             )
+
+    def update_symbols(
+        self,
+        batch,
+        tickers,
+        funding_rates,
+        market_caps,
+        *,
+        executor=None,
+        build_update=None,
+    ):
+        """Compatibility wrapper for the pre-refactor method name."""
+        return self.run(
+            batch,
+            tickers,
+            funding_rates,
+            market_caps,
+            executor=executor,
+            build_update=build_update,
+        )
 
     def _update_sequentially(
         self,

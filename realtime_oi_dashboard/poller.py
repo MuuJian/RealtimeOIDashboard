@@ -376,7 +376,7 @@ class OIPoller:
         self.save_state()
 
     def update_symbols(self, batch, tickers, funding_rates, market_caps, executor=None):
-        return self.batch_runner.update_symbols(
+        return self.batch_runner.run(
             batch,
             tickers,
             funding_rates,
