@@ -96,9 +96,9 @@ class OiBatchUpdaterTests(unittest.TestCase):
         market_caps = {"BTCUSDT": {"marketCap": 2_000.0}}
 
         with (
-            patch("realtime_oi_dashboard.oi_batch.time.time", return_value=1_700_000_000),
+            patch("realtime_oi_dashboard.oi_row.time.time", return_value=1_700_000_000),
             patch(
-                "realtime_oi_dashboard.oi_batch.time.monotonic",
+                "realtime_oi_dashboard.oi_row.time.monotonic",
                 return_value=123.0,
             ),
         ):
