@@ -9,6 +9,7 @@ from datetime import datetime
 from math import isfinite
 from pathlib import Path
 
+from realtime_oi_dashboard.batch_selector import RoundRobinBatchSelector
 from realtime_oi_dashboard.binance_client import BinanceFuturesClient
 from realtime_oi_dashboard.errors import PollingStopped
 from realtime_oi_dashboard.http import JsonHttpClient
@@ -17,6 +18,7 @@ from realtime_oi_dashboard.market_cap_client import (
     CoinGeckoMarketCapClient,
 )
 from realtime_oi_dashboard.market_data import validate_symbol_refresh
+from realtime_oi_dashboard.market_snapshot import MarketSnapshotProvider
 from realtime_oi_dashboard.oi_batch import OiBatchUpdater
 from realtime_oi_dashboard.poller_health import PollerClock, RecentErrorLog
 from realtime_oi_dashboard.oi_state import OiStateStore
@@ -94,7 +96,7 @@ class OIPoller:
         self.lock = threading.RLock()
         self.save_lock = threading.Lock()
         self.symbols = []
-        self.symbol_index = 0
+        self.batch_selector = RoundRobinBatchSelector(self.batch_size)
         self.last_symbols_refresh = None
         self.symbols_refresh_retry_at = 0.0
         self.pending_symbols_confirmation = None
@@ -122,6 +124,11 @@ class OIPoller:
             self.record_symbol_error,
             cache_seconds=market_cap_cache_seconds,
             store_path=self.market_cap_file,
+        )
+        self.market_snapshot_provider = MarketSnapshotProvider(
+            self.binance,
+            self.market_caps,
+            self._raise_if_stopped,
         )
         self.batch_updater = OiBatchUpdater(
             self.binance,
@@ -217,6 +224,9 @@ class OIPoller:
         with self.lock:
             active_symbols = set(self.symbols)
         return self.market_caps.get(active_symbols)
+
+    def get_market_snapshot(self):
+        return self.market_snapshot_provider.get(self.active_symbols_snapshot())
 
     def active_symbols_snapshot(self):
         with self.lock:
@@ -330,14 +340,15 @@ class OIPoller:
             return True
 
     def next_batch(self):
-        if not self.symbols:
-            return []
+        return self.batch_selector.next_batch(self.symbols)
 
-        batch = []
-        for _ in range(min(self.batch_size, len(self.symbols))):
-            batch.append(self.symbols[self.symbol_index])
-            self.symbol_index = (self.symbol_index + 1) % len(self.symbols)
-        return batch
+    @property
+    def symbol_index(self):
+        return self.batch_selector.position
+
+    @symbol_index.setter
+    def symbol_index(self, value):
+        self.batch_selector.restore(value)
 
     def update_batch(self, executor=None):
         if self.stop_event.is_set():
@@ -350,15 +361,7 @@ class OIPoller:
         if not self.symbols:
             return
 
-        tickers = self.get_market_tickers()
-        if self.stop_event.is_set():
-            return
-        funding_rates = self.get_funding_rates()
-        if self.stop_event.is_set():
-            return
-        market_caps = self.get_market_caps()
-        if self.stop_event.is_set():
-            return
+        market = self.get_market_snapshot()
         batch_start = self.symbol_index
         batch = self.next_batch()
         if not batch:
@@ -366,9 +369,9 @@ class OIPoller:
         try:
             results = self.update_symbols(
                 batch,
-                tickers,
-                funding_rates,
-                market_caps,
+                market.tickers,
+                market.funding_rates,
+                market.market_caps,
                 executor=executor,
             )
         except BaseException:
