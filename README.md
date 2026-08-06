@@ -74,6 +74,33 @@ python main.py --host 0.0.0.0 --port "$PORT"
 
 ## 项目结构
 
+### 启动与数据流
+
+```mermaid
+flowchart TD
+    Entry["main.py"] --> Bootstrap["bootstrap.py<br/>组装并管理生命周期"]
+
+    Bootstrap --> OIService["OI 后台服务"]
+    Bootstrap --> SignalService["Signal Scan 后台服务"]
+    Bootstrap --> Server["server.py<br/>纯 HTTP 层"]
+
+    OIService --> OIPoller["OIPoller"]
+    SignalService --> SignalPoller["SignalScanPoller"]
+
+    OIPoller --> BinanceOI["Binance Futures REST<br/>OI、历史与资金费率"]
+    OIPoller --> CoinGecko["CoinGecko REST<br/>市值与 FDV"]
+    SignalPoller --> BinanceSignal["Binance Futures REST<br/>K 线与 24h 行情"]
+
+    Browser["浏览器"] --> Server
+    Browser --> BinanceWS["Binance Futures WebSocket<br/>实时价格"]
+    Server --> OIAPI["/api/oi"]
+    Server --> SignalAPI["/api/signal-scan"]
+    OIAPI -. "读取状态" .-> OIService
+    SignalAPI -. "读取状态" .-> SignalService
+```
+
+`bootstrap.py` 负责创建、启动和停止两个后台服务；`server.py` 只接收状态提供者并返回 HTTP 响应，不创建或启动 Poller。
+
 ### 目录与职责
 
 ```text
