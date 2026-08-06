@@ -19,12 +19,12 @@ from realtime_oi_dashboard.market_cap_client import (
 from realtime_oi_dashboard.market_snapshot import MarketSnapshotProvider
 from realtime_oi_dashboard.oi_batch import OiBatchUpdater
 from realtime_oi_dashboard.poller_health import PollerClock, RecentErrorLog
+from realtime_oi_dashboard.presenter import DashboardPresenter
 from realtime_oi_dashboard.runtime import DashboardRuntime
 from realtime_oi_dashboard.oi_state import OiStateStore
 from realtime_oi_dashboard.snapshot_store import (
-    LoadedSnapshot,
-    load_snapshot_file,
-    write_snapshot_file,
+    SnapshotRepository,
+    SnapshotService,
 )
 from realtime_oi_dashboard.symbol_refresher import SymbolRefresher
 
@@ -93,7 +93,6 @@ class OIPoller:
         )
         self.stop_event = threading.Event()
         self.lock = threading.RLock()
-        self.save_lock = threading.Lock()
         self.batch_selector = RoundRobinBatchSelector(self.batch_size)
         self.error_log = RecentErrorLog(self.stop_event)
         self._owns_http_client = http_client is None
@@ -131,7 +130,14 @@ class OIPoller:
             self.record_symbol_error,
             workers=self.oi_workers,
         )
-        self.last_snapshot_save = None
+        self.snapshot_service = SnapshotService(
+            SnapshotRepository(self.snapshot_file),
+            lambda: self._snapshot_symbols(),
+            self.binance.export_oi_history_cache,
+            save_interval=self.snapshot_save_interval,
+            iso_now=iso_now,
+            timestamp=timestamp,
+        )
         loaded_cache = self.load_previous_cache()
         self.binance.restore_oi_history_cache(loaded_cache.oi_history)
         self.symbol_refresher = SymbolRefresher(
@@ -154,6 +160,14 @@ class OIPoller:
             clock_skew_seconds=CLOCK_SKEW_SECONDS,
             discontinuity_tolerance_seconds=60,
         )
+        self.presenter = DashboardPresenter(
+            self.oi_state,
+            self.clock,
+            self.recent_errors,
+            self.market_caps.count,
+            schema_version=OI_API_SCHEMA_VERSION,
+            stale_rows_error=STALE_ROWS_ERROR,
+        )
         self.runtime = DashboardRuntime(
             self.update_batch,
             self.market_caps.run_forever,
@@ -167,11 +181,7 @@ class OIPoller:
         )
 
     def load_previous_cache(self):
-        try:
-            return load_snapshot_file(self.snapshot_file)
-        except (OSError, ValueError, RecursionError) as exc:
-            print(f"{timestamp()} failed to load previous OI cache: {exc}")
-            return LoadedSnapshot()
+        return self.snapshot_service.load()
 
     def record_symbol_error(self, symbol, exc):
         if self.error_log.record(symbol, exc):
@@ -181,27 +191,11 @@ class OIPoller:
         return self.error_log.recent()
 
     def save_state(self, *, force=False):
-        with self.save_lock:
-            now = time.monotonic()
-            if (
-                not force
-                and self.snapshot_save_interval > 0
-                and self.last_snapshot_save is not None
-                and now - self.last_snapshot_save < self.snapshot_save_interval
-            ):
-                return False
+        return self.snapshot_service.save(force=force)
 
-            with self.lock:
-                symbols = set(self.symbols or self.known_symbols)
-            oi_history = self.binance.export_oi_history_cache()
-            write_snapshot_file(
-                self.snapshot_file,
-                symbols=symbols,
-                saved_at=iso_now(),
-                oi_history=oi_history,
-            )
-            self.last_snapshot_save = time.monotonic()
-            return True
+    def _snapshot_symbols(self):
+        with self.lock:
+            return set(self.symbols or self.known_symbols)
 
     def get_active_symbols(self):
         return self.binance.get_active_symbols()
@@ -298,7 +292,7 @@ class OIPoller:
             self.error_log.clear()
             self.batch_selector.reset()
             self.symbol_refresher.reset_schedule()
-            self.last_snapshot_save = None
+            self.snapshot_service.reset_schedule()
             self.state = {
                 "saved_at": None,
                 "error": CLOCK_RESET_ERROR,
@@ -431,21 +425,7 @@ class OIPoller:
 
     def get_state(self):
         with self.lock:
-            self.prune_stale_data()
-            state = dict(self.state)
-            state["schema_version"] = OI_API_SCHEMA_VERSION
-            state["active_symbols"] = list(self.symbols)
-            state["total_symbols"] = len(state["active_symbols"])
-            state["market_cap_loaded_symbols"] = self.market_caps.count(
-                set(state["active_symbols"])
-            )
-            rows = self.oi_state.copy_rows()
-            if rows and self.clock.rows_are_stale(time.time()):
-                rows = []
-                state["error"] = STALE_ROWS_ERROR
-            state["rows"] = rows
-            state["recent_errors"] = self.recent_errors()
-            return state
+            return self.presenter.build(self.state, self.symbols)
 
 def _positive_int(name, value):
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
