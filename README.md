@@ -76,6 +76,7 @@ python main.py --host 0.0.0.0 --port "$PORT"
 ```text
 main.py
 realtime_oi_dashboard/
+├── bootstrap.py
 ├── cli.py
 ├── server.py
 ├── web.py
@@ -87,6 +88,7 @@ realtime_oi_dashboard/
 │   └── oi_state.py
 ├── application/
 │   ├── poller.py
+│   ├── background_service.py
 │   ├── symbol_refresher.py
 │   ├── batch_selector.py
 │   ├── market_snapshot.py
@@ -107,8 +109,9 @@ tests/
 主要模块：
 
 - `main.py`：程序入口
+- `bootstrap.py`：组装并管理 HTTP 服务和 OI 后台任务的生命周期
 - `cli.py`：启动参数和环境变量
-- `server.py`：HTTP 服务及程序生命周期
+- `server.py`：只负责 HTTP 路由，并通过注入的状态提供者返回数据
 - `domain/`：不依赖网络和文件系统的市场规则、计算与数据结构
 - `application/`：轮询、批次、状态和 API 展示的业务编排
 - `infrastructure/`：Binance、CoinGecko、HTTP 与 JSON 存储适配器
