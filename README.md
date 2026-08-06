@@ -118,24 +118,6 @@ tests/
 - `static/`：前端页面、JavaScript 和 CSS
 - `tests/`：后端单元测试
 
-核心调用关系：
-
-```text
-server.py
-   ↓
-OIPoller (Facade)
-   ├─ SymbolRefresher
-   ├─ RoundRobinBatchSelector
-   ├─ MarketSnapshotProvider
-   ├─ OIBatchRunner → OIRowBuilder
-   ├─ OIStateStore
-   ├─ SnapshotService → SnapshotRepository
-   ├─ DashboardPresenter
-   └─ DashboardRuntime
-```
-
-这些拆分只调整内部职责；`/api/oi` 字段、轮询顺序、计算方式、
-缓存规则和前端行为保持不变。
 
 ## 测试
 
