@@ -1,6 +1,6 @@
 import unittest
 
-from realtime_oi_dashboard.signal_scan import (
+from realtime_oi_dashboard.domain.signal_scan import (
     build_scan_universe,
     classify_symbol,
     compute_ema,

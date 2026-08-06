@@ -13,7 +13,7 @@ if __package__ in {None, ""}:
 
 from realtime_oi_dashboard.cli import parse_args
 from realtime_oi_dashboard.application.poller import OIPoller, timestamp
-from realtime_oi_dashboard.signal_scan import SignalScanPoller
+from realtime_oi_dashboard.application.signal_scan import SignalScanPoller
 from realtime_oi_dashboard.web import DashboardRequestHandler
 
 

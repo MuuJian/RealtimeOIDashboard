@@ -146,13 +146,13 @@ realtime_oi_dashboard/
 ├── cli.py
 ├── server.py
 ├── web.py
-├── signal_scan.py
 ├── domain/
 │   ├── market_data.py
 │   ├── market_cap.py
 │   ├── oi_history_points.py
 │   ├── oi_row.py
-│   └── oi_state.py
+│   ├── oi_state.py
+│   └── signal_scan.py
 ├── application/
 │   ├── poller.py
 │   ├── symbol_refresher.py
@@ -160,7 +160,8 @@ realtime_oi_dashboard/
 │   ├── market_snapshot.py
 │   ├── oi_batch.py
 │   ├── presenter.py
-│   └── runtime.py
+│   ├── runtime.py
+│   └── signal_scan.py
 ├── infrastructure/
 │   ├── binance_client.py
 │   ├── market_cap_client.py
@@ -179,7 +180,6 @@ tests/
 - `cli.py`：启动参数和环境变量
 - `server.py`：HTTP 服务及程序生命周期
 - `web.py`：静态资源与 JSON 响应的通用 HTTP 处理
-- `signal_scan.py`：独立计算并保存趋势与波动率訊號
 - `domain/`：不依赖网络和文件系统的市场规则、计算与数据结构
 - `application/`：轮询、批次、状态和 API 展示的业务编排
 - `infrastructure/`：Binance、CoinGecko、HTTP 与 JSON 存储适配器

@@ -1,7 +1,7 @@
 import threading
 import unittest
 
-from realtime_oi_dashboard.signal_scan import (
+from realtime_oi_dashboard.application.signal_scan import (
     EXCHANGE_INFO_URL,
     KLINES_URL,
     SCAN_FAILED_ERROR,
