@@ -1,12 +1,23 @@
 # Realtime OI Dashboard
 
-监控 **Binance USDT 永续合约** 的实时数据面板。
+一个用于查看 **Binance USDT 永续合约** 行情、持仓量（OI）变化和市场信号的网页面板。
 
-> 本项目只提供市场数据展示，不构成投资建议。
+> 页面只展示市场数据，不构成投资建议。
+
+## 可以看到什么
+
+- **7D OI 异动信号**：快速查看近 7 天持仓量变化明显的币种。
+- **OI 变化排行**：按持仓价值、市值、成交额及价格或持仓变化筛选和排序。
+- **持仓 / 市值**：比较合约持仓价值与币种市值的比例；无法匹配市值时显示 `-`。
+- **信号扫描**：展示多头趋势、空头趋势和波动率突然升高的币种。
+- **收藏与搜索**：收藏保存在当前浏览器中，也可以按币种名称搜索。
+- **实时价格**：页面打开时持续接收最新合约价格。
 
 ## 安装
 
 需要 Python 3.10 或更高版本。
+
+在项目目录中运行：
 
 ```bash
 python3 -m venv .venv
@@ -15,143 +26,89 @@ python3 -m venv .venv
 
 ## 启动
 
-在仓库根目录运行：
-
 ```bash
 .venv/bin/python main.py
 ```
 
-然后在浏览器打开：
+看到启动提示后，在浏览器打开：
 
 ```text
 http://127.0.0.1:8777
 ```
 
-## 公网部署
+按 `Control + C` 可以停止程序。
 
-程序会自动读取托管平台提供的 `PORT` 环境变量，并监听：
+### 用手机访问本地面板
+
+手机和电脑连接同一个网络，然后这样启动：
+
+```bash
+.venv/bin/python main.py --host 0.0.0.0 --port 8777
+```
+
+再用手机浏览器打开电脑的局域网地址，例如：
 
 ```text
-0.0.0.0:$PORT
+http://192.168.1.6:8777
 ```
 
-常见的启动命令：
+其中 `192.168.1.6` 需要替换成电脑当前的局域网 IP。
 
-```bash
-python main.py
+## 数据如何更新
+
+```mermaid
+flowchart LR
+    Market["合约行情与持仓数据"] --> Service["后台持续整理和计算"]
+    Valuation["币种市值数据"] --> Service
+    Service --> Page["浏览器面板"]
+    LivePrice["实时价格连接"] --> Page
 ```
 
-也可以显式指定：
+- OI、历史变化、成交额、资金费率和信号扫描由后台定时更新。
+- 实时价格在浏览器打开页面后持续更新。
+- 市值数据单独缓存和定时刷新，不会阻塞 OI 更新。
+- 某个币种暂时取不到数据时，会保留其他币种的正常结果。
 
-```bash
-python main.py --host 0.0.0.0 --port "$PORT"
-```
+## 常见问题
 
-## 常用参数
+### 页面能打开，但没有数据
 
-网络受限或 Binance 请求频率过高时，可以降低 OI 请求速度：
+先查看运行窗口是否出现网络错误。数据来源暂时不可用、当前网络无法连接，或请求频率受到限制时，页面可能需要等待下一轮更新。
+
+### 市值显示 `-`
+
+部分新币、特殊合约或代码名称无法和市值数据匹配。这不会影响价格、OI 和成交额的显示。
+
+### 收藏为什么换设备后不见了
+
+收藏保存在浏览器本地，不会自动同步到其他浏览器或设备。清除网站数据也会删除收藏。
+
+### 手机无法访问电脑上的面板
+
+确认手机和电脑在同一个网络、程序使用 `--host 0.0.0.0` 启动，并检查电脑是否允许端口 `8777` 的局域网连接。
+
+## 可选设置
+
+正常使用不需要修改。网络不稳定或请求过快时，可以降低更新速度：
 
 ```bash
 .venv/bin/python main.py \
   --oi-batch-size 10 \
   --oi-batch-delay 2 \
-  --oi-workers 1 \
-  --ticker-cache-seconds 30
+  --oi-workers 1
 ```
 
-主要参数：
+查看全部启动选项：
 
-| 参数 | 作用 | 默认值 |
-|---|---|---:|
-| `--oi-batch-size` | 每批更新的合约数量 | `25` |
-| `--oi-batch-delay` | 每批请求之间的等待秒数 | `1` |
-| `--oi-workers` | 并行 OI 请求数量 | `3` |
-| `--ticker-cache-seconds` | 24 小时行情缓存时间 | `10` |
-| `--funding-cache-seconds` | 资金费率缓存时间 | `3600` |
-| `--market-cap-refresh-seconds` | CoinGecko 市值刷新间隔 | `3600` |
-| `--snapshot-save-interval` | 本地快照保存间隔 | `10` |
-| `--signal-scan-interval` | 訊號掃描刷新间隔 | `60` |
-
-## 项目结构
-
-### 启动与数据流
-
-```mermaid
-flowchart TD
-    Entry["main.py"] --> Bootstrap["bootstrap.py<br/>组装并管理生命周期"]
-
-    Bootstrap --> OIService["OI 后台服务"]
-    Bootstrap --> SignalService["Signal Scan 后台服务"]
-    Bootstrap --> Server["server.py<br/>纯 HTTP 层"]
-
-    OIService --> OIPoller["OIPoller"]
-    SignalService --> SignalPoller["SignalScanPoller"]
-
-    OIPoller --> BinanceOI["Binance Futures REST<br/>OI、历史与资金费率"]
-    OIPoller --> CoinGecko["CoinGecko REST<br/>市值与 FDV"]
-    SignalPoller --> BinanceSignal["Binance Futures REST<br/>K 线与 24h 行情"]
-
-    Browser["浏览器"] --> Server
-    Browser --> BinanceWS["Binance Futures WebSocket<br/>实时价格"]
-    Server --> OIAPI["/api/oi"]
-    Server --> SignalAPI["/api/signal-scan"]
-    OIAPI -. "读取状态" .-> OIService
-    SignalAPI -. "读取状态" .-> SignalService
+```bash
+.venv/bin/python main.py --help
 ```
 
-`bootstrap.py` 负责创建、启动和停止两个后台服务；`server.py` 只接收状态提供者并返回 HTTP 响应，不创建或启动 Poller。
+## 数据来源
 
-### 目录与职责
-
-```text
-main.py
-realtime_oi_dashboard/
-├── bootstrap.py
-├── cli.py
-├── server.py
-├── web.py
-├── domain/
-│   ├── market_data.py
-│   ├── market_cap.py
-│   ├── oi_history_points.py
-│   ├── oi_row.py
-│   ├── oi_state.py
-│   └── signal_scan.py
-├── application/
-│   ├── poller.py
-│   ├── background_service.py
-│   ├── symbol_refresher.py
-│   ├── batch_selector.py
-│   ├── market_snapshot.py
-│   ├── oi_batch.py
-│   ├── presenter.py
-│   ├── runtime.py
-│   └── signal_scan.py
-├── infrastructure/
-│   ├── binance_client.py
-│   ├── market_cap_client.py
-│   ├── market_cap_store.py
-│   ├── snapshot_store.py
-│   └── http.py
-├── index.html
-├── static/
-└── data/
-tests/
-```
-
-主要模块：
-
-- `main.py`：程序入口
-- `bootstrap.py`：组装并管理 HTTP 服务、OI 和 Signal Scan 的生命周期
-- `cli.py`：启动参数和环境变量
-- `server.py`：只负责 HTTP 路由，并通过注入的状态提供者返回数据
-- `web.py`：静态资源与 JSON 响应的通用 HTTP 处理
-- `domain/`：不依赖网络和文件系统的市场规则、计算与数据结构
-- `application/`：轮询、批次、状态和 API 展示的业务编排
-- `infrastructure/`：Binance、CoinGecko、HTTP 与 JSON 存储适配器
-- `static/`：前端页面、JavaScript 和 CSS
-- `tests/`：后端单元测试
-
+- Binance Futures：合约价格、OI、成交额、资金费率和历史行情。
+- CoinGecko：币种市值和完全稀释估值（FDV）。
+- TradingView：图表页面。
 
 ## 测试
 
@@ -161,14 +118,8 @@ tests/
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-运行前端静态检查：
+检查前端文件：
 
 ```bash
 node realtime_oi_dashboard/scripts/check-static-js.mjs
 ```
-
-## 数据来源
-
-- Binance Futures：价格、OI、成交量、资金费率及历史数据
-- CoinGecko：币种市值和 FDV
-- TradingView: 图表
