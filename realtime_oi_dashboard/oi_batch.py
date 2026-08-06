@@ -69,26 +69,6 @@ class OIBatchRunner:
                 build_update,
             )
 
-    def update_symbols(
-        self,
-        batch,
-        tickers,
-        funding_rates,
-        market_caps,
-        *,
-        executor=None,
-        build_update=None,
-    ):
-        """Compatibility wrapper for the pre-refactor method name."""
-        return self.run(
-            batch,
-            tickers,
-            funding_rates,
-            market_caps,
-            executor=executor,
-            build_update=build_update,
-        )
-
     def _update_sequentially(
         self,
         batch,
@@ -201,7 +181,3 @@ class OIBatchRunner:
             measured_wall_time=measured_wall_time,
             measured_at=measured_at,
         )
-
-
-# Compatibility name for callers that imported the pre-refactor class.
-OiBatchUpdater = OIBatchRunner
