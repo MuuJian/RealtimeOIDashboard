@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from math import isfinite
 from pathlib import Path
@@ -20,6 +19,7 @@ from realtime_oi_dashboard.market_cap_client import (
 from realtime_oi_dashboard.market_snapshot import MarketSnapshotProvider
 from realtime_oi_dashboard.oi_batch import OiBatchUpdater
 from realtime_oi_dashboard.poller_health import PollerClock, RecentErrorLog
+from realtime_oi_dashboard.runtime import DashboardRuntime
 from realtime_oi_dashboard.oi_state import OiStateStore
 from realtime_oi_dashboard.snapshot_store import (
     LoadedSnapshot,
@@ -153,6 +153,17 @@ class OIPoller:
             row_max_age_seconds=ROW_MAX_AGE_SECONDS,
             clock_skew_seconds=CLOCK_SKEW_SECONDS,
             discontinuity_tolerance_seconds=60,
+        )
+        self.runtime = DashboardRuntime(
+            self.update_batch,
+            self.market_caps.run_forever,
+            self.active_symbols_snapshot,
+            self._handle_batch_error,
+            self.close,
+            self.stop_event,
+            batch_delay=self.batch_delay,
+            workers=self.oi_workers,
+            timestamp=timestamp,
         )
 
     def load_previous_cache(self):
@@ -395,50 +406,13 @@ class OIPoller:
         )
 
     def run_forever(self):
-        executor = None
-        market_cap_thread = None
-        try:
-            if self.stop_event.is_set():
-                return
-            market_cap_thread = threading.Thread(
-                target=self.market_caps.run_forever,
-                args=(self.active_symbols_snapshot,),
-                name="market-cap-refresher",
-                daemon=True,
-            )
-            market_cap_thread.start()
-            if self.oi_workers > 1:
-                executor = ThreadPoolExecutor(
-                    max_workers=self.oi_workers,
-                    thread_name_prefix="oi-worker",
-                )
-            while not self.stop_event.is_set():
-                try:
-                    self.update_batch(executor=executor)
-                except PollingStopped:
-                    break
-                except Exception as exc:
-                    if self.stop_event.is_set():
-                        break
-                    print(f"{timestamp()} batch update failed: {exc}")
-                    with self.lock:
-                        self.prune_stale_data()
-                        self.state["error"] = str(exc)
+        self.runtime.run_forever()
 
-                self.stop_event.wait(self.batch_delay)
-        finally:
-            try:
-                if executor is not None:
-                    executor.shutdown(wait=True, cancel_futures=True)
-            finally:
-                if market_cap_thread is not None:
-                    market_cap_thread.join(timeout=5)
-                    if market_cap_thread.is_alive():
-                        print(
-                            f"{timestamp()} market-cap refresher did not stop "
-                            "within 5 seconds"
-                        )
-                self._close_after_polling()
+    def _handle_batch_error(self, exc):
+        print(f"{timestamp()} batch update failed: {exc}")
+        with self.lock:
+            self.prune_stale_data()
+            self.state["error"] = str(exc)
 
     def stop(self):
         """Signal cancellation, then wait for any active state commit to finish."""
@@ -454,12 +428,6 @@ class OIPoller:
         finally:
             if self._owns_http_client:
                 self.http_client.close()
-
-    def _close_after_polling(self):
-        try:
-            self.close()
-        except Exception as exc:
-            print(f"{timestamp()} failed to close OI poller: {exc}")
 
     def get_state(self):
         with self.lock:
