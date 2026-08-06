@@ -98,7 +98,14 @@ class DashboardHandler(DashboardRequestHandler):
 def main(argv=None):
     args = parse_args(argv)
     poller = create_poller(args)
-    signal_scan_poller = create_signal_scan_poller(args)
+    try:
+        signal_scan_poller = create_signal_scan_poller(args)
+    except Exception as exc:
+        print(
+            f"{timestamp()} signal scan unavailable; "
+            f"continuing with the OI dashboard: {exc}"
+        )
+        signal_scan_poller = None
     return run_dashboard(args, poller, signal_scan_poller)
 
 
@@ -132,22 +139,20 @@ def run_dashboard(args, poller, signal_scan_poller):
         server.poller = poller
         server.signal_scan_poller = signal_scan_poller
         thread = create_poller_thread(poller)
-        signal_scan_thread = create_signal_scan_thread(signal_scan_poller)
         server.poller_thread = thread
-        server.signal_scan_thread = signal_scan_thread
-        oi_thread_started = False
+        server.signal_scan_thread = None
         try:
             thread.start()
-            oi_thread_started = True
-            signal_scan_thread.start()
-        except RuntimeError as exc:
-            print(f"无法启动轮询线程: {exc}")
-            if oi_thread_started:
-                _stop_poller(poller, thread)
-            else:
-                _close_poller_after_start_failure(poller)
+        except Exception as exc:
+            print(f"无法启动 OI 轮询线程: {exc}")
+            _close_poller_after_start_failure(poller)
             _close_signal_scan_poller_after_start_failure(signal_scan_poller)
             return 1
+
+        signal_scan_thread = _start_optional_signal_scan(
+            server,
+            signal_scan_poller,
+        )
 
         try:
             log_startup(args)
@@ -157,7 +162,8 @@ def run_dashboard(args, poller, signal_scan_poller):
                 print("\nDashboard stopped.")
         finally:
             _stop_poller(poller, thread)
-            _stop_signal_scan_poller(signal_scan_poller, signal_scan_thread)
+            if signal_scan_thread is not None:
+                _stop_signal_scan_poller(signal_scan_poller, signal_scan_thread)
     return 0
 
 
@@ -175,6 +181,27 @@ def create_signal_scan_thread(signal_scan_poller):
         name="signal-scan-poller",
         daemon=True,
     )
+
+
+def _start_optional_signal_scan(server, signal_scan_poller):
+    if signal_scan_poller is None:
+        return None
+
+    try:
+        thread = create_signal_scan_thread(signal_scan_poller)
+        thread.start()
+    except Exception as exc:
+        print(
+            f"{timestamp()} signal scan unavailable; "
+            f"continuing with the OI dashboard: {exc}"
+        )
+        _close_signal_scan_poller_after_start_failure(signal_scan_poller)
+        server.signal_scan_poller = None
+        server.signal_scan_thread = None
+        return None
+
+    server.signal_scan_thread = thread
+    return thread
 
 
 def log_startup(args):
@@ -206,6 +233,8 @@ def _stop_poller(poller, thread):
 
 
 def _close_signal_scan_poller_after_start_failure(signal_scan_poller):
+    if signal_scan_poller is None:
+        return
     try:
         signal_scan_poller.close()
     except Exception as exc:

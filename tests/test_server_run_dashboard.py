@@ -103,10 +103,7 @@ class RunDashboardThreadStartFailureTests(unittest.TestCase):
         # The signal scan poller's HTTP session must still be released.
         self.assertTrue(signal_scan_poller.closed)
 
-    def test_signal_scan_thread_start_failure_stops_already_started_oi_thread(self):
-        """If the OI thread started fine but the signal-scan thread's
-        start() raises, the OI thread DID start, so _stop_poller (stop +
-        join + save_state) is the correct cleanup path for it."""
+    def test_signal_scan_thread_start_failure_keeps_oi_dashboard_running(self):
         poller = FakePoller()
         signal_scan_poller = FakeSignalScanPoller()
         oi_thread = FakeThread(should_fail_start=False)
@@ -116,21 +113,45 @@ class RunDashboardThreadStartFailureTests(unittest.TestCase):
             server_module, "create_poller_thread", return_value=oi_thread
         ), patch.object(
             server_module, "create_signal_scan_thread", return_value=signal_thread
-        ), redirect_stdout(io.StringIO()):
+        ), patch.object(
+            server_module.DashboardHTTPServer, "serve_forever"
+        ) as serve_forever, redirect_stdout(io.StringIO()):
             result = server_module.run_dashboard(FakeArgs(), poller, signal_scan_poller)
 
-        self.assertEqual(result, 1)
+        self.assertEqual(result, 0)
+        serve_forever.assert_called_once_with()
 
-        # The OI thread did start, and _stop_poller should have joined it.
+        # The OI dashboard starts normally and is stopped only during the
+        # regular server shutdown path.
         self.assertTrue(oi_thread.started)
         self.assertEqual(oi_thread.join_calls, [15])
         self.assertTrue(poller.stopped)
         self.assertTrue(poller.saved_state)
-        self.assertFalse(poller.closed)  # _stop_poller path, not the close-only path
+        self.assertFalse(poller.closed)
 
-        # The signal-scan thread never actually started.
+        # The optional signal scanner is disabled and its resources released.
         self.assertFalse(signal_thread.started)
         self.assertTrue(signal_scan_poller.closed)
+
+
+class MainSignalScanFailureTests(unittest.TestCase):
+    def test_signal_scan_creation_failure_still_runs_oi_dashboard(self):
+        args = FakeArgs()
+        poller = FakePoller()
+
+        with patch.object(server_module, "parse_args", return_value=args), patch.object(
+            server_module, "create_poller", return_value=poller
+        ), patch.object(
+            server_module,
+            "create_signal_scan_poller",
+            side_effect=RuntimeError("signal scanner creation failed"),
+        ), patch.object(
+            server_module, "run_dashboard", return_value=0
+        ) as run_dashboard, redirect_stdout(io.StringIO()):
+            result = server_module.main([])
+
+        self.assertEqual(result, 0)
+        run_dashboard.assert_called_once_with(args, poller, None)
 
 
 if __name__ == "__main__":

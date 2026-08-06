@@ -27,6 +27,15 @@
   color: var(--cyan);
 }
 
+#signalScanPage {
+  display: grid;
+  gap: 14px;
+}
+
+#signalScanPage[hidden] {
+  display: none;
+}
+
 .strength-bar {
   display: inline-block;
   height: 8px;
