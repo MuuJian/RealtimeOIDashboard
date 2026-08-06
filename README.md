@@ -17,17 +17,18 @@ python3 -m venv .venv
 
 ```bash
 .venv/bin/python main.py
+```
+```
 http://127.0.0.1:8777
 ```
-
-按 `Control + C` 可以停止程序。
-
 ### 用手机访问本地面板
 
 手机和电脑连接同一个网络，然后这样启动：
 
 ```bash
 .venv/bin/python main.py --host 0.0.0.0 --port 8777
+```
+```
 http://192.168.xxx.xxx:8777
 ```
 
