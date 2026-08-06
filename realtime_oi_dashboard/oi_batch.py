@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from math import isfinite
 
 from realtime_oi_dashboard.errors import PollingStopped
 from realtime_oi_dashboard.oi_row import OIRowBuilder
 
 
-class OiBatchUpdater:
-    """Convert market snapshots into timestamped dashboard row updates."""
+class OIBatchRunner:
+    """Fetch one bounded OI batch and isolate per-symbol failures."""
 
     def __init__(
         self,
@@ -24,7 +26,7 @@ class OiBatchUpdater:
         self.stop_event = stop_event
         self.record_error = record_error
         self.workers = workers
-        self.row_builder = row_builder or OIRowBuilder(client, stop_event)
+        self.row_builder = row_builder or OIRowBuilder()
 
     def update_symbols(
         self,
@@ -145,9 +147,41 @@ class OiBatchUpdater:
         funding_rates,
         market_caps=None,
     ):
-        return self.row_builder.build(
+        if self.stop_event.is_set():
+            return None
+
+        ticker = tickers.get(symbol)
+        if not ticker:
+            raise ValueError("ticker data unavailable")
+        price = ticker["price"]
+
+        current_oi = self.client.get_open_interest(symbol)
+        measured_wall_time = time.time()
+        measured_at = time.monotonic()
+        if self.stop_event.is_set():
+            return None
+
+        # Preserve the previous failure order: reject invalid OI values before
+        # requesting historical OI data.
+        if not isfinite(current_oi * price):
+            raise ValueError("open-interest value is not finite")
+
+        oi_history = self.client.get_oi_history_changes(
             symbol,
-            tickers,
-            funding_rates,
-            market_caps,
+            current_oi,
+            price,
         )
+        return self.row_builder.build(
+            symbol=symbol,
+            ticker=ticker,
+            funding=(funding_rates or {}).get(symbol, {}),
+            market_cap=(market_caps or {}).get(symbol, {}).get("marketCap"),
+            current_oi=current_oi,
+            oi_history=oi_history,
+            measured_wall_time=measured_wall_time,
+            measured_at=measured_at,
+        )
+
+
+# Compatibility name for callers that imported the pre-refactor class.
+OiBatchUpdater = OIBatchRunner

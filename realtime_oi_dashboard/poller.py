@@ -17,7 +17,7 @@ from realtime_oi_dashboard.market_cap_client import (
     CoinGeckoMarketCapClient,
 )
 from realtime_oi_dashboard.market_snapshot import MarketSnapshotProvider
-from realtime_oi_dashboard.oi_batch import OiBatchUpdater
+from realtime_oi_dashboard.oi_batch import OIBatchRunner
 from realtime_oi_dashboard.poller_health import PollerClock, RecentErrorLog
 from realtime_oi_dashboard.presenter import DashboardPresenter
 from realtime_oi_dashboard.runtime import DashboardRuntime
@@ -39,6 +39,8 @@ OI_API_SCHEMA_VERSION = 7
 
 
 class OIPoller:
+    """Facade coordinating the dashboard's focused application services."""
+
     def __init__(
         self,
         batch_size=25,
@@ -124,12 +126,14 @@ class OIPoller:
             self.market_caps,
             self._raise_if_stopped,
         )
-        self.batch_updater = OiBatchUpdater(
+        self.batch_runner = OIBatchRunner(
             self.binance,
             self.stop_event,
             self.record_symbol_error,
             workers=self.oi_workers,
         )
+        # Keep the former attribute available to internal integrations.
+        self.batch_updater = self.batch_runner
         self.snapshot_service = SnapshotService(
             SnapshotRepository(self.snapshot_file),
             lambda: self._snapshot_symbols(),
@@ -372,7 +376,7 @@ class OIPoller:
         self.save_state()
 
     def update_symbols(self, batch, tickers, funding_rates, market_caps, executor=None):
-        return self.batch_updater.update_symbols(
+        return self.batch_runner.update_symbols(
             batch,
             tickers,
             funding_rates,
@@ -382,7 +386,7 @@ class OIPoller:
         )
 
     def _update_symbols_parallel(self, batch, tickers, funding_rates, market_caps, executor):
-        return self.batch_updater._update_in_parallel(
+        return self.batch_runner._update_in_parallel(
             batch,
             tickers,
             funding_rates,
@@ -392,7 +396,7 @@ class OIPoller:
         )
 
     def build_symbol_update(self, symbol, tickers, funding_rates, market_caps=None):
-        return self.batch_updater.build_symbol_update(
+        return self.batch_runner.build_symbol_update(
             symbol,
             tickers,
             funding_rates,
