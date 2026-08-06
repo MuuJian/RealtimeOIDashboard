@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from math import isfinite
 
-from realtime_oi_dashboard.market_data import future_timestamp_ms
-from realtime_oi_dashboard.oi_state import OiUpdate
+from realtime_oi_dashboard.domain.market_data import future_timestamp_ms
+from realtime_oi_dashboard.domain.oi_state import OiUpdate
 
 
 class OIRowBuilder:

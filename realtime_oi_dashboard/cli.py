@@ -6,7 +6,7 @@ import argparse
 import os
 from math import isfinite
 
-from realtime_oi_dashboard.market_cap_client import (
+from realtime_oi_dashboard.infrastructure.market_cap_client import (
     DEFAULT_MARKET_CAP_REFRESH_SECONDS,
 )
 

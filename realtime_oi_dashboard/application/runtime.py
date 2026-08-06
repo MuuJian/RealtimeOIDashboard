@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from realtime_oi_dashboard.errors import PollingStopped
+from realtime_oi_dashboard.domain.errors import PollingStopped
 
 
 class DashboardRuntime:

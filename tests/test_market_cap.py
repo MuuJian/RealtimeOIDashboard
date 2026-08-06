@@ -1,6 +1,6 @@
 import unittest
 
-from realtime_oi_dashboard.market_cap import build_market_cap_map, normalize_ticker
+from realtime_oi_dashboard.domain.market_cap import build_market_cap_map, normalize_ticker
 
 
 class NormalizeTickerTests(unittest.TestCase):

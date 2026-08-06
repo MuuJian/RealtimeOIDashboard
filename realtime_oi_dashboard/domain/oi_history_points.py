@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from math import isfinite
 
-from realtime_oi_dashboard.parsing import optional_float, optional_int
+from realtime_oi_dashboard.domain.parsing import optional_float, optional_int
 
 
 MAX_SAFE_INTEGER = 2**53 - 1

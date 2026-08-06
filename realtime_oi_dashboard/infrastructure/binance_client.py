@@ -6,9 +6,9 @@ import threading
 import time
 from collections.abc import Callable
 
-from realtime_oi_dashboard.errors import PollingStopped
-from realtime_oi_dashboard.market_cache import MarketCache
-from realtime_oi_dashboard.market_data import (
+from realtime_oi_dashboard.domain.errors import PollingStopped
+from realtime_oi_dashboard.infrastructure.market_cache import MarketCache
+from realtime_oi_dashboard.domain.market_data import (
     incomplete_funding_symbols,
     incomplete_market_ticker_symbols,
     merge_funding_cache,
@@ -16,10 +16,10 @@ from realtime_oi_dashboard.market_data import (
     parse_funding_rates,
     parse_market_tickers,
 )
-from realtime_oi_dashboard.oi_history import OiHistoryService
-from realtime_oi_dashboard.http import JsonHttpClient
-from realtime_oi_dashboard.parsing import optional_float
-from realtime_oi_dashboard.symbols import is_valid_binance_symbol
+from realtime_oi_dashboard.application.oi_history import OiHistoryService
+from realtime_oi_dashboard.infrastructure.http import JsonHttpClient
+from realtime_oi_dashboard.domain.parsing import optional_float
+from realtime_oi_dashboard.domain.symbols import is_valid_binance_symbol
 
 
 PARTIAL_RESPONSE_RETRY_SECONDS = 60

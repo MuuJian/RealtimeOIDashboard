@@ -1,8 +1,8 @@
 import threading
 import unittest
 
-from realtime_oi_dashboard.errors import PollingStopped
-from realtime_oi_dashboard.runtime import DashboardRuntime
+from realtime_oi_dashboard.domain.errors import PollingStopped
+from realtime_oi_dashboard.application.runtime import DashboardRuntime
 
 
 class DashboardRuntimeTests(unittest.TestCase):

@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from realtime_oi_dashboard.snapshot_store import (
+from realtime_oi_dashboard.infrastructure.snapshot_store import (
     LoadedSnapshot,
     SnapshotRepository,
     SnapshotService,

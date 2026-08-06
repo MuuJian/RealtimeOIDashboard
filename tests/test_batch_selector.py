@@ -1,6 +1,6 @@
 import unittest
 
-from realtime_oi_dashboard.batch_selector import RoundRobinBatchSelector
+from realtime_oi_dashboard.application.batch_selector import RoundRobinBatchSelector
 
 
 class RoundRobinBatchSelectorTests(unittest.TestCase):

@@ -6,9 +6,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from realtime_oi_dashboard.file_io import write_text_atomic
-from realtime_oi_dashboard.parsing import optional_float, optional_int
-from realtime_oi_dashboard.symbols import is_valid_binance_symbol
+from realtime_oi_dashboard.infrastructure.file_io import write_text_atomic
+from realtime_oi_dashboard.domain.parsing import optional_float, optional_int
+from realtime_oi_dashboard.domain.symbols import is_valid_binance_symbol
 
 
 MARKET_CAP_SCHEMA_VERSION = 1
