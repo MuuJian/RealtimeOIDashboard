@@ -296,14 +296,18 @@ class OIPoller:
             self.error_log.clear()
             self.batch_selector.reset()
             self.symbol_refresher.reset_schedule()
-            self.snapshot_service.reset_schedule()
             self.state = {
                 "saved_at": None,
                 "error": CLOCK_RESET_ERROR,
             }
             self.clock.clear_success()
             self.binance.clear_caches()
-            return True
+
+        # Snapshot saving acquires its own lock before reading dashboard
+        # state. Reset it only after releasing the state lock so concurrent
+        # final saves cannot encounter the opposite lock order.
+        self.snapshot_service.reset_schedule()
+        return True
 
     def next_batch(self):
         return self.batch_selector.next_batch(self.symbols)

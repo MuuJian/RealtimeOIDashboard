@@ -95,11 +95,8 @@ class SnapshotService:
             return True
 
     def reset_schedule(self) -> None:
-        # Keep this assignment lock-free so callers that already hold the
-        # dashboard-state lock cannot invert the save -> state lock order.
-        # A concurrent save may immediately establish a new schedule, which
-        # is also the behavior the former inline timestamp reset allowed.
-        self.last_save = None
+        with self.save_lock:
+            self.last_save = None
 
 
 def load_snapshot_file(path: Path) -> LoadedSnapshot:
