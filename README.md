@@ -80,10 +80,17 @@ realtime_oi_dashboard/
 ├── server.py
 ├── poller.py
 ├── binance_client.py
+├── symbol_refresher.py
+├── batch_selector.py
+├── market_snapshot.py
 ├── market_cap_client.py
 ├── market_cap_store.py
 ├── oi_batch.py
+├── oi_row.py
 ├── oi_state.py
+├── snapshot_store.py
+├── presenter.py
+├── runtime.py
 ├── oi_history.py
 ├── static/
 └── data/
@@ -95,21 +102,47 @@ tests/
 - `main.py`：程序入口
 - `cli.py`：启动参数和环境变量
 - `server.py`：HTTP 服务及程序生命周期
-- `poller.py`：协调 OI、历史数据、市值和缓存
+- `poller.py`：对外兼容的 Facade，协调一次 OI 更新流程
 - `binance_client.py`：请求 Binance Futures 数据
+- `symbol_refresher.py`：刷新并维护有效合约列表
+- `batch_selector.py`：按原顺序循环选择下一批合约
+- `market_snapshot.py`：每轮统一获取 ticker、funding 和市值快照
 - `market_cap_client.py`：后台获取 CoinGecko 市值
 - `market_cap_store.py`：读取和保存市值 JSON
-- `oi_batch.py`：并行处理 OI 批次
+- `oi_batch.py`：以固定线程数请求 OI，并隔离单币失败
+- `oi_row.py`：把已获取的数据组装成稳定的 API row
 - `oi_state.py`：管理页面行和数据更新时间
+- `snapshot_store.py`：原子读写 OI 快照，并控制保存频率
+- `presenter.py`：生成字段稳定的 `/api/oi` 返回数据
+- `runtime.py`：管理轮询线程、后台市值任务和停止流程
 - `static/`：前端页面、JavaScript 和 CSS
 - `tests/`：后端单元测试
+
+核心调用关系：
+
+```text
+server.py
+   ↓
+OIPoller (Facade)
+   ├─ SymbolRefresher
+   ├─ RoundRobinBatchSelector
+   ├─ MarketSnapshotProvider
+   ├─ OIBatchRunner → OIRowBuilder
+   ├─ OIStateStore
+   ├─ SnapshotService → SnapshotRepository
+   ├─ DashboardPresenter
+   └─ DashboardRuntime
+```
+
+这些拆分只调整内部职责；`/api/oi` 字段、轮询顺序、计算方式、
+缓存规则和前端行为保持不变。
 
 ## 测试
 
 运行后端测试：
 
 ```bash
-python3 -m unittest discover -s tests -v
+.venv/bin/python -m unittest discover -s tests -v
 ```
 
 运行前端静态检查：

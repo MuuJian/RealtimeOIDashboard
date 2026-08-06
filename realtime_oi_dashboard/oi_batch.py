@@ -7,20 +7,28 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from math import isfinite
 
 from realtime_oi_dashboard.errors import PollingStopped
-from realtime_oi_dashboard.market_data import future_timestamp_ms
-from realtime_oi_dashboard.oi_state import OiUpdate
+from realtime_oi_dashboard.oi_row import OIRowBuilder
 
 
-class OiBatchUpdater:
-    """Convert market snapshots into timestamped dashboard row updates."""
+class OIBatchRunner:
+    """Fetch one bounded OI batch and isolate per-symbol failures."""
 
-    def __init__(self, client, stop_event, record_error, *, workers: int) -> None:
+    def __init__(
+        self,
+        client,
+        stop_event,
+        record_error,
+        *,
+        workers: int,
+        row_builder=None,
+    ) -> None:
         self.client = client
         self.stop_event = stop_event
         self.record_error = record_error
         self.workers = workers
+        self.row_builder = row_builder or OIRowBuilder()
 
-    def update_symbols(
+    def run(
         self,
         batch,
         tickers,
@@ -60,6 +68,26 @@ class OiBatchUpdater:
                 temporary_executor,
                 build_update,
             )
+
+    def update_symbols(
+        self,
+        batch,
+        tickers,
+        funding_rates,
+        market_caps,
+        *,
+        executor=None,
+        build_update=None,
+    ):
+        """Compatibility wrapper for the pre-refactor method name."""
+        return self.run(
+            batch,
+            tickers,
+            funding_rates,
+            market_caps,
+            executor=executor,
+            build_update=build_update,
+        )
 
     def _update_sequentially(
         self,
@@ -146,7 +174,6 @@ class OiBatchUpdater:
         if not ticker:
             raise ValueError("ticker data unavailable")
         price = ticker["price"]
-        volume_24h = ticker["volume24h"]
 
         current_oi = self.client.get_open_interest(symbol)
         measured_wall_time = time.time()
@@ -154,38 +181,27 @@ class OiBatchUpdater:
         if self.stop_event.is_set():
             return None
 
-        current_oi_value = current_oi * price
-        if not isfinite(current_oi_value):
+        # Preserve the previous failure order: reject invalid OI values before
+        # requesting historical OI data.
+        if not isfinite(current_oi * price):
             raise ValueError("open-interest value is not finite")
 
-        funding = funding_rates.get(symbol, {}) if funding_rates else {}
-        funding_rate_percent = funding.get("fundingRatePercent")
-        now_ms = int(measured_wall_time * 1000)
-        next_funding_time = future_timestamp_ms(
-            funding.get("nextFundingTime"),
-            now_ms,
-        )
         oi_history = self.client.get_oi_history_changes(
             symbol,
             current_oi,
             price,
         )
-        market_cap = (market_caps or {}).get(symbol, {}).get("marketCap")
-
-        return OiUpdate(
+        return self.row_builder.build(
             symbol=symbol,
-            row={
-                "symbol": symbol,
-                "price": price,
-                "volume24h": volume_24h,
-                "currentOi": current_oi,
-                "currentOiValue": current_oi_value,
-                "marketCap": market_cap,
-                "oiUpdatedAt": now_ms,
-                "priceChangePercent": ticker.get("priceChangePercent"),
-                "fundingRatePercent": funding_rate_percent,
-                "nextFundingTime": next_funding_time,
-                **oi_history,
-            },
+            ticker=ticker,
+            funding=(funding_rates or {}).get(symbol, {}),
+            market_cap=(market_caps or {}).get(symbol, {}).get("marketCap"),
+            current_oi=current_oi,
+            oi_history=oi_history,
+            measured_wall_time=measured_wall_time,
             measured_at=measured_at,
         )
+
+
+# Compatibility name for callers that imported the pre-refactor class.
+OiBatchUpdater = OIBatchRunner

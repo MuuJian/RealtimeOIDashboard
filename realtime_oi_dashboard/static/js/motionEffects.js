@@ -2,10 +2,13 @@ const MOTION_MODULE_URL =
   "https://cdn.jsdelivr.net/npm/motion@12.42.2/+esm";
 const VALUE_PULSE_DURATION = 0.38;
 const MAX_REVEALED_ROWS = 20;
+const OPACITY_TRANSFORM = ["opacity", "transform"];
+const TRANSFORM_FILTER = ["transform", "filter"];
+const TRANSFORM_ONLY = ["transform"];
 
 export function createMotionEffects() {
   const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-  const activeAnimations = new Set();
+  const activeAnimations = new Map();
   let motionPromise = null;
   let disposed = false;
   let paused = document.hidden || !document.hasFocus();
@@ -31,12 +34,12 @@ export function createMotionEffects() {
         hero,
         { opacity: [0, 1], y: [22, 0] },
         { duration: 0.72, ease: [0.22, 1, 0.36, 1] },
-      ));
+      ), hero, OPACITY_TRANSFORM);
       track(animate(
         status,
         { opacity: [0, 1], x: [24, 0] },
         { duration: 0.62, delay: 0.08, ease: [0.22, 1, 0.36, 1] },
-      ));
+      ), status, OPACITY_TRANSFORM);
       track(animate(
         metrics,
         { opacity: [0, 1], y: [18, 0], scale: [0.97, 1] },
@@ -45,7 +48,7 @@ export function createMotionEffects() {
           delay: stagger(0.07, { startDelay: 0.14 }),
           ease: [0.22, 1, 0.36, 1],
         },
-      ));
+      ), metrics, OPACITY_TRANSFORM);
       track(animate(
         panels,
         { opacity: [0, 1], y: [24, 0] },
@@ -54,7 +57,7 @@ export function createMotionEffects() {
           delay: stagger(0.09, { startDelay: 0.34 }),
           ease: [0.22, 1, 0.36, 1],
         },
-      ));
+      ), panels, OPACITY_TRANSFORM);
     });
   }
 
@@ -74,7 +77,7 @@ export function createMotionEffects() {
           delay: stagger(0.025),
           ease: [0.22, 1, 0.36, 1],
         },
-      ));
+      ), values, TRANSFORM_FILTER);
     });
   }
 
@@ -91,7 +94,7 @@ export function createMotionEffects() {
           delay: stagger(0.018),
           ease: [0.22, 1, 0.36, 1],
         },
-      ));
+      ), visibleRows, OPACITY_TRANSFORM);
     });
   }
 
@@ -101,7 +104,7 @@ export function createMotionEffects() {
         button,
         { scale: [1, 0.72, 1.22, 1], rotate: [0, -10, 7, 0] },
         { duration: 0.46, ease: [0.22, 1, 0.36, 1] },
-      ));
+      ), button, TRANSFORM_ONLY);
     });
   }
 
@@ -127,14 +130,16 @@ export function createMotionEffects() {
       .catch(() => {});
   }
 
-  function track(animation) {
+  function track(animation, targets, properties) {
     if (!animation) return;
-    activeAnimations.add(animation);
+    const cleanup = () => {
+      if (!activeAnimations.has(animation)) return;
+      activeAnimations.delete(animation);
+      clearMotionStyles(targets, properties);
+    };
+    activeAnimations.set(animation, cleanup);
     if (typeof animation.then === "function") {
-      animation.then(
-        () => activeAnimations.delete(animation),
-        () => activeAnimations.delete(animation),
-      );
+      animation.then(cleanup, cleanup);
     }
   }
 
@@ -143,10 +148,10 @@ export function createMotionEffects() {
   }
 
   function stopAnimations() {
-    for (const animation of activeAnimations) {
+    for (const [animation, cleanup] of [...activeAnimations]) {
       animation.stop?.();
+      cleanup();
     }
-    activeAnimations.clear();
   }
 
   void loadMotion();
@@ -159,4 +164,16 @@ export function createMotionEffects() {
     revealRows,
     setPaused,
   };
+}
+
+function clearMotionStyles(targets, properties) {
+  const elements = targets && typeof targets[Symbol.iterator] === "function"
+    ? targets
+    : [targets];
+  for (const element of elements) {
+    if (!element?.style) continue;
+    for (const property of properties) {
+      element.style.removeProperty(property);
+    }
+  }
 }

@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from realtime_oi_dashboard.errors import PollingStopped
-from realtime_oi_dashboard.oi_batch import OiBatchUpdater
+from realtime_oi_dashboard.oi_batch import OIBatchRunner, OiBatchUpdater
 
 
 class FakeClient:
@@ -15,13 +15,13 @@ class FakeClient:
         return {"oiChangePercent24h": 25.0, "oiChangePercent7d": 50.0}
 
 
-class OiBatchUpdaterTests(unittest.TestCase):
+class OIBatchRunnerTests(unittest.TestCase):
     def setUp(self):
         self.stop_event = threading.Event()
         self.errors = []
 
     def updater(self, workers=1, client=None):
-        return OiBatchUpdater(
+        return OIBatchRunner(
             client or FakeClient(),
             self.stop_event,
             lambda symbol, error: self.errors.append((symbol, str(error))),
@@ -78,6 +78,28 @@ class OiBatchUpdaterTests(unittest.TestCase):
 
         self.assertEqual(results, ["BTCUSDT"])
         self.assertEqual(self.errors, [])
+
+    def test_pre_stopped_runner_does_not_request_symbol_data(self):
+        class TrackingClient(FakeClient):
+            def __init__(self):
+                self.calls = []
+
+            def get_open_interest(self, symbol):
+                self.calls.append(symbol)
+                return super().get_open_interest(symbol)
+
+        client = TrackingClient()
+        self.stop_event.set()
+
+        result = self.updater(client=client).build_symbol_update(
+            "BTCUSDT",
+            {"BTCUSDT": {"price": 10.0, "volume24h": 1.0}},
+            {},
+            {},
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual(client.calls, [])
 
     def test_build_symbol_update_combines_current_and_cached_market_data(self):
         tickers = {
@@ -139,6 +161,21 @@ class OiBatchUpdaterTests(unittest.TestCase):
 
         self.assertEqual(results, [None])
         self.assertEqual(self.errors, [("BTCUSDT", "ticker data unavailable")])
+
+    def test_old_updater_name_remains_compatible(self):
+        self.assertIs(OiBatchUpdater, OIBatchRunner)
+
+    def test_old_update_method_delegates_to_runner(self):
+        runner = self.updater()
+
+        result = runner.update_symbols(
+            ["BTCUSDT"],
+            {"BTCUSDT": {"price": 10.0, "volume24h": 1.0}},
+            {},
+            {},
+        )
+
+        self.assertEqual(result[0].symbol, "BTCUSDT")
 
 
 if __name__ == "__main__":
