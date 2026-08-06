@@ -1,7 +1,7 @@
 import unittest
 
-from realtime_oi_dashboard.errors import PollingStopped
-from realtime_oi_dashboard.market_snapshot import MarketSnapshotProvider
+from realtime_oi_dashboard.domain.errors import PollingStopped
+from realtime_oi_dashboard.application.market_snapshot import MarketSnapshotProvider
 
 
 class StubBinance:

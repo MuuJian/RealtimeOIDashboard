@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from realtime_oi_dashboard.parsing import optional_float
+from realtime_oi_dashboard.domain.parsing import optional_float
 
 # Order matters: try the longest/most specific prefix first. "1INCH" must
 # NOT be caught here — it's a real project ticker, not a multiplier contract.

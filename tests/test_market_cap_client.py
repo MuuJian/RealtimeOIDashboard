@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from realtime_oi_dashboard.errors import PollingStopped
-from realtime_oi_dashboard.market_cap_client import CoinGeckoMarketCapClient
-from realtime_oi_dashboard.market_cap_store import (
+from realtime_oi_dashboard.domain.errors import PollingStopped
+from realtime_oi_dashboard.infrastructure.market_cap_client import CoinGeckoMarketCapClient
+from realtime_oi_dashboard.infrastructure.market_cap_store import (
     load_market_cap_file,
     write_market_cap_file,
 )
@@ -63,7 +63,7 @@ class CoinGeckoMarketCapClientTests(unittest.TestCase):
         )
 
         with patch(
-            "realtime_oi_dashboard.market_cap_client.time.time",
+            "realtime_oi_dashboard.infrastructure.market_cap_client.time.time",
             return_value=20.0,
         ):
             updated = client.refresh_page(2, {"BTCUSDT", "ETHUSDT"})
@@ -262,11 +262,11 @@ class CoinGeckoMarketCapClientTests(unittest.TestCase):
 
         with (
             patch(
-                "realtime_oi_dashboard.market_cap_client.COINGECKO_PAGE_COUNT",
+                "realtime_oi_dashboard.infrastructure.market_cap_client.COINGECKO_PAGE_COUNT",
                 2,
             ),
             patch(
-                "realtime_oi_dashboard.market_cap_client.time.monotonic",
+                "realtime_oi_dashboard.infrastructure.market_cap_client.time.monotonic",
                 side_effect=[100.0, 110.0],
             ),
         ):
@@ -312,11 +312,11 @@ class CoinGeckoMarketCapClientTests(unittest.TestCase):
 
         with (
             patch(
-                "realtime_oi_dashboard.market_cap_client.COINGECKO_PAGE_COUNT",
+                "realtime_oi_dashboard.infrastructure.market_cap_client.COINGECKO_PAGE_COUNT",
                 2,
             ),
             patch(
-                "realtime_oi_dashboard.market_cap_client.time.monotonic",
+                "realtime_oi_dashboard.infrastructure.market_cap_client.time.monotonic",
                 side_effect=[100.0, 110.0],
             ),
         ):

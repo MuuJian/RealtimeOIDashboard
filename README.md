@@ -78,20 +78,27 @@ main.py
 realtime_oi_dashboard/
 ├── cli.py
 ├── server.py
-├── poller.py
-├── binance_client.py
-├── symbol_refresher.py
-├── batch_selector.py
-├── market_snapshot.py
-├── market_cap_client.py
-├── market_cap_store.py
-├── oi_batch.py
-├── oi_row.py
-├── oi_state.py
-├── snapshot_store.py
-├── presenter.py
-├── runtime.py
-├── oi_history.py
+├── web.py
+├── domain/
+│   ├── market_data.py
+│   ├── market_cap.py
+│   ├── oi_history_points.py
+│   ├── oi_row.py
+│   └── oi_state.py
+├── application/
+│   ├── poller.py
+│   ├── symbol_refresher.py
+│   ├── batch_selector.py
+│   ├── market_snapshot.py
+│   ├── oi_batch.py
+│   ├── presenter.py
+│   └── runtime.py
+├── infrastructure/
+│   ├── binance_client.py
+│   ├── market_cap_client.py
+│   ├── market_cap_store.py
+│   ├── snapshot_store.py
+│   └── http.py
 ├── static/
 └── data/
 tests/
@@ -102,19 +109,10 @@ tests/
 - `main.py`：程序入口
 - `cli.py`：启动参数和环境变量
 - `server.py`：HTTP 服务及程序生命周期
-- `poller.py`：对外兼容的 Facade，协调一次 OI 更新流程
-- `binance_client.py`：请求 Binance Futures 数据
-- `symbol_refresher.py`：刷新并维护有效合约列表
-- `batch_selector.py`：按原顺序循环选择下一批合约
-- `market_snapshot.py`：每轮统一获取 ticker、funding 和市值快照
-- `market_cap_client.py`：后台获取 CoinGecko 市值
-- `market_cap_store.py`：读取和保存市值 JSON
-- `oi_batch.py`：以固定线程数请求 OI，并隔离单币失败
-- `oi_row.py`：把已获取的数据组装成稳定的 API row
-- `oi_state.py`：管理页面行和数据更新时间
-- `snapshot_store.py`：原子读写 OI 快照，并控制保存频率
-- `presenter.py`：生成字段稳定的 `/api/oi` 返回数据
-- `runtime.py`：管理轮询线程、后台市值任务和停止流程
+- `domain/`：不依赖网络和文件系统的市场规则、计算与数据结构
+- `application/`：轮询、批次、状态和 API 展示的业务编排
+- `infrastructure/`：Binance、CoinGecko、HTTP 与 JSON 存储适配器
+- `web.py`：静态资源和 JSON 响应的基础 HTTP 适配器
 - `static/`：前端页面、JavaScript 和 CSS
 - `tests/`：后端单元测试
 

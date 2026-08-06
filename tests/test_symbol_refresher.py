@@ -1,7 +1,7 @@
 import threading
 import unittest
 
-from realtime_oi_dashboard.symbol_refresher import SymbolRefresher
+from realtime_oi_dashboard.application.symbol_refresher import SymbolRefresher
 
 
 class FakeClock:

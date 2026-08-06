@@ -8,17 +8,17 @@ from collections.abc import Callable
 from math import isfinite
 from pathlib import Path
 
-from realtime_oi_dashboard.errors import PollingStopped
-from realtime_oi_dashboard.market_cap import (
+from realtime_oi_dashboard.domain.errors import PollingStopped
+from realtime_oi_dashboard.domain.market_cap import (
     build_market_cap_map,
     market_value_from_entry,
     normalize_ticker,
 )
-from realtime_oi_dashboard.market_cap_store import (
+from realtime_oi_dashboard.infrastructure.market_cap_store import (
     load_market_cap_file,
     write_market_cap_file,
 )
-from realtime_oi_dashboard.parsing import optional_int
+from realtime_oi_dashboard.domain.parsing import optional_int
 
 
 COINGECKO_MARKETS_URL = "https://api.coingecko.com/api/v3/coins/markets"

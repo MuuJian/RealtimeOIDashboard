@@ -5,8 +5,8 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-from realtime_oi_dashboard.errors import PollingStopped
-from realtime_oi_dashboard.market_data import validate_symbol_refresh
+from realtime_oi_dashboard.domain.errors import PollingStopped
+from realtime_oi_dashboard.domain.market_data import validate_symbol_refresh
 
 
 SYMBOL_REFRESH_RETRY_SECONDS = 60

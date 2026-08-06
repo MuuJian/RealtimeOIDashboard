@@ -7,15 +7,15 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from realtime_oi_dashboard.errors import PollingStopped
-from realtime_oi_dashboard.oi_history_cache import (
+from realtime_oi_dashboard.domain.errors import PollingStopped
+from realtime_oi_dashboard.infrastructure.oi_history_cache import (
     HistoryPoint,
     OiHistoryCacheEntry,
     export_history_cache,
     remaining_valid_seconds,
     restore_history_cache,
 )
-from realtime_oi_dashboard.oi_history_points import (
+from realtime_oi_dashboard.domain.oi_history_points import (
     HOUR_MS,
     calculate_change_percent,
     history_open_interest_point,

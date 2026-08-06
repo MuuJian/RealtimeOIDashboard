@@ -6,8 +6,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from math import isfinite
 
-from realtime_oi_dashboard.errors import PollingStopped
-from realtime_oi_dashboard.oi_row import OIRowBuilder
+from realtime_oi_dashboard.domain.errors import PollingStopped
+from realtime_oi_dashboard.domain.oi_row import OIRowBuilder
 
 
 class OIBatchRunner:

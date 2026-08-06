@@ -12,7 +12,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from realtime_oi_dashboard.cli import parse_args
-from realtime_oi_dashboard.poller import OIPoller, timestamp
+from realtime_oi_dashboard.application.poller import OIPoller, timestamp
 from realtime_oi_dashboard.web import DashboardRequestHandler
 
 
