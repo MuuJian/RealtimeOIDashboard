@@ -46,7 +46,7 @@ def run_dashboard(args, oi_service):
         )
     except OSError as exc:
         print(f"无法启动面板: {exc}")
-        _close_after_start_failure(oi_service)
+        _close_after_start_failure(oi_service, "OI poller")
         return 1
 
     with server:
@@ -54,7 +54,7 @@ def run_dashboard(args, oi_service):
             oi_service.start()
         except Exception as exc:
             print(f"无法启动 OI 轮询线程: {exc}")
-            _close_after_start_failure(oi_service)
+            _close_after_start_failure(oi_service, "OI poller")
             return 1
 
         try:
@@ -77,11 +77,13 @@ def log_startup(args):
     )
 
 
-def _close_after_start_failure(service):
+def _close_after_start_failure(service, label):
+    if service is None:
+        return
     try:
         service.close()
     except Exception as exc:
-        print(f"{timestamp()} failed to close OI poller: {exc}")
+        print(f"{timestamp()} failed to close {label}: {exc}")
 
 
 def _stop_oi_service(service):
