@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from realtime_oi_dashboard.errors import PollingStopped
-from realtime_oi_dashboard.oi_batch import OIBatchRunner, OiBatchUpdater
+from realtime_oi_dashboard.oi_batch import OIBatchRunner
 
 
 class FakeClient:
@@ -34,7 +34,7 @@ class OIBatchRunnerTests(unittest.TestCase):
                 raise ValueError("failed")
             return symbol.lower()
 
-        results = self.updater().update_symbols(
+        results = self.updater().run(
             ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
             {},
             {},
@@ -52,7 +52,7 @@ class OIBatchRunnerTests(unittest.TestCase):
             time.sleep(delays[symbol])
             return symbol.lower()
 
-        results = self.updater(workers=3).update_symbols(
+        results = self.updater(workers=3).run(
             ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
             {},
             {},
@@ -68,7 +68,7 @@ class OIBatchRunnerTests(unittest.TestCase):
                 raise PollingStopped()
             return symbol
 
-        results = self.updater().update_symbols(
+        results = self.updater().run(
             ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
             {},
             {},
@@ -152,7 +152,7 @@ class OIBatchRunnerTests(unittest.TestCase):
         )
 
     def test_missing_ticker_is_recorded_as_symbol_failure(self):
-        results = self.updater().update_symbols(
+        results = self.updater().run(
             ["BTCUSDT"],
             {},
             {},
@@ -161,22 +161,6 @@ class OIBatchRunnerTests(unittest.TestCase):
 
         self.assertEqual(results, [None])
         self.assertEqual(self.errors, [("BTCUSDT", "ticker data unavailable")])
-
-    def test_old_updater_name_remains_compatible(self):
-        self.assertIs(OiBatchUpdater, OIBatchRunner)
-
-    def test_old_update_method_delegates_to_runner(self):
-        runner = self.updater()
-
-        result = runner.update_symbols(
-            ["BTCUSDT"],
-            {"BTCUSDT": {"price": 10.0, "volume24h": 1.0}},
-            {},
-            {},
-        )
-
-        self.assertEqual(result[0].symbol, "BTCUSDT")
-
 
 if __name__ == "__main__":
     unittest.main()

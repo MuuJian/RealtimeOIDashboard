@@ -5,21 +5,14 @@ from __future__ import annotations
 import time
 
 from realtime_oi_dashboard.parsing import optional_float, optional_int
-from realtime_oi_dashboard.oi_history_points import (
-    HISTORY_BASELINE_TOLERANCE_MS,
-    HOUR_MS,
-    MAX_SAFE_INTEGER,
-    calculate_change_percent,
-    history_open_interest_point,
-    history_point_price,
-    history_point_value,
-    parse_oi_history_points,
-)
+from realtime_oi_dashboard.oi_history_points import MAX_SAFE_INTEGER
 from realtime_oi_dashboard.symbols import is_valid_binance_symbol
 
 
 MIN_EXPECTED_ACTIVE_SYMBOLS = 20
 MAX_SYMBOL_REMOVAL_FRACTION = 0.2
+
+
 def parse_market_tickers(response, active_symbols):
     if not isinstance(response, list):
         raise ValueError("unexpected ticker response")

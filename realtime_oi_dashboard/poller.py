@@ -132,8 +132,6 @@ class OIPoller:
             self.record_symbol_error,
             workers=self.oi_workers,
         )
-        # Keep the former attribute available to internal integrations.
-        self.batch_updater = self.batch_runner
         self.snapshot_service = SnapshotService(
             SnapshotRepository(self.snapshot_file),
             lambda: self._snapshot_symbols(),
@@ -221,36 +219,11 @@ class OIPoller:
             attempts=attempts,
         )
 
-    def get_market_tickers(self):
-        with self.lock:
-            active_symbols = set(self.symbols)
-        return self.binance.get_market_tickers(active_symbols)
-
-    def get_funding_rates(self):
-        with self.lock:
-            active_symbols = set(self.symbols)
-        return self.binance.get_funding_rates(active_symbols)
-
-    def get_market_caps(self):
-        with self.lock:
-            active_symbols = set(self.symbols)
-        return self.market_caps.get(active_symbols)
-
     def get_market_snapshot(self):
         return self.market_snapshot_provider.get(self.active_symbols_snapshot())
 
     def active_symbols_snapshot(self):
         return self.symbol_refresher.active_snapshot()
-
-    def get_open_interest(self, symbol):
-        return self.binance.get_open_interest(symbol)
-
-    def get_oi_history_changes(self, symbol, current_oi, current_price):
-        return self.binance.get_oi_history_changes(
-            symbol,
-            current_oi,
-            current_price,
-        )
 
     def refresh_symbols_if_needed(self):
         return self.symbol_refresher.refresh_if_due(
@@ -387,16 +360,6 @@ class OIPoller:
             market_caps,
             executor=executor,
             build_update=self.build_symbol_update,
-        )
-
-    def _update_symbols_parallel(self, batch, tickers, funding_rates, market_caps, executor):
-        return self.batch_runner._update_in_parallel(
-            batch,
-            tickers,
-            funding_rates,
-            market_caps,
-            executor,
-            self.build_symbol_update,
         )
 
     def build_symbol_update(self, symbol, tickers, funding_rates, market_caps=None):

@@ -11,11 +11,7 @@ from urllib.parse import urlparse
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from realtime_oi_dashboard.cli import (
-    DEFAULT_HOST as HOST,
-    DEFAULT_PORT as PORT,
-    parse_args,
-)
+from realtime_oi_dashboard.cli import parse_args
 from realtime_oi_dashboard.poller import OIPoller, timestamp
 from realtime_oi_dashboard.signal_scan import SignalScanPoller
 from realtime_oi_dashboard.web import DashboardRequestHandler
