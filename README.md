@@ -67,12 +67,6 @@ http://192.168.xxx.xxx:8777
 .venv/bin/python main.py --help
 ```
 
-## 数据来源
-
-- Binance Futures：合约价格、OI、成交额、资金费率和历史行情。
-- CoinGecko：币种市值和完全稀释估值（FDV）。
-- TradingView：图表页面。
-
 ## 测试
 
 运行后端测试：
@@ -86,4 +80,12 @@ http://192.168.xxx.xxx:8777
 ```bash
 node realtime_oi_dashboard/scripts/check-static-js.mjs
 ```
+
+
+
+## 数据来源
+
+- Binance Futures：合约价格、OI、成交额、资金费率和历史行情。
+- CoinGecko：币种市值和完全稀释估值（FDV）。
+- TradingView：图表页面。
 
