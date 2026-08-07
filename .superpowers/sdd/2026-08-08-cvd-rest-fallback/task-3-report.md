@@ -44,8 +44,7 @@ Checked 38 reachable dashboard JavaScript files and 8 stylesheets.
 
 ## Commit
 
-`Document CVD REST fallback behavior` (the final hash is reported after the
-commit).
+`9817f5f Document CVD REST fallback behavior`
 
 ## Concerns
 
@@ -54,3 +53,10 @@ commit).
 - The static JavaScript check required sandbox escalation because Node could
   not `lstat` the parent user directory within the sandbox; it passed when
   rerun unchanged outside it.
+
+## Fix Round 1: commit reference
+
+- Replaced the post-commit placeholder with the exact Task 3 documentation
+  commit hash: `9817f5f`.
+- Focused verification: read the report and confirmed its Commit section is
+  exactly `` `9817f5f Document CVD REST fallback behavior` ``.
