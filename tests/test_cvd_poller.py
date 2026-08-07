@@ -1,20 +1,89 @@
 import json
 import unittest
 
+import websocket
+
 from realtime_oi_dashboard.application.cvd import CvdPoller
 
 
 class FakeHttpClient:
-    def __init__(self, tickers, exchange_info):
+    def __init__(self, tickers, exchange_info, klines_by_symbol=None):
         self.tickers = tickers
         self.exchange_info = exchange_info
+        self.klines_by_symbol = klines_by_symbol or {}
+        self.kline_requests = 0
 
     def get_json(self, url, **_kwargs):
         if url.endswith("ticker/24hr"):
             return self.tickers
         if url.endswith("exchangeInfo"):
             return self.exchange_info
+        if url.endswith("klines"):
+            self.kline_requests += 1
+            symbol = _kwargs["params"]["symbol"]
+            response = self.klines_by_symbol[symbol]
+            if isinstance(response, Exception):
+                raise response
+            return response
         raise AssertionError(f"unexpected URL: {url}")
+
+
+class ManualMonotonicClock:
+    def __init__(self):
+        self.value = 0
+
+    def __call__(self):
+        return self.value
+
+    def advance(self, seconds):
+        self.value += seconds
+
+
+class TimeoutThenLiveWebSocket:
+    def __init__(self, clock, stop_event):
+        self.clock = clock
+        self.stop_event = stop_event
+        self.calls = 0
+
+    def recv(self):
+        self.calls += 1
+        if self.calls == 1:
+            self.clock.advance(30)
+            raise websocket.WebSocketTimeoutException()
+        if self.calls == 2:
+            self.clock.advance(29)
+            raise websocket.WebSocketTimeoutException()
+        if self.calls == 3:
+            self.clock.advance(1)
+            return json.dumps(
+                {
+                    "data": {
+                        "s": "BTCUSDT",
+                        "E": 900_000,
+                        "p": "100",
+                        "q": "2",
+                        "m": False,
+                    }
+                }
+            )
+        self.stop_event.set()
+        raise websocket.WebSocketTimeoutException()
+
+    def close(self):
+        pass
+
+
+class RaceInjectingPoller(CvdPoller):
+    def __init__(self, *, live_message, **kwargs):
+        super().__init__(**kwargs)
+        self.live_message = live_message
+        self.live_injected = False
+
+    def refresh_rest_fallback(self, *args, **kwargs):
+        if not self.live_injected:
+            self.live_injected = True
+            self.handle_message(self.live_message)
+        return super().refresh_rest_fallback(*args, **kwargs)
 
 
 class CvdPollerTests(unittest.TestCase):
@@ -88,6 +157,335 @@ class CvdPollerTests(unittest.TestCase):
 
         self.assertFalse(accepted)
         self.assertEqual(len(poller.get_state()["tracked_symbols"]), 30)
+
+    def test_rest_fallback_rebuilds_signed_cvd_from_fifteen_kline_rows(self):
+        klines = [
+            [
+                index * 60_000,
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                (index + 1) * 60_000 - 1,
+                "100",
+                0,
+                "0",
+                "60",
+                "0",
+            ]
+            for index in range(15)
+        ]
+        poller = CvdPoller(
+            http_client=FakeHttpClient(
+                self.tickers, self.exchange_info, {"BTCUSDT": klines}
+            ),
+            max_symbols=1,
+            now_ms=lambda: 900_000,
+        )
+        poller.refresh_universe()
+
+        refreshed = poller.refresh_rest_fallback()
+
+        self.assertTrue(refreshed)
+        row = poller.get_state()["rows"]["BTCUSDT"]
+        self.assertEqual(row["cvd15m"], 300)
+        self.assertEqual(row["cvd15mRatio"], 0.2)
+        self.assertEqual(row["cvdUpdatedAt"], 899_999)
+        self.assertEqual(row["cvdStatus"], "buying")
+
+    def test_invalid_kline_batch_does_not_publish_partial_symbol_cvd(self):
+        valid_klines = [
+            [
+                index * 60_000,
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                (index + 1) * 60_000 - 1,
+                "100",
+                0,
+                "0",
+                "60",
+                "0",
+            ]
+            for index in range(15)
+        ]
+        invalid_klines = [list(kline) for kline in valid_klines]
+        invalid_klines[-1][7] = "not-a-number"
+        poller = CvdPoller(
+            http_client=FakeHttpClient(
+                self.tickers,
+                self.exchange_info,
+                {"BTCUSDT": valid_klines, "COIN0USDT": invalid_klines},
+            ),
+            max_symbols=2,
+            now_ms=lambda: 900_000,
+        )
+        poller.refresh_universe()
+
+        refreshed = poller.refresh_rest_fallback()
+
+        self.assertTrue(refreshed)
+        failed_row = poller.get_state()["rows"]["COIN0USDT"]
+        self.assertEqual(failed_row, {"cvdStatus": "unavailable"})
+        valid_row = poller.get_state()["rows"]["BTCUSDT"]
+        self.assertEqual(valid_row["cvd15m"], 300)
+        self.assertEqual(valid_row["cvdStatus"], "buying")
+
+    def test_in_progress_kline_does_not_block_resumed_live_trade(self):
+        klines = [
+            [
+                index * 60_000,
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                (index + 1) * 60_000 - 1,
+                "100",
+                0,
+                "0",
+                "60",
+                "0",
+            ]
+            for index in range(15)
+        ]
+        poller = CvdPoller(
+            http_client=FakeHttpClient(
+                self.tickers, self.exchange_info, {"BTCUSDT": klines}
+            ),
+            max_symbols=1,
+            now_ms=lambda: 850_000,
+        )
+        poller.refresh_universe()
+        poller.refresh_rest_fallback()
+
+        accepted = poller.handle_message(
+            json.dumps(
+                {
+                    "data": {
+                        "s": "BTCUSDT",
+                        "E": 850_000,
+                        "p": "100",
+                        "q": "2",
+                        "m": False,
+                    }
+                }
+            )
+        )
+
+        self.assertTrue(accepted)
+        row = poller.get_state()["rows"]["BTCUSDT"]
+        self.assertEqual(row["cvdUpdatedAt"], 850_000)
+        self.assertEqual(row["cvd15m"], 500)
+
+    def test_failed_rest_fallback_marks_cvd_as_unavailable(self):
+        poller = CvdPoller(
+            http_client=FakeHttpClient(
+                self.tickers,
+                self.exchange_info,
+                {"BTCUSDT": ConnectionError("REST unavailable")},
+            ),
+            max_symbols=1,
+            now_ms=lambda: 900_000,
+        )
+        poller.refresh_universe()
+
+        refreshed = poller.refresh_rest_fallback()
+
+        self.assertFalse(refreshed)
+        self.assertEqual(poller.get_state()["error"], "CVD unavailable")
+
+    def test_failed_rest_fallback_hides_older_live_history_as_unavailable(self):
+        poller = CvdPoller(
+            http_client=FakeHttpClient(
+                self.tickers,
+                self.exchange_info,
+                {"BTCUSDT": ConnectionError("REST unavailable")},
+            ),
+            max_symbols=1,
+            now_ms=lambda: 900_000,
+        )
+        poller.refresh_universe()
+        accepted = poller.handle_message(
+            json.dumps(
+                {
+                    "data": {
+                        "s": "BTCUSDT",
+                        "E": 100,
+                        "p": "100",
+                        "q": "2",
+                        "m": False,
+                    }
+                }
+            )
+        )
+        self.assertTrue(accepted)
+
+        refreshed = poller.refresh_rest_fallback()
+
+        self.assertFalse(refreshed)
+        state = poller.get_state()
+        self.assertEqual(state["error"], "CVD unavailable")
+        self.assertEqual(
+            state["rows"]["BTCUSDT"], {"cvdStatus": "unavailable"}
+        )
+
+    def test_refresh_universe_does_not_clear_cvd_unavailable_state(self):
+        poller = CvdPoller(
+            http_client=FakeHttpClient(
+                self.tickers,
+                self.exchange_info,
+                {"BTCUSDT": ConnectionError("REST unavailable")},
+            ),
+            max_symbols=1,
+            now_ms=lambda: 900_000,
+        )
+        poller.refresh_universe()
+        poller.refresh_rest_fallback()
+
+        poller.refresh_universe()
+
+        state = poller.get_state()
+        self.assertEqual(state["error"], "CVD unavailable")
+        self.assertEqual(
+            state["rows"]["BTCUSDT"], {"cvdStatus": "unavailable"}
+        )
+
+    def test_watchdog_uses_rest_once_after_30_seconds_then_returns_to_live_cvd(self):
+        klines = [
+            [
+                index * 60_000,
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                (index + 1) * 60_000 - 1,
+                "100",
+                0,
+                "0",
+                "60",
+                "0",
+            ]
+            for index in range(15)
+        ]
+        clock = ManualMonotonicClock()
+        http_client = FakeHttpClient(
+            self.tickers, self.exchange_info, {"BTCUSDT": klines}
+        )
+        poller = CvdPoller(
+            http_client=http_client,
+            websocket_factory=lambda *_args, **_kwargs: TimeoutThenLiveWebSocket(
+                clock, poller.stop_event
+            ),
+            max_symbols=1,
+            interval_seconds=120,
+            now_ms=lambda: 900_001,
+            monotonic=clock,
+        )
+
+        poller.refresh_universe()
+        poller._consume_stream()
+
+        row = poller.get_state()["rows"]["BTCUSDT"]
+        self.assertEqual(http_client.kline_requests, 1)
+        self.assertEqual(row["cvd15m"], 500)
+        self.assertEqual(row["cvdUpdatedAt"], 900_000)
+        self.assertEqual(poller.get_state()["error"], None)
+
+    def test_watchdog_does_not_publish_rest_when_live_trade_arrives_after_trigger(self):
+        klines = [
+            [
+                index * 60_000,
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                (index + 1) * 60_000 - 1,
+                "100",
+                0,
+                "0",
+                "60",
+                "0",
+            ]
+            for index in range(15)
+        ]
+        clock = ManualMonotonicClock()
+        http_client = FakeHttpClient(
+            self.tickers, self.exchange_info, {"BTCUSDT": klines}
+        )
+        poller = RaceInjectingPoller(
+            live_message=json.dumps(
+                {
+                    "data": {
+                        "s": "BTCUSDT",
+                        "E": 900_000,
+                        "p": "100",
+                        "q": "2",
+                        "m": False,
+                    }
+                }
+            ),
+            http_client=http_client,
+            max_symbols=1,
+            now_ms=lambda: 900_001,
+            monotonic=clock,
+        )
+        poller.refresh_universe()
+        clock.advance(30)
+
+        poller._refresh_rest_if_silent()
+
+        row = poller.get_state()["rows"]["BTCUSDT"]
+        self.assertEqual(http_client.kline_requests, 1)
+        self.assertEqual(row["cvd15m"], 200)
+        self.assertEqual(row["cvdStatus"], "collecting")
+        self.assertEqual(poller.get_state()["error"], None)
+
+    def test_watchdog_repeats_rest_at_the_configured_interval_while_silent(self):
+        klines = [
+            [
+                index * 60_000,
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                (index + 1) * 60_000 - 1,
+                "100",
+                0,
+                "0",
+                "60",
+                "0",
+            ]
+            for index in range(15)
+        ]
+        clock = ManualMonotonicClock()
+        http_client = FakeHttpClient(
+            self.tickers, self.exchange_info, {"BTCUSDT": klines}
+        )
+        poller = CvdPoller(
+            http_client=http_client,
+            max_symbols=1,
+            interval_seconds=10,
+            now_ms=lambda: 900_001,
+            monotonic=clock,
+        )
+        poller.refresh_universe()
+        clock.advance(30)
+
+        poller._refresh_rest_if_silent()
+        clock.advance(9)
+        poller._refresh_rest_if_silent()
+        self.assertEqual(http_client.kline_requests, 1)
+        clock.advance(1)
+        poller._refresh_rest_if_silent()
+
+        self.assertEqual(http_client.kline_requests, 2)
 
 
 if __name__ == "__main__":

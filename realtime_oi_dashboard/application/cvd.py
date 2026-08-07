@@ -16,7 +16,9 @@ from realtime_oi_dashboard.infrastructure.http import JsonHttpClient
 FAPI_BASE_URL = "https://fapi.binance.com"
 TICKER_URL = f"{FAPI_BASE_URL}/fapi/v1/ticker/24hr"
 EXCHANGE_INFO_URL = f"{FAPI_BASE_URL}/fapi/v1/exchangeInfo"
+KLINES_URL = f"{FAPI_BASE_URL}/fapi/v1/klines"
 STREAM_BASE_URL = "wss://fstream.binance.com/stream?streams="
+NO_DATA_WATCHDOG_SECONDS = 30
 
 
 class CvdPoller:
@@ -48,6 +50,8 @@ class CvdPoller:
         self.websocket_url = None
         self.connection = None
         self.next_refresh_at = 0.0
+        self.next_rest_fallback_at = 0.0
+        self.live_trade_version = 0
         self.error = None
 
     def refresh_universe(self):
@@ -57,11 +61,15 @@ class CvdPoller:
             EXCHANGE_INFO_URL, timeout=12, attempts=3
         )
         symbols = select_cvd_symbols(tickers, exchange_info, self.max_symbols)
+        current_monotonic = self.monotonic()
         with self.lock:
             self.window.set_tracked_symbols(symbols, now_ms=self.now_ms())
             self.websocket_url = _combined_stream_url(symbols)
-            self.next_refresh_at = self.monotonic() + self.interval_seconds
-            self.error = None
+            self.next_refresh_at = current_monotonic + self.interval_seconds
+            if self.next_rest_fallback_at == 0.0:
+                self.next_rest_fallback_at = (
+                    current_monotonic + NO_DATA_WATCHDOG_SECONDS
+                )
         return symbols
 
     def handle_message(self, message):
@@ -84,8 +92,56 @@ class CvdPoller:
                 buyer_is_maker=buyer_is_maker,
             )
             if accepted:
+                accepted_at = self.monotonic()
+                self.live_trade_version += 1
+                self.next_rest_fallback_at = (
+                    accepted_at + NO_DATA_WATCHDOG_SECONDS
+                )
                 self.error = None
             return accepted
+
+    def refresh_rest_fallback(self, expected_live_trade_version=None):
+        """Rebuild the rolling CVD window from one-minute REST klines."""
+        with self.lock:
+            symbols = set(self.window.tracked_symbols)
+            if expected_live_trade_version is None:
+                expected_live_trade_version = self.live_trade_version
+        fallback_now_ms = self.now_ms()
+        rebuilt_window = RollingCvdWindow(now_ms=fallback_now_ms)
+        rebuilt_window.set_tracked_symbols(symbols, now_ms=fallback_now_ms)
+        populated_symbols = set()
+        for symbol in symbols:
+            try:
+                klines = self.http_client.get_json(
+                    KLINES_URL,
+                    params={"symbol": symbol, "interval": "1m", "limit": 15},
+                    timeout=12,
+                    attempts=3,
+                )
+                if not _add_kline_cvd_events(
+                    rebuilt_window,
+                    symbol,
+                    klines,
+                    now_ms=fallback_now_ms,
+                ):
+                    continue
+            except Exception:
+                continue
+            rebuilt_window.coverage_started_at[symbol] = (
+                fallback_now_ms - rebuilt_window.coverage_ms
+            )
+            populated_symbols.add(symbol)
+        rebuilt_window.set_unavailable_symbols(symbols - populated_symbols)
+        populated = bool(populated_symbols)
+        with self.lock:
+            if self.live_trade_version != expected_live_trade_version:
+                return populated
+            self.window = rebuilt_window
+            if populated:
+                self.error = None
+            else:
+                self.error = "CVD unavailable"
+        return populated
 
     def get_state(self):
         with self.lock:
@@ -123,6 +179,7 @@ class CvdPoller:
         while not self.stop_event.is_set():
             if self.monotonic() >= self.next_refresh_at:
                 return
+            self._refresh_rest_if_silent()
             try:
                 message = connection.recv()
             except websocket.WebSocketTimeoutException:
@@ -130,6 +187,16 @@ class CvdPoller:
             if message is None:
                 raise ConnectionError("CVD WebSocket closed")
             self.handle_message(message)
+
+    def _refresh_rest_if_silent(self):
+        with self.lock:
+            if self.monotonic() < self.next_rest_fallback_at:
+                return
+            live_trade_version = self.live_trade_version
+        self.refresh_rest_fallback(expected_live_trade_version=live_trade_version)
+        with self.lock:
+            if self.live_trade_version == live_trade_version:
+                self.next_rest_fallback_at = self.monotonic() + self.interval_seconds
 
     def stop(self):
         self.stop_event.set()
@@ -161,6 +228,52 @@ class CvdPoller:
 def _combined_stream_url(symbols):
     streams = "/".join(f"{symbol.lower()}@aggTrade" for symbol in sorted(symbols))
     return f"{STREAM_BASE_URL}{streams}"
+
+
+def _add_kline_cvd_events(window, symbol, klines, *, now_ms):
+    if not isinstance(klines, list) or len(klines) != 15:
+        return False
+    events = []
+    previous_event_ms = None
+    for kline in klines:
+        if not isinstance(kline, (list, tuple)) or len(kline) <= 10:
+            return False
+        try:
+            event_ms = int(kline[6])
+            quote_volume = float(kline[7])
+            taker_buy_quote_volume = float(kline[10])
+        except (TypeError, ValueError, OverflowError):
+            return False
+        if (
+            event_ms < 0
+            or not isfinite(quote_volume)
+            or not isfinite(taker_buy_quote_volume)
+            or quote_volume < 0
+            or taker_buy_quote_volume < 0
+            or taker_buy_quote_volume > quote_volume
+            or (
+                previous_event_ms is not None
+                and event_ms < previous_event_ms
+            )
+        ):
+            return False
+        previous_event_ms = event_ms
+        event_ms = min(event_ms, now_ms)
+        taker_sell_quote_volume = quote_volume - taker_buy_quote_volume
+        if taker_buy_quote_volume:
+            events.append((event_ms, taker_buy_quote_volume, False))
+        if taker_sell_quote_volume:
+            events.append((event_ms, taker_sell_quote_volume, True))
+    for event_ms, quote_volume, buyer_is_maker in events:
+        if not window.add_trade(
+            symbol,
+            event_ms,
+            price=quote_volume,
+            quantity=1,
+            buyer_is_maker=buyer_is_maker,
+        ):
+            return False
+    return True
 
 
 def select_cvd_symbols(tickers, exchange_info, max_symbols):
