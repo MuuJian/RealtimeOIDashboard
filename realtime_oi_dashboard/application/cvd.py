@@ -16,6 +16,7 @@ from realtime_oi_dashboard.infrastructure.http import JsonHttpClient
 FAPI_BASE_URL = "https://fapi.binance.com"
 TICKER_URL = f"{FAPI_BASE_URL}/fapi/v1/ticker/24hr"
 EXCHANGE_INFO_URL = f"{FAPI_BASE_URL}/fapi/v1/exchangeInfo"
+KLINES_URL = f"{FAPI_BASE_URL}/fapi/v1/klines"
 STREAM_BASE_URL = "wss://fstream.binance.com/stream?streams="
 
 
@@ -86,6 +87,34 @@ class CvdPoller:
             if accepted:
                 self.error = None
             return accepted
+
+    def refresh_rest_fallback(self):
+        """Rebuild the rolling CVD window from one-minute REST klines."""
+        with self.lock:
+            symbols = set(self.window.tracked_symbols)
+        rebuilt_window = RollingCvdWindow(now_ms=self.now_ms())
+        rebuilt_window.set_tracked_symbols(symbols, now_ms=self.now_ms())
+        populated = False
+        for symbol in symbols:
+            try:
+                klines = self.http_client.get_json(
+                    KLINES_URL,
+                    params={"symbol": symbol, "interval": "1m", "limit": 15},
+                    timeout=12,
+                    attempts=3,
+                )
+                if not _add_kline_cvd_events(rebuilt_window, symbol, klines):
+                    continue
+            except Exception:
+                continue
+            populated = True
+        with self.lock:
+            if populated:
+                self.window = rebuilt_window
+                self.error = None
+            elif not any(self.window.events_by_symbol.values()):
+                self.error = "CVD unavailable"
+        return populated
 
     def get_state(self):
         with self.lock:
@@ -161,6 +190,47 @@ class CvdPoller:
 def _combined_stream_url(symbols):
     streams = "/".join(f"{symbol.lower()}@aggTrade" for symbol in sorted(symbols))
     return f"{STREAM_BASE_URL}{streams}"
+
+
+def _add_kline_cvd_events(window, symbol, klines):
+    if not isinstance(klines, list) or len(klines) != 15:
+        return False
+    for kline in klines:
+        if not isinstance(kline, (list, tuple)) or len(kline) <= 10:
+            return False
+        try:
+            event_ms = int(kline[6])
+            quote_volume = float(kline[7])
+            taker_buy_quote_volume = float(kline[10])
+        except (TypeError, ValueError, OverflowError):
+            return False
+        if (
+            event_ms < 0
+            or not isfinite(quote_volume)
+            or not isfinite(taker_buy_quote_volume)
+            or quote_volume < 0
+            or taker_buy_quote_volume < 0
+            or taker_buy_quote_volume > quote_volume
+        ):
+            return False
+        taker_sell_quote_volume = quote_volume - taker_buy_quote_volume
+        if taker_buy_quote_volume and not window.add_trade(
+            symbol,
+            event_ms,
+            price=taker_buy_quote_volume,
+            quantity=1,
+            buyer_is_maker=False,
+        ):
+            return False
+        if taker_sell_quote_volume and not window.add_trade(
+            symbol,
+            event_ms,
+            price=taker_sell_quote_volume,
+            quantity=1,
+            buyer_is_maker=True,
+        ):
+            return False
+    return True
 
 
 def select_cvd_symbols(tickers, exchange_info, max_symbols):

@@ -5,15 +5,22 @@ from realtime_oi_dashboard.application.cvd import CvdPoller
 
 
 class FakeHttpClient:
-    def __init__(self, tickers, exchange_info):
+    def __init__(self, tickers, exchange_info, klines_by_symbol=None):
         self.tickers = tickers
         self.exchange_info = exchange_info
+        self.klines_by_symbol = klines_by_symbol or {}
 
     def get_json(self, url, **_kwargs):
         if url.endswith("ticker/24hr"):
             return self.tickers
         if url.endswith("exchangeInfo"):
             return self.exchange_info
+        if url.endswith("klines"):
+            symbol = _kwargs["params"]["symbol"]
+            response = self.klines_by_symbol[symbol]
+            if isinstance(response, Exception):
+                raise response
+            return response
         raise AssertionError(f"unexpected URL: {url}")
 
 
@@ -88,6 +95,58 @@ class CvdPollerTests(unittest.TestCase):
 
         self.assertFalse(accepted)
         self.assertEqual(len(poller.get_state()["tracked_symbols"]), 30)
+
+    def test_rest_fallback_rebuilds_signed_cvd_from_fifteen_kline_rows(self):
+        klines = [
+            [
+                index * 60_000,
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                (index + 1) * 60_000 - 1,
+                "100",
+                0,
+                "0",
+                "60",
+                "0",
+            ]
+            for index in range(15)
+        ]
+        poller = CvdPoller(
+            http_client=FakeHttpClient(
+                self.tickers, self.exchange_info, {"BTCUSDT": klines}
+            ),
+            max_symbols=1,
+            now_ms=lambda: 900_000,
+        )
+        poller.refresh_universe()
+
+        refreshed = poller.refresh_rest_fallback()
+
+        self.assertTrue(refreshed)
+        row = poller.get_state()["rows"]["BTCUSDT"]
+        self.assertEqual(row["cvd15m"], 300)
+        self.assertEqual(row["cvd15mRatio"], 0.2)
+        self.assertEqual(row["cvdUpdatedAt"], 899_999)
+
+    def test_failed_rest_fallback_marks_cvd_as_unavailable(self):
+        poller = CvdPoller(
+            http_client=FakeHttpClient(
+                self.tickers,
+                self.exchange_info,
+                {"BTCUSDT": ConnectionError("REST unavailable")},
+            ),
+            max_symbols=1,
+            now_ms=lambda: 900_000,
+        )
+        poller.refresh_universe()
+
+        refreshed = poller.refresh_rest_fallback()
+
+        self.assertFalse(refreshed)
+        self.assertEqual(poller.get_state()["error"], "CVD unavailable")
 
 
 if __name__ == "__main__":
