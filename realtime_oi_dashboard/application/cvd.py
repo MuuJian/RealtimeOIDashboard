@@ -92,8 +92,13 @@ class CvdPoller:
         """Rebuild the rolling CVD window from one-minute REST klines."""
         with self.lock:
             symbols = set(self.window.tracked_symbols)
-        rebuilt_window = RollingCvdWindow(now_ms=self.now_ms())
-        rebuilt_window.set_tracked_symbols(symbols, now_ms=self.now_ms())
+        fallback_now_ms = self.now_ms()
+        rebuilt_window = RollingCvdWindow(now_ms=fallback_now_ms)
+        rebuilt_window.set_tracked_symbols(symbols, now_ms=fallback_now_ms)
+        for symbol in symbols:
+            rebuilt_window.coverage_started_at[symbol] = (
+                fallback_now_ms - rebuilt_window.coverage_ms
+            )
         populated = False
         for symbol in symbols:
             try:
@@ -195,6 +200,8 @@ def _combined_stream_url(symbols):
 def _add_kline_cvd_events(window, symbol, klines):
     if not isinstance(klines, list) or len(klines) != 15:
         return False
+    events = []
+    previous_event_ms = None
     for kline in klines:
         if not isinstance(kline, (list, tuple)) or len(kline) <= 10:
             return False
@@ -211,23 +218,25 @@ def _add_kline_cvd_events(window, symbol, klines):
             or quote_volume < 0
             or taker_buy_quote_volume < 0
             or taker_buy_quote_volume > quote_volume
+            or (
+                previous_event_ms is not None
+                and event_ms < previous_event_ms
+            )
         ):
             return False
+        previous_event_ms = event_ms
         taker_sell_quote_volume = quote_volume - taker_buy_quote_volume
-        if taker_buy_quote_volume and not window.add_trade(
+        if taker_buy_quote_volume:
+            events.append((event_ms, taker_buy_quote_volume, False))
+        if taker_sell_quote_volume:
+            events.append((event_ms, taker_sell_quote_volume, True))
+    for event_ms, quote_volume, buyer_is_maker in events:
+        if not window.add_trade(
             symbol,
             event_ms,
-            price=taker_buy_quote_volume,
+            price=quote_volume,
             quantity=1,
-            buyer_is_maker=False,
-        ):
-            return False
-        if taker_sell_quote_volume and not window.add_trade(
-            symbol,
-            event_ms,
-            price=taker_sell_quote_volume,
-            quantity=1,
-            buyer_is_maker=True,
+            buyer_is_maker=buyer_is_maker,
         ):
             return False
     return True

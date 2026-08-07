@@ -130,6 +130,43 @@ class CvdPollerTests(unittest.TestCase):
         self.assertEqual(row["cvd15m"], 300)
         self.assertEqual(row["cvd15mRatio"], 0.2)
         self.assertEqual(row["cvdUpdatedAt"], 899_999)
+        self.assertEqual(row["cvdStatus"], "buying")
+
+    def test_invalid_kline_batch_does_not_publish_partial_symbol_cvd(self):
+        valid_klines = [
+            [
+                index * 60_000,
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                (index + 1) * 60_000 - 1,
+                "100",
+                0,
+                "0",
+                "60",
+                "0",
+            ]
+            for index in range(15)
+        ]
+        invalid_klines = [list(kline) for kline in valid_klines]
+        invalid_klines[-1][7] = "not-a-number"
+        poller = CvdPoller(
+            http_client=FakeHttpClient(
+                self.tickers,
+                self.exchange_info,
+                {"BTCUSDT": valid_klines, "COIN0USDT": invalid_klines},
+            ),
+            max_symbols=2,
+            now_ms=lambda: 900_000,
+        )
+        poller.refresh_universe()
+
+        refreshed = poller.refresh_rest_fallback()
+
+        self.assertTrue(refreshed)
+        self.assertEqual(poller.get_state()["rows"]["COIN0USDT"]["cvd15m"], 0)
 
     def test_failed_rest_fallback_marks_cvd_as_unavailable(self):
         poller = CvdPoller(
