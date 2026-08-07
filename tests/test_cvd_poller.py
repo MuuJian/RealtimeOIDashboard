@@ -166,7 +166,9 @@ class CvdPollerTests(unittest.TestCase):
         refreshed = poller.refresh_rest_fallback()
 
         self.assertTrue(refreshed)
-        self.assertEqual(poller.get_state()["rows"]["COIN0USDT"]["cvd15m"], 0)
+        failed_row = poller.get_state()["rows"]["COIN0USDT"]
+        self.assertEqual(failed_row["cvd15m"], 0)
+        self.assertEqual(failed_row["cvdStatus"], "collecting")
 
     def test_failed_rest_fallback_marks_cvd_as_unavailable(self):
         poller = CvdPoller(

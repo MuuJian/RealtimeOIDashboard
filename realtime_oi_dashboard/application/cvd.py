@@ -95,10 +95,6 @@ class CvdPoller:
         fallback_now_ms = self.now_ms()
         rebuilt_window = RollingCvdWindow(now_ms=fallback_now_ms)
         rebuilt_window.set_tracked_symbols(symbols, now_ms=fallback_now_ms)
-        for symbol in symbols:
-            rebuilt_window.coverage_started_at[symbol] = (
-                fallback_now_ms - rebuilt_window.coverage_ms
-            )
         populated = False
         for symbol in symbols:
             try:
@@ -112,6 +108,9 @@ class CvdPoller:
                     continue
             except Exception:
                 continue
+            rebuilt_window.coverage_started_at[symbol] = (
+                fallback_now_ms - rebuilt_window.coverage_ms
+            )
             populated = True
         with self.lock:
             if populated:
