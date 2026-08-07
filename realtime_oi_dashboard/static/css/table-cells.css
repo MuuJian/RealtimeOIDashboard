@@ -185,7 +185,29 @@
 .oi-table th:nth-child(12),
 .oi-table td:nth-child(12) { width: 135px; }
 .oi-table th:nth-child(13),
-.oi-table td:nth-child(13) { width: 90px; }
+.oi-table td:nth-child(13) { width: 130px; }
+.oi-table th:nth-child(14),
+.oi-table td:nth-child(14) { width: 100px; }
+.oi-table th:nth-child(15),
+.oi-table td:nth-child(15) { width: 90px; }
+
+.cvd-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.cvd-status {
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.cvd-status-buying { color: var(--green-ink); }
+.cvd-status-selling { color: var(--red-ink); }
+.cvd-status-neutral { color: var(--muted); }
+.cvd-status-collecting { color: #f0bd59; }
+.cvd-status-untracked,
+.cvd-status-unavailable { color: #8490a8; }
 
 .signal-table th:nth-child(1),
 .signal-table td:nth-child(1) { width: 160px; }

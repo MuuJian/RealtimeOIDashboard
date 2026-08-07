@@ -16,7 +16,12 @@ SHUTDOWN_TIMEOUT_SECONDS = 15
 
 def main(argv=None):
     args = parse_args(argv)
-    oi_service = create_oi_service(args)
+    try:
+        cvd_service = create_cvd_service(args)
+    except Exception as exc:
+        print(f"{timestamp()} CVD unavailable; continuing with OI dashboard: {exc}")
+        cvd_service = None
+    oi_service = create_oi_service(args, cvd_state_provider=cvd_service)
     try:
         signal_scan_service = create_signal_scan_service(args)
     except Exception as exc:
@@ -25,10 +30,10 @@ def main(argv=None):
             f"continuing with the OI dashboard: {exc}"
         )
         signal_scan_service = None
-    return run_dashboard(args, oi_service, signal_scan_service)
+    return run_dashboard(args, oi_service, signal_scan_service, cvd_service)
 
 
-def create_oi_service(args):
+def create_oi_service(args, *, cvd_state_provider=None):
     poller = OIPoller(
         batch_size=args.oi_batch_size,
         batch_delay=args.oi_batch_delay,
@@ -38,11 +43,23 @@ def create_oi_service(args):
         funding_cache_seconds=args.funding_cache_seconds,
         market_cap_cache_seconds=args.market_cap_cache_seconds,
         snapshot_save_interval=args.snapshot_save_interval,
+        cvd_state_provider=cvd_state_provider,
     )
     return BackgroundPollerService(
         poller,
         thread_name="oi-poller",
         stopped_message="OI poller stopped",
+    )
+
+
+def create_cvd_service(args):
+    from realtime_oi_dashboard.application.cvd import CvdPoller
+
+    poller = CvdPoller(interval_seconds=args.signal_scan_interval)
+    return BackgroundPollerService(
+        poller,
+        thread_name="cvd-poller",
+        stopped_message="CVD poller stopped",
     )
 
 
@@ -55,7 +72,7 @@ def create_signal_scan_service(args):
     )
 
 
-def run_dashboard(args, oi_service, signal_scan_service):
+def run_dashboard(args, oi_service, signal_scan_service, cvd_service=None):
     try:
         server = create_dashboard_server(
             args.host,
@@ -67,6 +84,7 @@ def run_dashboard(args, oi_service, signal_scan_service):
         print(f"无法启动面板: {exc}")
         _close_after_start_failure(oi_service, "OI poller")
         _close_after_start_failure(signal_scan_service, "signal scan poller")
+        _close_after_start_failure(cvd_service, "CVD poller")
         return 1
 
     with server:
@@ -76,8 +94,10 @@ def run_dashboard(args, oi_service, signal_scan_service):
             print(f"无法启动 OI 轮询线程: {exc}")
             _close_after_start_failure(oi_service, "OI poller")
             _close_after_start_failure(signal_scan_service, "signal scan poller")
+            _close_after_start_failure(cvd_service, "CVD poller")
             return 1
 
+        cvd_started = _start_optional_cvd(cvd_service)
         signal_scan_started = _start_optional_signal_scan(
             server,
             signal_scan_service,
@@ -93,6 +113,8 @@ def run_dashboard(args, oi_service, signal_scan_service):
             _stop_oi_service(oi_service)
             if signal_scan_started:
                 _stop_signal_scan_service(signal_scan_service)
+            if cvd_started:
+                _stop_cvd_service(cvd_service)
     return 0
 
 
@@ -108,6 +130,18 @@ def _start_optional_signal_scan(server, signal_scan_service):
         )
         _close_after_start_failure(signal_scan_service, "signal scan poller")
         server.signal_scan_state_provider = None
+        return False
+    return True
+
+
+def _start_optional_cvd(cvd_service):
+    if cvd_service is None:
+        return False
+    try:
+        cvd_service.start()
+    except Exception as exc:
+        print(f"{timestamp()} CVD unavailable; continuing with OI dashboard: {exc}")
+        _close_after_start_failure(cvd_service, "CVD poller")
         return False
     return True
 
@@ -147,5 +181,13 @@ def _stop_signal_scan_service(service):
     if not service.stop(timeout=SHUTDOWN_TIMEOUT_SECONDS):
         print(
             f"{timestamp()} signal scan poller did not stop within "
+            f"{SHUTDOWN_TIMEOUT_SECONDS} seconds"
+        )
+
+
+def _stop_cvd_service(service):
+    if not service.stop(timeout=SHUTDOWN_TIMEOUT_SECONDS):
+        print(
+            f"{timestamp()} CVD poller did not stop within "
             f"{SHUTDOWN_TIMEOUT_SECONDS} seconds"
         )
