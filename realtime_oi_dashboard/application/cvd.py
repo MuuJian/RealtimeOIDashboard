@@ -101,11 +101,12 @@ class CvdPoller:
                 self.error = None
             return accepted
 
-    def refresh_rest_fallback(self):
+    def refresh_rest_fallback(self, expected_live_trade_version=None):
         """Rebuild the rolling CVD window from one-minute REST klines."""
         with self.lock:
             symbols = set(self.window.tracked_symbols)
-            initial_live_trade_version = self.live_trade_version
+            if expected_live_trade_version is None:
+                expected_live_trade_version = self.live_trade_version
         fallback_now_ms = self.now_ms()
         rebuilt_window = RollingCvdWindow(now_ms=fallback_now_ms)
         rebuilt_window.set_tracked_symbols(symbols, now_ms=fallback_now_ms)
@@ -127,7 +128,7 @@ class CvdPoller:
             )
             populated = True
         with self.lock:
-            if self.live_trade_version != initial_live_trade_version:
+            if self.live_trade_version != expected_live_trade_version:
                 return populated
             if populated:
                 self.window = rebuilt_window
@@ -186,7 +187,7 @@ class CvdPoller:
             if self.monotonic() < self.next_rest_fallback_at:
                 return
             live_trade_version = self.live_trade_version
-        self.refresh_rest_fallback()
+        self.refresh_rest_fallback(expected_live_trade_version=live_trade_version)
         with self.lock:
             if self.live_trade_version == live_trade_version:
                 self.next_rest_fallback_at = self.monotonic() + self.interval_seconds
