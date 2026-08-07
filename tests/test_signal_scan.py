@@ -26,14 +26,86 @@ class ComputeEmaTests(unittest.TestCase):
     def test_single_value_returns_that_value(self):
         self.assertEqual(compute_ema([5.0], period=20), 5.0)
 
+    def test_rejects_empty_values(self):
+        with self.assertRaises(ValueError):
+            compute_ema([], period=20)
+
+    def test_rejects_non_sequence_values(self):
+        with self.assertRaises(ValueError):
+            compute_ema(None, period=20)
+
+    def test_rejects_non_finite_values(self):
+        with self.assertRaises(ValueError):
+            compute_ema([1.0, float("nan")], period=20)
+
 
 class ClassifySymbolTests(unittest.TestCase):
+    def test_returns_none_for_invalid_symbol(self):
+        klines = make_klines([100.0] * 120)
+
+        self.assertIsNone(classify_symbol("bad symbol", 1.0, klines))
+
     def test_returns_none_when_fewer_than_60_candles(self):
         klines = make_klines([1.0] * 59)
 
         result = classify_symbol("BTCUSDT", 1.0, klines)
 
         self.assertIsNone(result)
+
+    def test_returns_none_for_malformed_candles(self):
+        klines = make_klines([100.0] * 120)
+        klines[10] = [0, 0, "not-a-price", 99.0, 100.0]
+
+        self.assertIsNone(classify_symbol("BTCUSDT", 1.0, klines))
+
+    def test_returns_none_when_close_is_outside_candle_range(self):
+        klines = make_klines([100.0] * 120)
+        klines[10][2] = 99.0
+
+        self.assertIsNone(classify_symbol("BTCUSDT", 1.0, klines))
+
+    def test_returns_none_when_derived_metrics_are_not_finite(self):
+        klines = make_klines(
+            [1e-308] * 120,
+            highs=[1e308] * 120,
+            lows=[0.0] * 120,
+        )
+
+        self.assertIsNone(classify_symbol("BTCUSDT", 1.0, klines))
+
+    def test_returns_none_when_an_amplitude_overflows(self):
+        closes = [100.0] * 120
+        highs = [100.0] * 120
+        lows = [100.0] * 120
+        closes[10] = 1e-308
+        highs[10] = 1e308
+        lows[10] = 0.0
+
+        self.assertIsNone(
+            classify_symbol("BTCUSDT", 1.0, make_klines(closes, highs, lows))
+        )
+
+    def test_returns_none_when_amplitude_window_sum_overflows(self):
+        closes = [100.0] * 120
+        highs = [100.0] * 120
+        lows = [100.0] * 120
+        for index in range(87, 117):
+            closes[index] = 1.0
+            highs[index] = 1e305
+            lows[index] = 0.0
+
+        self.assertIsNone(
+            classify_symbol("BTCUSDT", 1.0, make_klines(closes, highs, lows))
+        )
+
+    def test_returns_none_for_non_sequence_klines(self):
+        self.assertIsNone(classify_symbol("BTCUSDT", 1.0, None))
+
+    def test_returns_none_when_previous_close_is_zero(self):
+        klines = make_klines([100.0] * 120)
+        klines[-2][4] = 0
+
+        self.assertIsNone(classify_symbol("BTCUSDT", 1.0, klines))
 
     def test_flat_price_series_is_neither_bull_nor_bear(self):
         klines = make_klines([100.0] * 120)
@@ -148,6 +220,37 @@ class SelectSignalsTests(unittest.TestCase):
 
         self.assertEqual(signals["spikes"], [])
 
+    def test_equal_signal_scores_use_symbol_as_stable_tiebreaker(self):
+        entries = [
+            self.entry("ZUSDT", 2.0, True, False, 2.0),
+            self.entry("AUSDT", 2.0, True, False, 2.0),
+        ]
+
+        signals = select_signals(entries, trend_pool_symbols={"ZUSDT", "AUSDT"})
+
+        self.assertEqual(
+            [entry["symbol"] for entry in signals["bulls"]],
+            ["AUSDT", "ZUSDT"],
+        )
+        self.assertEqual(
+            [entry["symbol"] for entry in signals["spikes"]],
+            ["AUSDT", "ZUSDT"],
+        )
+
+    def test_ignores_malformed_entries_without_aborting_selection(self):
+        valid = self.entry("GOODUSDT", 2.0, True, False, 0.0)
+        huge = self.entry("HUGEUSDT", 2.0, True, False, 0.0)
+        huge["aboveE20"] = 10**1000
+
+        signals = select_signals(
+            [{"symbol": "BADUSDT"}, huge, valid, {"symbol": "GOODUSDT"}],
+            trend_pool_symbols={"GOODUSDT"},
+        )
+
+        self.assertEqual([entry["symbol"] for entry in signals["bulls"]], ["GOODUSDT"])
+        self.assertEqual(signals["bears"], [])
+        self.assertEqual(signals["spikes"], [])
+
 
 class BuildScanUniverseTests(unittest.TestCase):
     def exchange_info(self, symbols):
@@ -207,6 +310,86 @@ class BuildScanUniverseTests(unittest.TestCase):
         scan_pool, _ = build_scan_universe(tickers, exchange_info)
 
         self.assertEqual(scan_pool, [])
+
+    def test_ignores_malformed_quote_volume_without_aborting(self):
+        tickers = [
+            {"symbol": "BADUSDT", "quoteVolume": "invalid", "priceChangePercent": "0"},
+            {"symbol": "GOODUSDT", "quoteVolume": "10", "priceChangePercent": "0"},
+        ]
+
+        scan_pool, _ = build_scan_universe(
+            tickers,
+            self.exchange_info(["BADUSDT", "GOODUSDT"]),
+        )
+
+        self.assertEqual([ticker["symbol"] for ticker in scan_pool], ["GOODUSDT"])
+
+    def test_ignores_symbols_that_do_not_match_uppercase_usdt_format(self):
+        tickers = [
+            {"symbol": "badUSDT", "quoteVolume": "100", "priceChangePercent": "0"},
+            {"symbol": "GOOD USDT", "quoteVolume": "90", "priceChangePercent": "0"},
+            {"symbol": "GOODUSDT", "quoteVolume": "10", "priceChangePercent": "0"},
+        ]
+
+        scan_pool, _ = build_scan_universe(
+            tickers,
+            self.exchange_info(["badUSDT", "GOOD USDT", "GOODUSDT"]),
+        )
+
+        self.assertEqual([ticker["symbol"] for ticker in scan_pool], ["GOODUSDT"])
+
+    def test_ignores_malformed_price_change_without_aborting(self):
+        tickers = [
+            {"symbol": "BADUSDT", "quoteVolume": "100", "priceChangePercent": "invalid"},
+            {"symbol": "GOODUSDT", "quoteVolume": "10", "priceChangePercent": "0"},
+        ]
+
+        scan_pool, _ = build_scan_universe(
+            tickers,
+            self.exchange_info(["BADUSDT", "GOODUSDT"]),
+        )
+
+        self.assertEqual([ticker["symbol"] for ticker in scan_pool], ["GOODUSDT"])
+
+    def test_deduplicates_tickers_and_keeps_highest_volume(self):
+        tickers = [
+            {"symbol": "DUPUSDT", "quoteVolume": "10", "priceChangePercent": "0"},
+            {"symbol": "DUPUSDT", "quoteVolume": "30", "priceChangePercent": "0"},
+            {"symbol": "OTHERUSDT", "quoteVolume": "20", "priceChangePercent": "0"},
+        ]
+
+        scan_pool, _ = build_scan_universe(
+            tickers,
+            self.exchange_info(["DUPUSDT", "OTHERUSDT"]),
+        )
+
+        self.assertEqual([ticker["symbol"] for ticker in scan_pool], ["DUPUSDT", "OTHERUSDT"])
+        self.assertEqual(scan_pool[0]["quoteVolume"], "30")
+
+    def test_equal_volumes_use_symbol_as_stable_tiebreaker(self):
+        tickers = [
+            {"symbol": "ZUSDT", "quoteVolume": "10", "priceChangePercent": "0"},
+            {"symbol": "AUSDT", "quoteVolume": "10", "priceChangePercent": "0"},
+        ]
+
+        scan_pool, _ = build_scan_universe(
+            tickers,
+            self.exchange_info(["ZUSDT", "AUSDT"]),
+        )
+
+        self.assertEqual(
+            [ticker["symbol"] for ticker in scan_pool],
+            ["AUSDT", "ZUSDT"],
+        )
+
+    def test_ignores_malformed_exchange_symbol_list(self):
+        scan_pool, trend_pool = build_scan_universe(
+            [{"symbol": "GOODUSDT", "quoteVolume": "10"}],
+            {"symbols": None},
+        )
+
+        self.assertEqual(scan_pool, [])
+        self.assertEqual(trend_pool, set())
 
 
 if __name__ == "__main__":
