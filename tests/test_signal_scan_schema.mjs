@@ -44,7 +44,7 @@ test("rejects a signal row that is both bullish and bearish", () => {
   );
 });
 
-test("rejects duplicate symbols across signal result tables", () => {
+test("accepts a symbol that appears in trend and volatility result tables", () => {
   assert.equal(
     isSignalScanPayload(
       payload({
@@ -52,7 +52,7 @@ test("rejects duplicate symbols across signal result tables", () => {
         spikes: [signalRow({ isBull: true })],
       }),
     ),
-    false,
+    true,
   );
 });
 

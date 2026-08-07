@@ -35,7 +35,9 @@ export function isSignalScanPayload(payload) {
     && payload.bulls.every(isSignalRow)
     && payload.bears.every(isSignalRow)
     && payload.spikes.every(isSignalRow)
-    && hasUniqueSymbols(payload)
+    && hasUniqueSymbols(payload.bulls)
+    && hasUniqueSymbols(payload.bears)
+    && hasUniqueSymbols(payload.spikes)
     && isErrorStateConsistent(payload),
   );
 }
@@ -102,15 +104,13 @@ function isScanCoverage(payload) {
   );
 }
 
-function hasUniqueSymbols(payload) {
+function hasUniqueSymbols(rows) {
   const symbols = new Set();
-  return [payload.bulls, payload.bears, payload.spikes].every(rows => (
-    rows.every(row => {
-      if (symbols.has(row.symbol)) return false;
-      symbols.add(row.symbol);
-      return true;
-    })
-  ));
+  return rows.every(row => {
+    if (symbols.has(row.symbol)) return false;
+    symbols.add(row.symbol);
+    return true;
+  });
 }
 
 function isErrorStateConsistent(payload) {
