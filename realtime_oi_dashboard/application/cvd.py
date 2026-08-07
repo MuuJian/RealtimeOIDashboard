@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 import threading
 import time
+from math import isfinite
 
 import websocket
 
 from realtime_oi_dashboard.domain.cvd import RollingCvdWindow
-from realtime_oi_dashboard.domain.signal_scan import build_scan_universe
 from realtime_oi_dashboard.infrastructure.http import JsonHttpClient
 
 
@@ -56,8 +56,7 @@ class CvdPoller:
         exchange_info = self.http_client.get_json(
             EXCHANGE_INFO_URL, timeout=12, attempts=3
         )
-        scan_pool, _ = build_scan_universe(tickers, exchange_info)
-        symbols = {ticker["symbol"] for ticker in scan_pool[: self.max_symbols]}
+        symbols = select_cvd_symbols(tickers, exchange_info, self.max_symbols)
         with self.lock:
             self.window.set_tracked_symbols(symbols, now_ms=self.now_ms())
             self.websocket_url = _combined_stream_url(symbols)
@@ -162,6 +161,36 @@ class CvdPoller:
 def _combined_stream_url(symbols):
     streams = "/".join(f"{symbol.lower()}@aggTrade" for symbol in sorted(symbols))
     return f"{STREAM_BASE_URL}{streams}"
+
+
+def select_cvd_symbols(tickers, exchange_info, max_symbols):
+    perpetuals = {
+        item.get("symbol")
+        for item in exchange_info.get("symbols", [])
+        if isinstance(item, dict)
+        and item.get("contractType") == "PERPETUAL"
+        and item.get("status") == "TRADING"
+    }
+    candidates = []
+    for ticker in tickers:
+        if not isinstance(ticker, dict):
+            continue
+        symbol = ticker.get("symbol")
+        if (
+            not isinstance(symbol, str)
+            or not symbol.endswith("USDT")
+            or "_" in symbol
+            or symbol not in perpetuals
+        ):
+            continue
+        try:
+            volume = float(ticker.get("quoteVolume", 0))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if isfinite(volume) and volume > 0:
+            candidates.append((volume, symbol))
+    candidates.sort(reverse=True)
+    return {symbol for _, symbol in candidates[:max_symbols]}
 
 
 def _positive_seconds(value):

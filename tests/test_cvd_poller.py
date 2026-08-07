@@ -19,7 +19,7 @@ class FakeHttpClient:
 
 class CvdPollerTests(unittest.TestCase):
     def setUp(self):
-        self.tickers = [
+        self.tickers = [{"symbol": "BTCUSDT", "quoteVolume": "10000"}] + [
             {
                 "symbol": f"COIN{index}USDT",
                 "quoteVolume": str(1000 - index),
@@ -47,6 +47,7 @@ class CvdPollerTests(unittest.TestCase):
         poller.refresh_universe()
 
         self.assertEqual(len(poller.get_state()["tracked_symbols"]), 30)
+        self.assertIn("BTCUSDT", poller.get_state()["tracked_symbols"])
         self.assertIn("coin0usdt@aggTrade", poller.websocket_url)
         self.assertNotIn("coin34usdt@aggTrade", poller.websocket_url)
 

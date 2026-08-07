@@ -5,7 +5,6 @@ from __future__ import annotations
 from realtime_oi_dashboard.application.background_service import (
     BackgroundPollerService,
 )
-from realtime_oi_dashboard.application.cvd import CvdPoller
 from realtime_oi_dashboard.application.poller import OIPoller, timestamp
 from realtime_oi_dashboard.application.signal_scan import SignalScanPoller
 from realtime_oi_dashboard.cli import parse_args
@@ -46,19 +45,21 @@ def create_oi_service(args, *, cvd_state_provider=None):
         snapshot_save_interval=args.snapshot_save_interval,
         cvd_state_provider=cvd_state_provider,
     )
+    return BackgroundPollerService(
+        poller,
+        thread_name="oi-poller",
+        stopped_message="OI poller stopped",
+    )
 
 
 def create_cvd_service(args):
+    from realtime_oi_dashboard.application.cvd import CvdPoller
+
     poller = CvdPoller(interval_seconds=args.signal_scan_interval)
     return BackgroundPollerService(
         poller,
         thread_name="cvd-poller",
         stopped_message="CVD poller stopped",
-    )
-    return BackgroundPollerService(
-        poller,
-        thread_name="oi-poller",
-        stopped_message="OI poller stopped",
     )
 
 

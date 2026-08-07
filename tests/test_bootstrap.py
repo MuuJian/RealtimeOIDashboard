@@ -4,6 +4,7 @@ from contextlib import redirect_stdout
 from unittest.mock import patch
 
 from realtime_oi_dashboard import bootstrap
+from realtime_oi_dashboard.application.background_service import BackgroundPollerService
 
 
 class FakeArgs:
@@ -116,6 +117,18 @@ class RunDashboardTests(unittest.TestCase):
 
 
 class MainTests(unittest.TestCase):
+    def test_create_oi_service_returns_a_background_service(self):
+        args = FakeArgs()
+        args.oi_history_cache_seconds = 300
+        args.ticker_cache_seconds = 10
+        args.funding_cache_seconds = 3600
+        args.market_cap_cache_seconds = 3600
+        args.snapshot_save_interval = 10
+
+        service = bootstrap.create_oi_service(args)
+
+        self.assertIsInstance(service, BackgroundPollerService)
+
     def test_main_passes_optional_cvd_service_to_oi_service(self):
         args = FakeArgs()
         cvd_service = FakeService()
