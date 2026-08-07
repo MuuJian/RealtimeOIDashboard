@@ -376,6 +376,7 @@ class CvdPollerTests(unittest.TestCase):
         poller._refresh_rest_if_silent()
         clock.advance(9)
         poller._refresh_rest_if_silent()
+        self.assertEqual(http_client.kline_requests, 1)
         clock.advance(1)
         poller._refresh_rest_if_silent()
 
