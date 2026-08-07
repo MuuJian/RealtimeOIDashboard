@@ -18,6 +18,7 @@ TICKER_URL = f"{FAPI_BASE_URL}/fapi/v1/ticker/24hr"
 EXCHANGE_INFO_URL = f"{FAPI_BASE_URL}/fapi/v1/exchangeInfo"
 KLINES_URL = f"{FAPI_BASE_URL}/fapi/v1/klines"
 STREAM_BASE_URL = "wss://fstream.binance.com/stream?streams="
+NO_DATA_WATCHDOG_SECONDS = 30
 
 
 class CvdPoller:
@@ -49,6 +50,8 @@ class CvdPoller:
         self.websocket_url = None
         self.connection = None
         self.next_refresh_at = 0.0
+        self.next_rest_fallback_at = 0.0
+        self.live_trade_version = 0
         self.error = None
 
     def refresh_universe(self):
@@ -58,10 +61,15 @@ class CvdPoller:
             EXCHANGE_INFO_URL, timeout=12, attempts=3
         )
         symbols = select_cvd_symbols(tickers, exchange_info, self.max_symbols)
+        current_monotonic = self.monotonic()
         with self.lock:
             self.window.set_tracked_symbols(symbols, now_ms=self.now_ms())
             self.websocket_url = _combined_stream_url(symbols)
-            self.next_refresh_at = self.monotonic() + self.interval_seconds
+            self.next_refresh_at = current_monotonic + self.interval_seconds
+            if self.next_rest_fallback_at == 0.0:
+                self.next_rest_fallback_at = (
+                    current_monotonic + NO_DATA_WATCHDOG_SECONDS
+                )
             self.error = None
         return symbols
 
@@ -85,6 +93,11 @@ class CvdPoller:
                 buyer_is_maker=buyer_is_maker,
             )
             if accepted:
+                accepted_at = self.monotonic()
+                self.live_trade_version += 1
+                self.next_rest_fallback_at = (
+                    accepted_at + NO_DATA_WATCHDOG_SECONDS
+                )
                 self.error = None
             return accepted
 
@@ -92,6 +105,7 @@ class CvdPoller:
         """Rebuild the rolling CVD window from one-minute REST klines."""
         with self.lock:
             symbols = set(self.window.tracked_symbols)
+            initial_live_trade_version = self.live_trade_version
         fallback_now_ms = self.now_ms()
         rebuilt_window = RollingCvdWindow(now_ms=fallback_now_ms)
         rebuilt_window.set_tracked_symbols(symbols, now_ms=fallback_now_ms)
@@ -113,6 +127,8 @@ class CvdPoller:
             )
             populated = True
         with self.lock:
+            if self.live_trade_version != initial_live_trade_version:
+                return populated
             if populated:
                 self.window = rebuilt_window
                 self.error = None
@@ -156,6 +172,7 @@ class CvdPoller:
         while not self.stop_event.is_set():
             if self.monotonic() >= self.next_refresh_at:
                 return
+            self._refresh_rest_if_silent()
             try:
                 message = connection.recv()
             except websocket.WebSocketTimeoutException:
@@ -163,6 +180,16 @@ class CvdPoller:
             if message is None:
                 raise ConnectionError("CVD WebSocket closed")
             self.handle_message(message)
+
+    def _refresh_rest_if_silent(self):
+        with self.lock:
+            if self.monotonic() < self.next_rest_fallback_at:
+                return
+            live_trade_version = self.live_trade_version
+        self.refresh_rest_fallback()
+        with self.lock:
+            if self.live_trade_version == live_trade_version:
+                self.next_rest_fallback_at = self.monotonic() + self.interval_seconds
 
     def stop(self):
         self.stop_event.set()

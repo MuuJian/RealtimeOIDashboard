@@ -1,6 +1,8 @@
 import json
 import unittest
 
+import websocket
+
 from realtime_oi_dashboard.application.cvd import CvdPoller
 
 
@@ -9,6 +11,7 @@ class FakeHttpClient:
         self.tickers = tickers
         self.exchange_info = exchange_info
         self.klines_by_symbol = klines_by_symbol or {}
+        self.kline_requests = 0
 
     def get_json(self, url, **_kwargs):
         if url.endswith("ticker/24hr"):
@@ -16,12 +19,58 @@ class FakeHttpClient:
         if url.endswith("exchangeInfo"):
             return self.exchange_info
         if url.endswith("klines"):
+            self.kline_requests += 1
             symbol = _kwargs["params"]["symbol"]
             response = self.klines_by_symbol[symbol]
             if isinstance(response, Exception):
                 raise response
             return response
         raise AssertionError(f"unexpected URL: {url}")
+
+
+class ManualMonotonicClock:
+    def __init__(self):
+        self.value = 0
+
+    def __call__(self):
+        return self.value
+
+    def advance(self, seconds):
+        self.value += seconds
+
+
+class TimeoutThenLiveWebSocket:
+    def __init__(self, clock, stop_event):
+        self.clock = clock
+        self.stop_event = stop_event
+        self.calls = 0
+
+    def recv(self):
+        self.calls += 1
+        if self.calls == 1:
+            self.clock.advance(30)
+            raise websocket.WebSocketTimeoutException()
+        if self.calls == 2:
+            self.clock.advance(29)
+            raise websocket.WebSocketTimeoutException()
+        if self.calls == 3:
+            self.clock.advance(1)
+            return json.dumps(
+                {
+                    "data": {
+                        "s": "BTCUSDT",
+                        "E": 900_000,
+                        "p": "100",
+                        "q": "2",
+                        "m": False,
+                    }
+                }
+            )
+        self.stop_event.set()
+        raise websocket.WebSocketTimeoutException()
+
+    def close(self):
+        pass
 
 
 class CvdPollerTests(unittest.TestCase):
@@ -186,6 +235,48 @@ class CvdPollerTests(unittest.TestCase):
 
         self.assertFalse(refreshed)
         self.assertEqual(poller.get_state()["error"], "CVD unavailable")
+
+    def test_watchdog_uses_rest_once_after_30_seconds_then_returns_to_live_cvd(self):
+        klines = [
+            [
+                index * 60_000,
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                (index + 1) * 60_000 - 1,
+                "100",
+                0,
+                "0",
+                "60",
+                "0",
+            ]
+            for index in range(15)
+        ]
+        clock = ManualMonotonicClock()
+        http_client = FakeHttpClient(
+            self.tickers, self.exchange_info, {"BTCUSDT": klines}
+        )
+        poller = CvdPoller(
+            http_client=http_client,
+            websocket_factory=lambda *_args, **_kwargs: TimeoutThenLiveWebSocket(
+                clock, poller.stop_event
+            ),
+            max_symbols=1,
+            interval_seconds=120,
+            now_ms=lambda: 900_001,
+            monotonic=clock,
+        )
+
+        poller.refresh_universe()
+        poller._consume_stream()
+
+        row = poller.get_state()["rows"]["BTCUSDT"]
+        self.assertEqual(http_client.kline_requests, 1)
+        self.assertEqual(row["cvd15m"], 500)
+        self.assertEqual(row["cvdUpdatedAt"], 900_000)
+        self.assertEqual(poller.get_state()["error"], None)
 
 
 if __name__ == "__main__":
