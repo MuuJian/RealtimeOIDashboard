@@ -70,7 +70,6 @@ class CvdPoller:
                 self.next_rest_fallback_at = (
                     current_monotonic + NO_DATA_WATCHDOG_SECONDS
                 )
-            self.error = None
         return symbols
 
     def handle_message(self, message):
@@ -110,7 +109,7 @@ class CvdPoller:
         fallback_now_ms = self.now_ms()
         rebuilt_window = RollingCvdWindow(now_ms=fallback_now_ms)
         rebuilt_window.set_tracked_symbols(symbols, now_ms=fallback_now_ms)
-        populated = False
+        populated_symbols = set()
         for symbol in symbols:
             try:
                 klines = self.http_client.get_json(
@@ -119,21 +118,28 @@ class CvdPoller:
                     timeout=12,
                     attempts=3,
                 )
-                if not _add_kline_cvd_events(rebuilt_window, symbol, klines):
+                if not _add_kline_cvd_events(
+                    rebuilt_window,
+                    symbol,
+                    klines,
+                    now_ms=fallback_now_ms,
+                ):
                     continue
             except Exception:
                 continue
             rebuilt_window.coverage_started_at[symbol] = (
                 fallback_now_ms - rebuilt_window.coverage_ms
             )
-            populated = True
+            populated_symbols.add(symbol)
+        rebuilt_window.set_unavailable_symbols(symbols - populated_symbols)
+        populated = bool(populated_symbols)
         with self.lock:
             if self.live_trade_version != expected_live_trade_version:
                 return populated
+            self.window = rebuilt_window
             if populated:
-                self.window = rebuilt_window
                 self.error = None
-            elif not any(self.window.events_by_symbol.values()):
+            else:
                 self.error = "CVD unavailable"
         return populated
 
@@ -224,7 +230,7 @@ def _combined_stream_url(symbols):
     return f"{STREAM_BASE_URL}{streams}"
 
 
-def _add_kline_cvd_events(window, symbol, klines):
+def _add_kline_cvd_events(window, symbol, klines, *, now_ms):
     if not isinstance(klines, list) or len(klines) != 15:
         return False
     events = []
@@ -252,6 +258,7 @@ def _add_kline_cvd_events(window, symbol, klines):
         ):
             return False
         previous_event_ms = event_ms
+        event_ms = min(event_ms, now_ms)
         taker_sell_quote_volume = quote_volume - taker_buy_quote_volume
         if taker_buy_quote_volume:
             events.append((event_ms, taker_buy_quote_volume, False))

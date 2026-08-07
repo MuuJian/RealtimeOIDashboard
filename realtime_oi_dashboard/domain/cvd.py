@@ -24,6 +24,7 @@ class RollingCvdWindow:
         self.coverage_ms = _positive_milliseconds(coverage_seconds)
         self.events_by_symbol = {}
         self.coverage_started_at = {}
+        self.unavailable_symbols = set()
         self.tracked_symbols = set()
         self.set_tracked_symbols(set(), now_ms=now_ms)
 
@@ -34,10 +35,14 @@ class RollingCvdWindow:
         for symbol in removed:
             self.events_by_symbol.pop(symbol, None)
             self.coverage_started_at.pop(symbol, None)
+            self.unavailable_symbols.discard(symbol)
         for symbol in tracked - self.tracked_symbols:
             self.events_by_symbol[symbol] = deque()
             self.coverage_started_at[symbol] = now_ms
         self.tracked_symbols = tracked
+
+    def set_unavailable_symbols(self, symbols):
+        self.unavailable_symbols = self.tracked_symbols.intersection(symbols)
 
     def add_trade(
         self,
@@ -63,11 +68,14 @@ class RollingCvdWindow:
             return False
         signed_notional = -notional if buyer_is_maker else notional
         events.append((event_ms, signed_notional, notional))
+        self.unavailable_symbols.discard(symbol)
         return True
 
     def snapshot(self, symbol, *, now_ms):
         if symbol not in self.tracked_symbols:
             return {"cvdStatus": "untracked"}
+        if symbol in self.unavailable_symbols:
+            return {"cvdStatus": "unavailable"}
 
         now_ms = _timestamp_ms(now_ms)
         events = self.events_by_symbol[symbol]
