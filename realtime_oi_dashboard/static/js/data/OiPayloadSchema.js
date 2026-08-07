@@ -9,6 +9,15 @@ const OPTIONAL_NUMBER_FIELDS = [
   "marketCap",
 ];
 
+const CVD_STATUSES = new Set([
+  "buying",
+  "selling",
+  "neutral",
+  "collecting",
+  "untracked",
+  "unavailable",
+]);
+
 export function assertOiPayload(payload) {
   if (payload?.schema_version !== OI_API_SCHEMA_VERSION) {
     throw new Error("前后端版本不一致，请刷新页面或重启服务");
@@ -49,9 +58,15 @@ export function isOiRow(item) {
     || !isOptionalTimestamp(item.nextFundingTime)
   ) return false;
 
-  return OPTIONAL_NUMBER_FIELDS.every(
+  if (!OPTIONAL_NUMBER_FIELDS.every(
     field => Object.hasOwn(item, field) && isOptionalNumber(item[field]),
-  );
+  )) return false;
+
+  if (!Object.hasOwn(item, "cvdStatus")) return true;
+  return CVD_STATUSES.has(item.cvdStatus)
+    && isOptionalNumber(item.cvd15m)
+    && isOptionalNumber(item.cvd15mRatio)
+    && isOptionalTimestamp(item.cvdUpdatedAt);
 }
 
 function isSymbol(value) {

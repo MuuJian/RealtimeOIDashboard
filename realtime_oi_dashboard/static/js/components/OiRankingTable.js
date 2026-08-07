@@ -4,7 +4,7 @@ import { syncChildren } from "../utils/dom.js";
 const LOADING_MESSAGE =
   "正在获取本次启动后的 OI 数据，结果会按批次逐步出现。";
 const FILTERED_EMPTY_MESSAGE = "暂无符合当前筛选条件的币种。";
-const COLUMN_COUNT = 13;
+const COLUMN_COUNT = 15;
 const OVERSCAN_ROWS = 6;
 const DEFAULT_ROW_HEIGHT = 55;
 

@@ -55,6 +55,7 @@ class OIPoller:
         snapshot_file=None,
         market_cap_file=None,
         http_client=None,
+        cvd_state_provider=None,
     ):
         self.batch_size = _positive_int("batch_size", batch_size)
         self.batch_delay = _non_negative_seconds("batch_delay", batch_delay)
@@ -169,6 +170,7 @@ class OIPoller:
             self.market_caps.count,
             schema_version=OI_API_SCHEMA_VERSION,
             stale_rows_error=STALE_ROWS_ERROR,
+            cvd_state_provider=cvd_state_provider,
         )
         self.runtime = DashboardRuntime(
             self.update_batch,

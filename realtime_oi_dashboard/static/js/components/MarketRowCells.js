@@ -10,6 +10,7 @@ import {
   signClass,
   tradingViewUrl,
 } from "../utils/format.js";
+import { cvdStatusLabel, formatCvd } from "../utils/cvd.js";
 import {
   createOiUpdateSignalCell,
   updateOiUpdateSignalCell,
@@ -18,6 +19,7 @@ import {
 export function createMarketRowCells({
   includeMarketCap = false,
   includeOiToMarketCapRatio = false,
+  includeCvd = false,
 } = {}) {
   const symbolCell = document.createElement("td");
   symbolCell.className = "symbol";
@@ -40,6 +42,8 @@ export function createMarketRowCells({
   const oi24hChangeCell = document.createElement("td");
   const oi7dChangeCell = document.createElement("td");
   const oiUpdatedAtCell = createOiUpdateSignalCell();
+  const cvdCell = includeCvd ? document.createElement("td") : null;
+  const cvdStatusCell = includeCvd ? document.createElement("td") : null;
 
   return {
     orderedCells: [
@@ -54,6 +58,7 @@ export function createMarketRowCells({
       volumeCell,
       oi24hChangeCell,
       oi7dChangeCell,
+      ...(cvdCell ? [cvdCell, cvdStatusCell] : []),
       oiUpdatedAtCell,
     ],
     symbolLink,
@@ -67,6 +72,8 @@ export function createMarketRowCells({
     volumeCell,
     oi24hChangeCell,
     oi7dChangeCell,
+    cvdCell,
+    cvdStatusCell,
     oiUpdatedAtCell,
   };
 }
@@ -87,6 +94,13 @@ export function updateMarketRowCells(cells, row, heatMax = null) {
   }
   cells.volumeCell.textContent = formatCurrency(row.volume24h);
   updateOiUpdateSignalCell(cells.oiUpdatedAtCell, row.oiUpdatedAt);
+  if (cells.cvdCell) {
+    cells.cvdCell.textContent = formatCvd(row.cvd15m, row.cvd15mRatio);
+    cells.cvdCell.className = `cvd-value ${signClass(row.cvd15m)}`;
+    cells.cvdStatusCell.textContent = cvdStatusLabel(row.cvdStatus);
+    cells.cvdStatusCell.className = `cvd-status cvd-status-${row.cvdStatus || "unavailable"}`;
+    cells.cvdStatusCell.title = "CVD 反映主動買賣流，不保證價格方向。";
+  }
 
   cells.fundingRateCell.title = formatFundingTitle(row.nextFundingTime);
   updateSignedCell(
