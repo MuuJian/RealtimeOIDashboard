@@ -2,55 +2,66 @@ import { formatPercent, formatPrice, signClass } from "../utils/format.js";
 import { syncChildren } from "../utils/dom.js";
 
 export function createSignalScanPanel({ bullsBody, bearsBody, spikesBody, statusEl }) {
-  const bullRows = new Map();
-  const bearRows = new Map();
-  const spikeRows = new Map();
+  let lastPayload = null;
+  const bullTable = createRowRenderer({
+    tbody: bullsBody,
+    colspan: 6,
+    emptyMessage: "目前沒有符合條件的多頭標的。",
+    createRow: createTrendRow,
+    updateRow: (tr, row) => updateTrendRow(tr, row, "pos"),
+  });
+  const bearTable = createRowRenderer({
+    tbody: bearsBody,
+    colspan: 6,
+    emptyMessage: "目前沒有符合條件的空頭標的。",
+    createRow: createTrendRow,
+    updateRow: (tr, row) => updateTrendRow(tr, row, "neg"),
+  });
+  const spikeTable = createRowRenderer({
+    tbody: spikesBody,
+    colspan: 5,
+    emptyMessage: "目前沒有波動率突增的標的。",
+    createRow: createSpikeRow,
+    updateRow: updateSpikeRow,
+  });
 
   function render(payload) {
-    renderTrendTable(bullsBody, bullRows, payload.bulls, "pos", "目前沒有符合條件的多頭標的。");
-    renderTrendTable(bearsBody, bearRows, payload.bears, "neg", "目前沒有符合條件的空頭標的。");
-    renderSpikeTable(spikesBody, spikeRows, payload.spikes);
+    bullTable.render(payload.bulls);
+    bearTable.render(payload.bears);
+    spikeTable.render(payload.spikes);
+    lastPayload = payload;
     renderStatus(payload);
   }
 
   function renderError(error) {
-    statusEl.textContent = error?.message || String(error);
+    const message = error?.message || String(error);
+    const savedAt = formatSavedAt(lastPayload?.saved_at);
+    statusEl.textContent = lastPayload?.saved_at
+      ? `刷新失败：${message}；上次扫描：${savedAt}`
+      : `刷新失败：${message}`;
   }
 
   function renderStatus(payload) {
     if (payload.error) {
-      statusEl.textContent = payload.error;
+      const coverage = payload.partial
+        ? `（${payload.scan_succeeded}/${payload.scan_total}）`
+        : "";
+      statusEl.textContent = `${payload.error}${coverage}`;
       return;
     }
-    const savedAt = payload.saved_at
-      ? new Date(payload.saved_at).toLocaleTimeString("zh-TW", { hour12: false })
-      : "-";
+    if (!payload.saved_at && payload.scan_total === 0) {
+      statusEl.textContent = "等待首次扫描";
+      return;
+    }
+    const savedAt = formatSavedAt(payload.saved_at);
+    if (payload.partial) {
+      statusEl.textContent = (
+        `本次掃描部分完成（${payload.scan_succeeded}/${payload.scan_total}），`
+        + `更新時間：${savedAt}`
+      );
+      return;
+    }
     statusEl.textContent = `上次掃描：${savedAt}`;
-  }
-
-  function renderTrendTable(tbody, rowsBySymbol, rows, strengthClass, emptyMessage) {
-    if (!rows.length) {
-      rowsBySymbol.clear();
-      syncChildren(tbody, [createEmptyRow(6, emptyMessage)]);
-      return;
-    }
-
-    const nextSymbols = new Set();
-    const nextChildren = [];
-    for (const row of rows) {
-      nextSymbols.add(row.symbol);
-      let tr = rowsBySymbol.get(row.symbol);
-      if (!tr) {
-        tr = createTrendRow();
-        rowsBySymbol.set(row.symbol, tr);
-      }
-      updateTrendRow(tr, row, strengthClass);
-      nextChildren.push(tr);
-    }
-    for (const symbol of rowsBySymbol.keys()) {
-      if (!nextSymbols.has(symbol)) rowsBySymbol.delete(symbol);
-    }
-    syncChildren(tbody, nextChildren);
   }
 
   function createTrendRow() {
@@ -85,31 +96,6 @@ export function createSignalScanPanel({ bullsBody, bearsBody, spikesBody, status
     strengthBar.className = `strength-bar ${strengthClass}`;
   }
 
-  function renderSpikeTable(tbody, rowsBySymbol, rows) {
-    if (!rows.length) {
-      rowsBySymbol.clear();
-      syncChildren(tbody, [createEmptyRow(5, "目前沒有波動率突增的標的。")]);
-      return;
-    }
-
-    const nextSymbols = new Set();
-    const nextChildren = [];
-    for (const row of rows) {
-      nextSymbols.add(row.symbol);
-      let tr = rowsBySymbol.get(row.symbol);
-      if (!tr) {
-        tr = createSpikeRow();
-        rowsBySymbol.set(row.symbol, tr);
-      }
-      updateSpikeRow(tr, row);
-      nextChildren.push(tr);
-    }
-    for (const symbol of rowsBySymbol.keys()) {
-      if (!nextSymbols.has(symbol)) rowsBySymbol.delete(symbol);
-    }
-    syncChildren(tbody, nextChildren);
-  }
-
   function createSpikeRow() {
     const tr = document.createElement("tr");
     const symbolCell = document.createElement("td");
@@ -134,15 +120,76 @@ export function createSignalScanPanel({ bullsBody, bearsBody, spikesBody, status
     volRatioCell.textContent = `${row.volRatio.toFixed(1)}×`;
   }
 
-  function createEmptyRow(colspan, message) {
-    const tr = document.createElement("tr");
-    const td = document.createElement("td");
-    td.colSpan = colspan;
-    td.className = "empty";
-    td.textContent = message;
-    tr.append(td);
-    return tr;
+  function formatSavedAt(value) {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleTimeString("zh-TW", { hour12: false });
   }
 
   return { render, renderError };
+}
+
+function createRowRenderer({
+  tbody,
+  colspan,
+  emptyMessage,
+  createRow,
+  updateRow,
+}) {
+  const rowsBySymbol = new Map();
+  const emptyRow = createEmptyRow(colspan, emptyMessage);
+
+  function render(rows) {
+    if (!Array.isArray(rows) || !rows.length) {
+      clear();
+      return;
+    }
+
+    const nextSymbols = new Set();
+    const nextChildren = [];
+    for (const row of rows) {
+      if (!row || typeof row.symbol !== "string" || nextSymbols.has(row.symbol)) {
+        continue;
+      }
+      nextSymbols.add(row.symbol);
+      let tr = rowsBySymbol.get(row.symbol);
+      if (!tr) {
+        tr = createRow();
+        rowsBySymbol.set(row.symbol, tr);
+      }
+      updateRow(tr, row);
+      nextChildren.push(tr);
+    }
+
+    if (!nextChildren.length) {
+      clear();
+      return;
+    }
+
+    for (const [symbol, tr] of rowsBySymbol.entries()) {
+      if (!nextSymbols.has(symbol)) {
+        tr.remove();
+        rowsBySymbol.delete(symbol);
+      }
+    }
+    syncChildren(tbody, nextChildren);
+  }
+
+  function clear() {
+    rowsBySymbol.clear();
+    syncChildren(tbody, [emptyRow]);
+  }
+
+  return { clear, render };
+}
+
+function createEmptyRow(colspan, message) {
+  const tr = document.createElement("tr");
+  const td = document.createElement("td");
+  td.colSpan = colspan;
+  td.className = "empty";
+  td.textContent = message;
+  tr.append(td);
+  return tr;
 }
