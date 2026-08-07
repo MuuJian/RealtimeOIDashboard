@@ -87,19 +87,3 @@ http://192.168.xxx.xxx:8777
 node realtime_oi_dashboard/scripts/check-static-js.mjs
 ```
 
-## CVD interpretation
-
-The OI ranking table includes a 15-minute Cumulative Volume Delta (CVD) value
-and interpretation label for the 30 highest-24-hour-quote-volume USDT
-perpetual contracts. CVD measures the net USDT value of taker buys minus taker
-sells; it is an order-flow context signal, not a price forecast.
-
-After startup, CVD labels show `資料累積中` until the first 15-minute window is
-complete. `買盤主導` and `賣盤主導` indicate a normalized CVD imbalance of at
-least +10% or -10%; smaller imbalances are `中性`. CVD uses live Binance
-`aggTrade` data when available. After 30 seconds without an accepted live
-trade, it fails over to an approximate calculation from the latest fifteen
-one-minute klines: taker-buy quote volume minus taker-sell quote volume.
-Contracts outside the 30-symbol CVD universe show `未追蹤`; `資料不可用` appears
-only when both the live stream and this fallback cannot provide CVD. CVD
-columns are informational and do not filter or reorder OI results.
