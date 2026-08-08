@@ -1,322 +1,515 @@
-"""Background Binance aggregated-trade polling for CVD snapshots."""
+"""All-symbol, dynamically sharded Binance CVD service."""
 
 from __future__ import annotations
 
-import json
 import threading
 import time
-from math import isfinite
+from pathlib import Path
 
-import websocket
-
-from realtime_oi_dashboard.domain.cvd import RollingCvdWindow
+from realtime_oi_dashboard.application.cvd_backfill import CvdBackfillQueue
+from realtime_oi_dashboard.application.cvd_shard_allocator import (
+    CvdShardAllocator,
+    desired_shard_count,
+)
+from realtime_oi_dashboard.application.cvd_store import CvdStore
+from realtime_oi_dashboard.application.cvd_universe import CvdUniverseManager
+from realtime_oi_dashboard.domain.cvd import MINUTE_MS
+from realtime_oi_dashboard.domain.errors import PollingStopped
+from realtime_oi_dashboard.infrastructure.binance_cvd_stream import BinanceCvdShard
+from realtime_oi_dashboard.infrastructure.cvd_snapshot_repository import (
+    CvdSnapshotRepository,
+    PERSIST_MINUTES,
+)
 from realtime_oi_dashboard.infrastructure.http import JsonHttpClient
 
 
 FAPI_BASE_URL = "https://fapi.binance.com"
-TICKER_URL = f"{FAPI_BASE_URL}/fapi/v1/ticker/24hr"
 EXCHANGE_INFO_URL = f"{FAPI_BASE_URL}/fapi/v1/exchangeInfo"
 KLINES_URL = f"{FAPI_BASE_URL}/fapi/v1/klines"
-STREAM_BASE_URL = "wss://fstream.binance.com/stream?streams="
-NO_DATA_WATCHDOG_SECONDS = 30
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+CVD_PERSIST_INTERVAL_SECONDS = 5 * 60
+SUPERVISOR_TICK_SECONDS = 1.0
 
 
 class CvdPoller:
-    """Publish rolling CVD for a bounded universe of liquid futures symbols."""
+    """Coordinate universe refresh, WSS shards, repair, and publication."""
 
     def __init__(
         self,
         *,
-        interval_seconds=60,
-        max_symbols=30,
+        shared_rest_cache=None,
         http_client=None,
         websocket_factory=None,
         now_ms=None,
         monotonic=None,
-    ):
-        self.interval_seconds = _positive_seconds(interval_seconds)
-        self.max_symbols = _positive_int(max_symbols)
+        universe_refresh_seconds=15 * 60,
+        snapshot_path=None,
+        persist_enabled=True,
+        persist_minutes=PERSIST_MINUTES,
+        persist_interval_seconds=CVD_PERSIST_INTERVAL_SECONDS,
+        target_symbols_per_shard=150,
+        target_messages_per_second_per_shard=600,
+        max_processing_lag_ms=500,
+        scale_out_confirm_seconds=30,
+        backfill_requests_per_second=4,
+        backfill_workers=2,
+        connection_rotate_seconds=85_800,
+        shard_factory=None,
+    ) -> None:
         self.stop_event = threading.Event()
         self.lock = threading.RLock()
+        self.shared_rest_cache = shared_rest_cache
         self._owns_http_client = http_client is None
         self.http_client = http_client or JsonHttpClient(
             sleep=self._wait_for_retry,
             check_cancelled=self._raise_if_stopped,
         )
-        self.websocket_factory = websocket_factory or websocket.create_connection
+        self.websocket_factory = websocket_factory
         self.now_ms = now_ms or (lambda: int(time.time() * 1000))
         self.monotonic = monotonic or time.monotonic
-        self.window = RollingCvdWindow(now_ms=self.now_ms())
-        self.websocket_url = None
-        self.connection = None
-        self.next_refresh_at = 0.0
-        self.next_rest_fallback_at = 0.0
-        self.live_trade_version = 0
-        self.error = None
-
-    def refresh_universe(self):
-        tickers = self.http_client.get_json(TICKER_URL, timeout=12, attempts=3)
-        self._raise_if_stopped()
-        exchange_info = self.http_client.get_json(
-            EXCHANGE_INFO_URL, timeout=12, attempts=3
+        self.persist_enabled = bool(persist_enabled)
+        self.persist_minutes = int(persist_minutes)
+        self.persist_interval_seconds = float(persist_interval_seconds)
+        self.target_symbols_per_shard = int(target_symbols_per_shard)
+        self.connection_rotate_seconds = float(connection_rotate_seconds)
+        self.snapshot_repository = CvdSnapshotRepository(
+            Path(snapshot_path) if snapshot_path else DATA_DIR / "cvd_snapshot.json",
+            persist_minutes=self.persist_minutes,
         )
-        symbols = select_cvd_symbols(tickers, exchange_info, self.max_symbols)
-        current_monotonic = self.monotonic()
-        with self.lock:
-            self.window.set_tracked_symbols(symbols, now_ms=self.now_ms())
-            self.websocket_url = _combined_stream_url(symbols)
-            self.next_refresh_at = current_monotonic + self.interval_seconds
-            if self.next_rest_fallback_at == 0.0:
-                self.next_rest_fallback_at = (
-                    current_monotonic + NO_DATA_WATCHDOG_SECONDS
-                )
-        return symbols
+        self.store = CvdStore(now_ms=self.now_ms)
+        self.universe = CvdUniverseManager(
+            self._load_exchange_info,
+            refresh_seconds=universe_refresh_seconds,
+            monotonic=self.monotonic,
+        )
+        self.allocator = CvdShardAllocator(
+            target_symbols_per_shard=self.target_symbols_per_shard,
+            target_messages_per_second=target_messages_per_second_per_shard,
+            max_processing_lag_ms=max_processing_lag_ms,
+            scale_out_confirm_seconds=scale_out_confirm_seconds,
+        )
+        self._shard_factory = shard_factory or self._create_shard
+        self._shards: dict[int, BinanceCvdShard] = {}
+        self._assignments: dict[int, set[str]] = {}
+        self._actual_assignments: dict[int, set[str]] = {}
+        self._pending_migrations: dict[str, tuple[int, int]] = {}
+        self._disconnected_at: dict[int, int] = {}
+        self._running = False
+        self._closed = False
+        self._last_persist_at = None
+        self._snapshot_error = None
+        self._top_error = None
+        self.backfill = CvdBackfillQueue(
+            self._load_backfill,
+            self._apply_backfill,
+            requests_per_second=backfill_requests_per_second,
+            workers=backfill_workers,
+        )
 
-    def handle_message(self, message):
+    def run_forever(self) -> None:
+        self._running = True
         try:
-            payload = json.loads(message)
-            data = payload.get("data", payload)
-            symbol = data["s"]
-            event_ms = data["E"]
-            price = data["p"]
-            quantity = data["q"]
-            buyer_is_maker = data["m"]
-        except (TypeError, ValueError, KeyError):
-            return False
-        with self.lock:
-            accepted = self.window.add_trade(
-                symbol,
-                event_ms,
-                price=price,
-                quantity=quantity,
-                buyer_is_maker=buyer_is_maker,
-            )
-            if accepted:
-                accepted_at = self.monotonic()
-                self.live_trade_version += 1
-                self.next_rest_fallback_at = (
-                    accepted_at + NO_DATA_WATCHDOG_SECONDS
-                )
-                self.error = None
-            return accepted
-
-    def refresh_rest_fallback(self, expected_live_trade_version=None):
-        """Rebuild the rolling CVD window from one-minute REST klines."""
-        with self.lock:
-            symbols = set(self.window.tracked_symbols)
-            if expected_live_trade_version is None:
-                expected_live_trade_version = self.live_trade_version
-        fallback_now_ms = self.now_ms()
-        rebuilt_window = RollingCvdWindow(now_ms=fallback_now_ms)
-        rebuilt_window.set_tracked_symbols(symbols, now_ms=fallback_now_ms)
-        populated_symbols = set()
-        for symbol in symbols:
+            self._load_snapshot()
             try:
-                klines = self.http_client.get_json(
-                    KLINES_URL,
-                    params={"symbol": symbol, "interval": "1m", "limit": 15},
-                    timeout=12,
-                    attempts=3,
-                )
-                if not _add_kline_cvd_events(
-                    rebuilt_window,
-                    symbol,
-                    klines,
-                    now_ms=fallback_now_ms,
-                ):
-                    continue
-            except Exception:
-                continue
-            rebuilt_window.coverage_started_at[symbol] = (
-                fallback_now_ms - rebuilt_window.coverage_ms
-            )
-            populated_symbols.add(symbol)
-        rebuilt_window.set_unavailable_symbols(symbols - populated_symbols)
-        populated = bool(populated_symbols)
-        with self.lock:
-            if self.live_trade_version != expected_live_trade_version:
-                return populated
-            self.window = rebuilt_window
-            if populated:
-                self.error = None
-            else:
-                self.error = "CVD unavailable"
-        return populated
+                change = self.refresh_universe(force=True)
+                self._top_error = None
+            except Exception as exc:
+                change = None
+                self._top_error = str(exc)
+            for shard in self._shards.values():
+                shard.start()
+            self.backfill.start()
+            if change is not None:
+                for symbol in change.added:
+                    self._enqueue_backfill_if_missing(symbol)
+
+            while not self.stop_event.wait(SUPERVISOR_TICK_SECONDS):
+                try:
+                    change = self.refresh_universe()
+                    if change is not None and change.changed:
+                        self._reconcile_shards()
+                        for symbol in change.added:
+                            self._enqueue_backfill_if_missing(symbol)
+                    self._fill_silent_minutes()
+                    self._scale_if_needed()
+                    self.store.publish(now_ms=self.now_ms())
+                    self._save_snapshot_if_due()
+                    self._top_error = None
+                except PollingStopped:
+                    break
+                except Exception as exc:
+                    self._top_error = str(exc)
+        except PollingStopped:
+            pass
+        except Exception as exc:
+            self._top_error = str(exc)
+        finally:
+            self.close()
+
+    def refresh_universe(self, *, force=False):
+        change = self.universe.refresh_if_due(force=force)
+        if change is None:
+            return None
+        self.store.set_universe(set(change.symbols))
+        if change.changed or not self._assignments:
+            self._reconcile_shards()
+        return change
 
     def get_state(self):
+        rows = self.store.published()
+        if not rows and self.store.active_symbols():
+            rows = dict(self.store.publish(now_ms=self.now_ms()))
         with self.lock:
-            return {
-                "rows": self.window.snapshots(now_ms=self.now_ms()),
-                "tracked_symbols": sorted(self.window.tracked_symbols),
-                "error": self.error,
-            }
+            shards = list(self._shards.values())
+        metrics = [shard.metrics() for shard in shards]
+        health_counts = {
+            "warming": 0,
+            "live": 0,
+            "stale": 0,
+            "partial": 0,
+            "unavailable": 0,
+        }
+        for row in rows.values():
+            health = row.get("cvdHealth", "unavailable")
+            health_counts[health] = health_counts.get(health, 0) + 1
+        connected = sum(bool(item["connected"]) for item in metrics)
+        service_health = _service_health(health_counts, connected, len(metrics))
+        diagnostic = self._top_error or self.universe.last_error or self.backfill.last_error
+        return {
+            "rows": rows,
+            "tracked_symbols": sorted(self.store.active_symbols()),
+            "error": diagnostic,
+            "cvd_meta": {
+                "serviceHealth": service_health,
+                "universeSymbols": len(self.store.active_symbols()),
+                "desiredShards": max(
+                    len(metrics),
+                    desired_shard_count(
+                        len(self.store.active_symbols()),
+                        target_symbols_per_shard=self.target_symbols_per_shard,
+                    ),
+                ),
+                "activeShards": len(metrics),
+                "connectedShards": connected,
+                "incomingMessagesPerSecond": sum(
+                    item["messagesPerSecond"] for item in metrics
+                ),
+                "processingLagMs": max(
+                    (item["processingLagMs"] for item in metrics),
+                    default=0.0,
+                ),
+                "backfillQueueSize": self.backfill.queue_size,
+                "healthCounts": health_counts,
+                "snapshotError": self._snapshot_error,
+            },
+        }
 
-    def run_forever(self):
-        retry_delay = 1.0
-        while not self.stop_event.is_set():
-            try:
-                self.refresh_universe()
-                self._consume_stream()
-                retry_delay = 1.0
-            except Exception as exc:
-                if self.stop_event.is_set():
-                    break
-                with self.lock:
-                    self.error = str(exc)
-                self.stop_event.wait(retry_delay)
-                retry_delay = min(retry_delay * 2, 30.0)
-            finally:
-                self._close_connection()
-
-    def _consume_stream(self):
-        with self.lock:
-            url = self.websocket_url
-        if not url:
-            return
-        connection = self.websocket_factory(url, timeout=1)
-        with self.lock:
-            self.connection = connection
-        while not self.stop_event.is_set():
-            if self.monotonic() >= self.next_refresh_at:
-                return
-            self._refresh_rest_if_silent()
-            try:
-                message = connection.recv()
-            except websocket.WebSocketTimeoutException:
-                continue
-            if message is None:
-                raise ConnectionError("CVD WebSocket closed")
-            self.handle_message(message)
-
-    def _refresh_rest_if_silent(self):
-        with self.lock:
-            if self.monotonic() < self.next_rest_fallback_at:
-                return
-            live_trade_version = self.live_trade_version
-        self.refresh_rest_fallback(expected_live_trade_version=live_trade_version)
-        with self.lock:
-            if self.live_trade_version == live_trade_version:
-                self.next_rest_fallback_at = self.monotonic() + self.interval_seconds
-
-    def stop(self):
+    def stop(self) -> None:
         self.stop_event.set()
-        self._close_connection()
-
-    def close(self):
-        self._close_connection()
-        if self._owns_http_client:
-            self.http_client.close()
-
-    def _close_connection(self):
         with self.lock:
-            connection, self.connection = self.connection, None
-        if connection is not None:
-            try:
-                connection.close()
-            except Exception:
-                pass
+            shards = list(self._shards.values())
+        asynchronously_stopped = []
+        for shard in shards:
+            request_stop = getattr(shard, "request_stop", None)
+            if callable(request_stop):
+                request_stop()
+                asynchronously_stopped.append(shard)
+            else:
+                shard.stop()
+        deadline = time.monotonic() + 5.0
+        for shard in asynchronously_stopped:
+            shard.wait_stopped(timeout=max(deadline - time.monotonic(), 0.0))
+        self.backfill.stop()
 
-    def _raise_if_stopped(self):
-        if self.stop_event.is_set():
-            raise RuntimeError("CVD polling stopped")
-
-    def _wait_for_retry(self, delay):
-        if self.stop_event.wait(delay):
-            self._raise_if_stopped()
-
-
-def _combined_stream_url(symbols):
-    streams = "/".join(f"{symbol.lower()}@aggTrade" for symbol in sorted(symbols))
-    return f"{STREAM_BASE_URL}{streams}"
-
-
-def _add_kline_cvd_events(window, symbol, klines, *, now_ms):
-    if not isinstance(klines, list) or len(klines) != 15:
-        return False
-    events = []
-    previous_event_ms = None
-    for kline in klines:
-        if not isinstance(kline, (list, tuple)) or len(kline) <= 10:
-            return False
+    def close(self) -> None:
+        with self.lock:
+            if self._closed:
+                return
+            self._closed = True
+        self.stop()
         try:
-            event_ms = int(kline[6])
-            quote_volume = float(kline[7])
-            taker_buy_quote_volume = float(kline[10])
-        except (TypeError, ValueError, OverflowError):
-            return False
-        if (
-            event_ms < 0
-            or not isfinite(quote_volume)
-            or not isfinite(taker_buy_quote_volume)
-            or quote_volume < 0
-            or taker_buy_quote_volume < 0
-            or taker_buy_quote_volume > quote_volume
-            or (
-                previous_event_ms is not None
-                and event_ms < previous_event_ms
+            self.store.publish(now_ms=self.now_ms())
+            self._save_snapshot(force=True)
+        finally:
+            if self._owns_http_client:
+                self.http_client.close()
+
+    def _load_exchange_info(self):
+        self._raise_if_stopped()
+        if self.shared_rest_cache is not None:
+            result = self.shared_rest_cache.get_exchange_info()
+        else:
+            result = self.http_client.get_json(
+                EXCHANGE_INFO_URL,
+                timeout=12,
+                attempts=3,
             )
-        ):
-            return False
-        previous_event_ms = event_ms
-        event_ms = min(event_ms, now_ms)
-        taker_sell_quote_volume = quote_volume - taker_buy_quote_volume
-        if taker_buy_quote_volume:
-            events.append((event_ms, taker_buy_quote_volume, False))
-        if taker_sell_quote_volume:
-            events.append((event_ms, taker_sell_quote_volume, True))
-    for event_ms, quote_volume, buyer_is_maker in events:
-        if not window.add_trade(
-            symbol,
-            event_ms,
-            price=quote_volume,
-            quantity=1,
-            buyer_is_maker=buyer_is_maker,
-        ):
-            return False
-    return True
+        self._raise_if_stopped()
+        return result
 
+    def _load_backfill(self, symbol: str):
+        self._raise_if_stopped()
+        return self.http_client.get_json(
+            KLINES_URL,
+            params={"symbol": symbol, "interval": "1m", "limit": 16},
+            timeout=12,
+            attempts=1,
+        )
 
-def select_cvd_symbols(tickers, exchange_info, max_symbols):
-    perpetuals = {
-        item.get("symbol")
-        for item in exchange_info.get("symbols", [])
-        if isinstance(item, dict)
-        and item.get("contractType") == "PERPETUAL"
-        and item.get("status") == "TRADING"
-    }
-    candidates = []
-    for ticker in tickers:
-        if not isinstance(ticker, dict):
-            continue
-        symbol = ticker.get("symbol")
-        if (
-            not isinstance(symbol, str)
-            or not symbol.endswith("USDT")
-            or "_" in symbol
-            or symbol not in perpetuals
-        ):
-            continue
+    def _apply_backfill(self, symbol: str, rows) -> None:
+        if not isinstance(rows, list):
+            raise ValueError("invalid CVD backfill response")
+        applied = 0
+        current_open = self.now_ms() // MINUTE_MS * MINUTE_MS
+        for row in rows:
+            if not isinstance(row, (list, tuple)) or len(row) <= 10:
+                continue
+            try:
+                open_time = int(row[0])
+                updated_at = int(row[6])
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if self.store.update_bucket(
+                symbol,
+                open_time=open_time,
+                quote_volume=row[7],
+                taker_buy_quote_volume=row[10],
+                closed=open_time < current_open,
+                source="rest",
+                updated_at=updated_at,
+            ):
+                applied += 1
+        if applied == 0:
+            self.store.mark_partial(symbol, "missing CVD backfill data")
+            raise ValueError("CVD backfill contained no usable rows")
+
+    def _reconcile_shards(self) -> None:
+        with self.lock:
+            if self.stop_event.is_set():
+                return
+            symbols = self.store.active_symbols()
+            base_count = desired_shard_count(
+                len(symbols),
+                target_symbols_per_shard=self.target_symbols_per_shard,
+            )
+            target_count = max(base_count, len(self._shards))
+            rates = _combined_symbol_rates(self._shards.values())
+            assignments = self.allocator.allocate(
+                symbols,
+                target_count,
+                message_rates=rates,
+            )
+            new_shards = []
+            for shard_id in range(target_count):
+                if shard_id not in self._shards:
+                    shard = self._shard_factory(shard_id)
+                    self._shards[shard_id] = shard
+                    new_shards.append(shard)
+            self._apply_assignments(assignments)
+            if self._running:
+                for shard in new_shards:
+                    shard.start()
+
+    def _scale_if_needed(self) -> None:
+        with self.lock:
+            if self.stop_event.is_set():
+                return
+            metrics = [shard.metrics() for shard in self._shards.values()]
+            recommended = self.allocator.recommended_count(
+                symbol_count=len(self.store.active_symbols()),
+                current_count=len(self._shards),
+                shard_metrics=metrics,
+                now=self.monotonic(),
+            )
+            if recommended > len(self._shards):
+                rates = _combined_symbol_rates(self._shards.values())
+                assignments = self.allocator.allocate(
+                    self.store.active_symbols(),
+                    recommended,
+                    message_rates=rates,
+                )
+                for shard_id in range(len(self._shards), recommended):
+                    shard = self._shard_factory(shard_id)
+                    self._shards[shard_id] = shard
+                self._apply_assignments(assignments)
+                for shard_id in range(len(metrics), recommended):
+                    self._shards[shard_id].start()
+
+    def _apply_assignments(self, assignments: dict[int, set[str]]) -> None:
+        with self.lock:
+            previous_by_symbol = {
+                symbol: shard_id
+                for shard_id, symbols in self._assignments.items()
+                for symbol in symbols
+            }
+            next_by_symbol = {
+                symbol: shard_id
+                for shard_id, symbols in assignments.items()
+                for symbol in symbols
+            }
+            actual = {
+                shard_id: set(symbols) for shard_id, symbols in assignments.items()
+            }
+            pending = {}
+            for symbol, new_shard in next_by_symbol.items():
+                old_shard = previous_by_symbol.get(symbol)
+                if old_shard is None or old_shard == new_shard:
+                    continue
+                actual.setdefault(old_shard, set()).add(symbol)
+                pending[symbol] = (old_shard, new_shard)
+            for symbol, (old_shard, new_shard) in self._pending_migrations.items():
+                if next_by_symbol.get(symbol) != new_shard:
+                    continue
+                actual.setdefault(old_shard, set()).add(symbol)
+                pending[symbol] = (old_shard, new_shard)
+
+            # Subscribe target shards before touching source subscriptions.
+            for shard_id, symbols in actual.items():
+                self._shards[shard_id].update_symbols(symbols)
+            self._assignments = {
+                shard_id: set(symbols)
+                for shard_id, symbols in assignments.items()
+            }
+            self._actual_assignments = actual
+            self._pending_migrations = pending
+
+    def _create_shard(self, shard_id: int):
+        return BinanceCvdShard(
+            shard_id,
+            self._handle_kline,
+            self._handle_shard_health,
+            websocket_factory=self.websocket_factory,
+            monotonic=self.monotonic,
+            rotate_seconds=self.connection_rotate_seconds,
+        )
+
+    def _handle_kline(self, shard_id: int, symbol: str, values: dict) -> None:
+        if self.store.update_bucket(symbol, **values):
+            self.store.set_connected({symbol}, True)
+        with self.lock:
+            migration = self._pending_migrations.get(symbol)
+            if migration is not None and migration[1] == shard_id:
+                old_shard, _ = migration
+                self._pending_migrations.pop(symbol, None)
+                old_symbols = self._actual_assignments.get(old_shard, set())
+                old_symbols.discard(symbol)
+                self._shards[old_shard].update_symbols(old_symbols)
+
+    def _handle_shard_health(
+        self,
+        shard_id: int,
+        symbols: set[str],
+        connected: bool,
+        reason: str | None,
+    ) -> None:
+        now_ms = self.now_ms()
+        self.store.set_connected(symbols, connected, reason)
+        if connected:
+            disconnected_at = self._disconnected_at.pop(shard_id, None)
+            if (
+                disconnected_at is not None
+                and disconnected_at // MINUTE_MS < now_ms // MINUTE_MS
+            ):
+                for symbol in symbols:
+                    self._enqueue_backfill_if_missing(symbol)
+        else:
+            self._disconnected_at.setdefault(shard_id, now_ms)
+
+    def _fill_silent_minutes(self) -> None:
+        now_ms = self.now_ms()
+        for shard_id, symbols in self._assignments.items():
+            shard = self._shards.get(shard_id)
+            if shard is None:
+                continue
+            metrics = shard.metrics()
+            if not metrics["connected"]:
+                continue
+            confirmed_reader = getattr(shard, "confirmed_symbols", None)
+            confirmed = (
+                confirmed_reader()
+                if callable(confirmed_reader)
+                else symbols
+                if metrics.get("confirmedSymbols") == len(symbols)
+                else set()
+            )
+            self.store.fill_closed_zero_buckets(
+                symbols.intersection(confirmed),
+                now_ms=now_ms,
+            )
+
+    def _enqueue_backfill_if_missing(self, symbol: str) -> bool:
+        current_open = self.now_ms() // MINUTE_MS * MINUTE_MS
+        missing_history = any(
+            open_time < current_open
+            for open_time in self.store.missing_recent_buckets(
+                symbol,
+                now_ms=self.now_ms(),
+                minutes=15,
+            )
+        )
+        return missing_history and self.backfill.enqueue(symbol)
+
+    def _load_snapshot(self) -> None:
+        if not self.persist_enabled:
+            return
         try:
-            volume = float(ticker.get("quoteVolume", 0))
-        except (TypeError, ValueError, OverflowError):
-            continue
-        if isfinite(volume) and volume > 0:
-            candidates.append((volume, symbol))
-    candidates.sort(reverse=True)
-    return {symbol for _, symbol in candidates[:max_symbols]}
+            records, saved_at = self.snapshot_repository.load(now_ms=self.now_ms())
+            if saved_at is not None:
+                self.store.restore(records, updated_at=saved_at)
+            self._snapshot_error = None
+        except (OSError, ValueError, RecursionError) as exc:
+            self._snapshot_error = str(exc)
+
+    def _save_snapshot_if_due(self) -> None:
+        if not self.persist_enabled:
+            return
+        now = self.monotonic()
+        if (
+            self._last_persist_at is not None
+            and now - self._last_persist_at < self.persist_interval_seconds
+        ):
+            return
+        self._save_snapshot()
+
+    def _save_snapshot(self, *, force=False) -> None:
+        if not self.persist_enabled:
+            return
+        if self.stop_event.is_set() and not force:
+            return
+        saved_at = self.now_ms()
+        cutoff = saved_at - self.persist_minutes * MINUTE_MS
+        try:
+            self.snapshot_repository.save(
+                saved_at=saved_at,
+                symbols=self.store.export(cutoff_ms=cutoff),
+            )
+            self._last_persist_at = self.monotonic()
+            self._snapshot_error = None
+        except (OSError, ValueError) as exc:
+            self._snapshot_error = str(exc)
+
+    def _raise_if_stopped(self) -> None:
+        if self.stop_event.is_set():
+            raise PollingStopped
+
+    def _wait_for_retry(self, delay: float) -> None:
+        if self.stop_event.wait(delay):
+            raise PollingStopped
 
 
-def _positive_seconds(value):
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValueError("interval_seconds must be positive") from exc
-    if parsed <= 0:
-        raise ValueError("interval_seconds must be positive")
-    return parsed
+def _combined_symbol_rates(shards) -> dict[str, float]:
+    rates = {}
+    for shard in shards:
+        for symbol, rate in shard.metrics().get("symbolRates", {}).items():
+            rates[symbol] = max(rate, rates.get(symbol, 0.0))
+    return rates
 
 
-def _positive_int(value):
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError("max_symbols must be a positive integer")
-    return value
+def _service_health(health_counts, connected_shards, active_shards):
+    if health_counts.get("live", 0) and connected_shards == active_shards:
+        return "live"
+    if connected_shards:
+        return "partial"
+    if active_shards:
+        return "stale"
+    return "unavailable"

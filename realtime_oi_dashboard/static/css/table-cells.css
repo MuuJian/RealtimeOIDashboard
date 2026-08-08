@@ -206,6 +206,9 @@
 .cvd-status-selling { color: var(--red-ink); }
 .cvd-status-neutral { color: var(--muted); }
 .cvd-status-collecting { color: #f0bd59; }
+.cvd-status-warming { color: #f0bd59; }
+.cvd-status-stale { color: #e7a44a; }
+.cvd-status-partial { color: #d89068; }
 .cvd-status-untracked,
 .cvd-status-unavailable { color: #8490a8; }
 

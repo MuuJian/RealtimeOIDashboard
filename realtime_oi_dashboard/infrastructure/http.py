@@ -12,6 +12,10 @@ from typing import Any
 
 import requests
 
+from realtime_oi_dashboard.infrastructure.binance_weight_budget import (
+    GLOBAL_BINANCE_WEIGHT_BUDGET,
+)
+
 
 RETRYABLE_STATUS_CODES = frozenset({408, 418, 429, 500, 502, 503, 504})
 NON_RETRYABLE_REQUEST_ERRORS = (
@@ -33,6 +37,9 @@ class JsonHttpClient:
         session_factory: Callable[[], requests.Session] = requests.Session,
         sleep: Callable[[float], None] = time.sleep,
         check_cancelled: Callable[[], None] | None = None,
+        before_request: Callable[[str], None] | None = (
+            GLOBAL_BINANCE_WEIGHT_BUDGET.acquire
+        ),
         retry_base_delay: float = 1.0,
     ) -> None:
         if isinstance(retry_base_delay, bool):
@@ -48,6 +55,7 @@ class JsonHttpClient:
         self._session_factory = session_factory
         self._sleep = sleep
         self._check_cancelled = check_cancelled
+        self._before_request = before_request
         self._retry_base_delay = retry_base_delay
         self._thread_local = threading.local()
         self._sessions_lock = threading.Lock()
@@ -76,6 +84,9 @@ class JsonHttpClient:
 
         last_error: Exception | None = None
         for attempt in range(1, attempts + 1):
+            self._raise_if_cancelled()
+            if self._before_request is not None:
+                self._before_request(url)
             self._raise_if_cancelled()
             try:
                 response = self._session().get(url, params=params, timeout=timeout)

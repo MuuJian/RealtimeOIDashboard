@@ -99,9 +99,14 @@ export function updateMarketRowCells(cells, row, heatMax = null) {
   if (cells.cvdCell) {
     cells.cvdCell.textContent = formatCvd(row.cvd15m, row.cvd15mRatio);
     cells.cvdCell.className = `cvd-value ${signClass(row.cvd15m)}`;
-    cells.cvdStatusCell.textContent = cvdStatusLabel(row.cvdStatus);
-    cells.cvdStatusCell.className = `cvd-status cvd-status-${row.cvdStatus || "unavailable"}`;
-    cells.cvdStatusCell.title = "CVD 反映主動買賣流，不保證價格方向。";
+    const cvdState = row.cvdHealth || row.cvdStatus || "unavailable";
+    cells.cvdStatusCell.textContent = cvdStatusLabel(
+      row.cvdStatus,
+      row.cvdHealth,
+    );
+    cells.cvdStatusCell.className = `cvd-status cvd-status-${cvdState}`;
+    cells.cvdStatusCell.title = row.cvdReason
+      || "CVD 反映主動買賣流，不保證價格方向。";
   }
 
   cells.fundingRateCell.title = formatFundingTitle(row.nextFundingTime);

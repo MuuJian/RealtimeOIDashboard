@@ -95,7 +95,7 @@ test("keeps the last signal rows visible when refresh fails", () => {
 
     assert.equal(bullsBody.firstChild, previousRow);
     assert.match(statusEl.textContent, /temporary network failure/);
-    assert.match(statusEl.textContent, /上次扫描/);
+    assert.match(statusEl.textContent, /上次掃描/);
   } finally {
     if (previousDocument === undefined) delete globalThis.document;
     else globalThis.document = previousDocument;
@@ -127,7 +127,7 @@ test("shows an explicit waiting state before the first scan", () => {
       scan_total: 0,
       scan_succeeded: 0,
     });
-    assert.equal(statusEl.textContent, "等待首次扫描");
+    assert.equal(statusEl.textContent, "等待首次掃描");
   } finally {
     if (previousDocument === undefined) delete globalThis.document;
     else globalThis.document = previousDocument;

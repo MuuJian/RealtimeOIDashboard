@@ -40,33 +40,72 @@ class DashboardPresenter:
         state["market_cap_loaded_symbols"] = self.market_cap_count(
             set(state["active_symbols"])
         )
+        cvd_state = self._cvd_state()
+        state["cvd_meta"] = _cvd_meta(cvd_state)
         rows = self.state_store.copy_rows()
         if rows and self.clock.rows_are_stale(self.wall_time()):
             rows = []
             state["error"] = self.stale_rows_error
         else:
-            rows = self._with_cvd(rows)
+            rows = self._with_cvd(rows, cvd_state)
         state["rows"] = rows
         state["recent_errors"] = self.recent_errors()
         return state
 
-    def _with_cvd(self, rows):
-        snapshots = self._cvd_snapshots()
+    def _with_cvd(self, rows, cvd_state):
+        snapshots = cvd_state.get("rows") if isinstance(cvd_state, dict) else None
         if snapshots is None:
-            return [{**row, "cvdStatus": "unavailable"} for row in rows]
+            return [{**row, **_unavailable_cvd()} for row in rows]
         return [
-            {**row, **snapshots.get(row.get("symbol"), {"cvdStatus": "untracked"})}
+            {
+                **row,
+                **snapshots.get(row.get("symbol"), _unavailable_cvd("untracked")),
+            }
             for row in rows
         ]
 
-    def _cvd_snapshots(self):
+    def _cvd_state(self):
         if self.cvd_state_provider is None:
-            return None
+            return {}
         try:
             state = self.cvd_state_provider.get_state()
         except Exception:
-            return None
-        rows = state.get("rows") if isinstance(state, dict) else None
-        if state.get("error") if isinstance(state, dict) else True:
-            return None
-        return rows if isinstance(rows, dict) else None
+            return {}
+        return state if isinstance(state, dict) else {}
+
+
+def _unavailable_cvd(status="unavailable"):
+    return {
+        "cvd15m": None,
+        "cvd15mRatio": None,
+        "cvdDirection": None,
+        "cvdHealth": "unavailable",
+        "cvdAsOf": None,
+        "cvdCoverageSeconds": 0,
+        "cvdReason": "CVD data unavailable",
+        "cvdStatus": status,
+        "cvdUpdatedAt": None,
+    }
+
+
+def _cvd_meta(cvd_state):
+    meta = cvd_state.get("cvd_meta") if isinstance(cvd_state, dict) else None
+    if isinstance(meta, dict):
+        return meta
+    return {
+        "serviceHealth": "unavailable",
+        "universeSymbols": 0,
+        "desiredShards": 0,
+        "activeShards": 0,
+        "connectedShards": 0,
+        "incomingMessagesPerSecond": 0.0,
+        "processingLagMs": 0.0,
+        "backfillQueueSize": 0,
+        "healthCounts": {
+            "warming": 0,
+            "live": 0,
+            "stale": 0,
+            "partial": 0,
+            "unavailable": 0,
+        },
+    }

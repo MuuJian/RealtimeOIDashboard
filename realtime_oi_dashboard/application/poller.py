@@ -55,6 +55,7 @@ class OIPoller:
         market_cap_file=None,
         http_client=None,
         cvd_state_provider=None,
+        shared_rest_cache=None,
     ):
         self.batch_size = _positive_int("batch_size", batch_size)
         self.batch_delay = _non_negative_seconds("batch_delay", batch_delay)
@@ -108,6 +109,7 @@ class OIPoller:
             ticker_cache_seconds=ticker_cache_seconds,
             funding_cache_seconds=funding_cache_seconds,
             http_client=self.http_client,
+            shared_rest_cache=shared_rest_cache,
         )
         self.market_caps = CoinGeckoMarketCapClient(
             self.request_json,

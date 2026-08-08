@@ -45,11 +45,18 @@ http://192.168.xxx.xxx:8777
 | `--oi-batch-size` | `25` | 每批更新的合约数量。调小会降低单批请求量，但完成全部更新需要更久。 |
 | `--oi-batch-delay` | `1` 秒 | 两批 OI 请求之间的等待时间。网络不稳定或请求过快时可以调大。 |
 | `--oi-workers` | `3` | 同时发送的 OI 请求数量。调小可以降低请求压力。 |
-| `--ticker-cache-seconds` | `10` 秒 | 24 小时行情数据的缓存时间。调大可以减少请求次数。 |
+| `--ticker-cache-seconds` | `10` 秒 | OI 与 Signal Scan 共用的 24 小时行情缓存时间。调大可以减少请求次数。 |
 | `--funding-cache-seconds` | `3600` 秒 | 资金费率备用数据的缓存时间。 |
 | `--market-cap-refresh-seconds` | `3600` 秒 | 市值和 FDV 的刷新间隔，默认每小时更新一次。 |
 | `--snapshot-save-interval` | `10` 秒 | 当前 OI 状态保存到本地文件的间隔。 |
 | `--signal-scan-interval` | `60` 秒 | 趋势和波动率信号重新扫描的间隔。 |
+| `--disable-cvd` | 关闭 | 禁用后端全币种 CVD 服务。 |
+| `--cvd-universe-refresh-seconds` | `900` 秒 | 检查 USDT 永续合约新增与下架的间隔。 |
+| `--cvd-target-symbols-per-shard` | `150` | 每个动态 CVD WebSocket 分片的软容量。 |
+| `--cvd-backfill-requests-per-second` | `4` | CVD 缺失分钟补数的请求速率。 |
+| `--cvd-backfill-workers` | `2` | CVD 补数工作线程数量。 |
+| `--disable-cvd-persist` | 关闭 | 禁用 CVD 重启恢复快照。 |
+| `--cvd-persist-interval-seconds` | `300` 秒 | CVD JSON 快照的原子保存间隔。 |
 
 例如，网络不稳定或请求过快时，可以降低 OI 更新速度：
 
@@ -87,3 +94,12 @@ node realtime_oi_dashboard/scripts/check-static-js.mjs
 - Binance Futures：合约价格、OI、成交额、资金费率和历史行情。
 - CoinGecko：币种市值和完全稀释估值（FDV）。
 - TradingView：图表页面。
+
+浏览器仅在 OI 页面可见且窗口处于前台时连接 Binance 价格 WSS。后端的
+OI、Signal Scan 和 CVD 持续运行；OI 与 Signal Scan 共享 Binance
+`ticker/24hr`（默认 10 秒）缓存，三者共享 `exchangeInfo`（15 分钟）缓存。
+
+CVD 从共享 `exchangeInfo` 自动发现全部正在交易的 USDT 永续合约，并按每片
+约 150 个币动态创建后端 `kline_1m` WebSocket。每个币只保留 16 个一分钟环形
+桶；同一分钟的累计 K 线采用覆盖更新。REST K 线仅用于启动预热和断线缺口修复，
+最近 20 分钟数据会原子保存到 `data/cvd_snapshot.json`。

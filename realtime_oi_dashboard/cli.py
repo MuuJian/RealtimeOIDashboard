@@ -77,7 +77,10 @@ def parse_args(argv=None):
         "--ticker-cache-seconds",
         type=non_negative_float,
         default=10,
-        help="seconds to cache futures 24h ticker; 0 disables the cache",
+        help=(
+            "seconds to share one futures 24h ticker response across "
+            "OI and signal scan; 0 disables the cache"
+        ),
     )
     parser.add_argument(
         "--funding-cache-seconds",
@@ -107,5 +110,84 @@ def parse_args(argv=None):
         type=positive_float,
         default=60,
         help="seconds between signal-scan (trend/volatility) refreshes",
+    )
+    parser.add_argument(
+        "--disable-cvd",
+        dest="cvd_enabled",
+        action="store_false",
+        default=True,
+        help="disable the backend all-symbol CVD service",
+    )
+    parser.add_argument(
+        "--cvd-universe-refresh-seconds",
+        type=positive_float,
+        default=900,
+        help="seconds between shared exchangeInfo universe checks",
+    )
+    parser.add_argument(
+        "--cvd-target-symbols-per-shard",
+        type=positive_int,
+        default=150,
+        help="soft symbol capacity for each dynamically created CVD shard",
+    )
+    parser.add_argument(
+        "--cvd-target-messages-per-second-per-shard",
+        type=positive_float,
+        default=600,
+        help="sustained message-rate target for CVD scale-out",
+    )
+    parser.add_argument(
+        "--cvd-max-processing-lag-ms",
+        type=positive_float,
+        default=500,
+        help="sustained CVD processing-lag threshold for scale-out",
+    )
+    parser.add_argument(
+        "--cvd-scale-out-confirm-seconds",
+        type=positive_float,
+        default=30,
+        help="seconds an overload must persist before adding a CVD shard",
+    )
+    parser.add_argument(
+        "--cvd-backfill-requests-per-second",
+        type=positive_float,
+        default=4,
+        help="global CVD missing-minute repair request rate",
+    )
+    parser.add_argument(
+        "--cvd-backfill-workers",
+        type=positive_int,
+        default=2,
+        help="bounded workers for CVD missing-minute repair",
+    )
+    parser.add_argument(
+        "--disable-cvd-persist",
+        dest="cvd_persist_enabled",
+        action="store_false",
+        default=True,
+        help="disable restart-safe CVD JSON snapshots",
+    )
+    parser.add_argument(
+        "--cvd-persist-minutes",
+        type=positive_int,
+        default=20,
+        help="number of recent CVD minute buckets kept in JSON",
+    )
+    parser.add_argument(
+        "--cvd-persist-interval-seconds",
+        type=positive_float,
+        default=300,
+        help="seconds between atomic CVD JSON snapshots",
+    )
+    parser.add_argument(
+        "--cvd-snapshot-path",
+        default=None,
+        help="optional path for the CVD JSON snapshot",
+    )
+    parser.add_argument(
+        "--cvd-connection-rotate-seconds",
+        type=positive_float,
+        default=85_800,
+        help="seconds before a smooth CVD shard connection rotation",
     )
     return parser.parse_args(argv)

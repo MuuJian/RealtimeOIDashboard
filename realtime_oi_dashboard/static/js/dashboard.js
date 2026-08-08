@@ -13,6 +13,7 @@ import { useTableSort } from "./hooks/useTableSort.js";
 import { createMotionEffects } from "./motionEffects.js";
 import { createOiRefreshController } from "./services/OiRefreshController.js";
 import { createPageLifecycle } from "./services/PageLifecycle.js";
+import { createLiveUpdateCoordinator } from "./services/LiveUpdateCoordinator.js";
 import { createDashboardRenderer } from "./services/DashboardRenderer.js";
 import { createRankingProcessor } from "./services/RankingProcessor.js";
 import { createRankingViewController } from "./services/RankingViewController.js";
@@ -114,11 +115,13 @@ const oiRefresh = createOiRefreshController({
   onError: handleOiError,
   onSettled: handleOiSettled,
 });
+const liveUpdates = createLiveUpdateCoordinator({
+  oiRefresh,
+  signalScanRefresh,
+  priceFeed,
+});
 const pageLifecycle = createPageLifecycle({
-  onBackgroundChange: setBackgrounded,
-  onForeground: refreshAfterForeground,
-  onStart: startLiveUpdates,
-  onStop: stopLiveUpdates,
+  onActiveChange: handlePageActiveChange,
   onDispose: disposeResources,
 });
 
@@ -179,30 +182,14 @@ function disposeResources() {
   marketTooltip.dispose();
   motionEffects.dispose();
   table.dispose();
-  stopLiveUpdates();
-  oiRefresh.dispose();
-  signalScanRefresh.dispose();
+  liveUpdates.dispose();
   uiScheduler.dispose();
 }
 
-function setBackgrounded(backgrounded) {
-  document.documentElement.classList.toggle("page-hidden", backgrounded);
-  motionEffects.setPaused(backgrounded);
-}
-
-function refreshAfterForeground() {
-  if (oiRefresh.isRunning()) oiRefresh.refresh();
-}
-
-function startLiveUpdates() {
-  if (oiRefresh.isRunning()) return;
-  priceFeed.connect();
-  oiRefresh.start();
-}
-
-function stopLiveUpdates() {
-  oiRefresh.stop();
-  priceFeed.close();
+function handlePageActiveChange(pageActive) {
+  document.documentElement.classList.toggle("page-hidden", !pageActive);
+  motionEffects.setPaused(!pageActive);
+  liveUpdates.setPageActive(pageActive);
 }
 
 function handleOiPayload(payload) {
@@ -287,10 +274,5 @@ function activateTab(name) {
   elements.tabOi.setAttribute("aria-selected", String(!isSignalScan));
   elements.tabSignalScan.classList.toggle("active", isSignalScan);
   elements.tabSignalScan.setAttribute("aria-selected", String(isSignalScan));
-
-  if (isSignalScan) {
-    signalScanRefresh.start();
-  } else {
-    signalScanRefresh.stop();
-  }
+  liveUpdates.setSelectedPage(isSignalScan ? "signalScan" : "oi");
 }

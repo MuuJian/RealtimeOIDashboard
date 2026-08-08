@@ -100,7 +100,13 @@ class SignalScanPoller:
     behavior so resources can be released promptly.
     """
 
-    def __init__(self, *, interval_seconds=60, http_client=None):
+    def __init__(
+        self,
+        *,
+        interval_seconds=60,
+        http_client=None,
+        shared_rest_cache=None,
+    ):
         self.interval_seconds = _positive_seconds("interval_seconds", interval_seconds)
         if http_client is not None and not callable(
             getattr(http_client, "get_json", None)
@@ -149,6 +155,7 @@ class SignalScanPoller:
         self._market_snapshot = SignalScanMarketSnapshotLoader(
             self.request_json,
             self.stop_event,
+            shared_rest_cache=shared_rest_cache,
         )
         self._kline_cache = SignalScanKlineCache(
             self.stop_event,

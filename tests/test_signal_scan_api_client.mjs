@@ -55,7 +55,7 @@ test("does not return a snapshot when cancelled during response parsing", async 
       request,
       error => error?.code === "ABORTED"
         && error?.reason === "cancelled"
-        && error?.message === "訊號掃描请求已取消",
+        && error?.message === "訊號掃描請求已取消",
     );
   } finally {
     if (previousWindow === undefined) delete globalThis.window;

@@ -1,8 +1,5 @@
 export function createPageLifecycle({
-  onBackgroundChange,
-  onForeground,
-  onStart,
-  onStop,
+  onActiveChange,
   onDispose,
 }) {
   let started = false;
@@ -11,48 +8,44 @@ export function createPageLifecycle({
   function start() {
     if (started || disposed) return;
     started = true;
-    document.addEventListener("visibilitychange", syncBackgroundState);
-    window.addEventListener("focus", syncBackgroundState);
-    window.addEventListener("blur", syncBackgroundState);
+    document.addEventListener("visibilitychange", syncActiveState);
+    window.addEventListener("focus", syncActiveState);
+    window.addEventListener("blur", syncActiveState);
     window.addEventListener("pagehide", handlePageHide);
     window.addEventListener("pageshow", handlePageShow);
-    syncBackgroundState();
-    onStart();
+    syncActiveState();
   }
 
   function dispose() {
     if (disposed) return;
     disposed = true;
     if (started) {
-      document.removeEventListener("visibilitychange", syncBackgroundState);
-      window.removeEventListener("focus", syncBackgroundState);
-      window.removeEventListener("blur", syncBackgroundState);
+      document.removeEventListener("visibilitychange", syncActiveState);
+      window.removeEventListener("focus", syncActiveState);
+      window.removeEventListener("blur", syncActiveState);
       window.removeEventListener("pagehide", handlePageHide);
       window.removeEventListener("pageshow", handlePageShow);
     }
     onDispose();
   }
 
-  function syncBackgroundState() {
+  function syncActiveState() {
     if (disposed) return;
-    const backgrounded = document.hidden || !document.hasFocus();
-    onBackgroundChange(backgrounded);
-    if (!backgrounded) onForeground();
+    const pageActive = document.hidden !== true
+      && document.visibilityState !== "hidden"
+      && document.visibilityState !== "prerender"
+      && document.hasFocus();
+    onActiveChange(pageActive);
   }
 
   function handlePageHide(event) {
-    onBackgroundChange(true);
-    if (event.persisted) {
-      onStop();
-      return;
-    }
+    onActiveChange(false);
+    if (event.persisted) return;
     dispose();
   }
 
-  function handlePageShow(event) {
-    if (!event.persisted || disposed) return;
-    syncBackgroundState();
-    onStart();
+  function handlePageShow() {
+    syncActiveState();
   }
 
   return {

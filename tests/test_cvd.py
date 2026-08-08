@@ -1,68 +1,92 @@
 import unittest
 
-from realtime_oi_dashboard.domain.cvd import RollingCvdWindow
+from realtime_oi_dashboard.domain.cvd import (
+    BUCKET_COUNT,
+    MINUTE_MS,
+    SymbolCvdWindow,
+)
 
 
-class RollingCvdWindowTests(unittest.TestCase):
+class SymbolCvdWindowTests(unittest.TestCase):
     def setUp(self):
-        self.window = RollingCvdWindow(now_ms=0)
-        self.window.set_tracked_symbols({"BTCUSDT"}, now_ms=0)
+        self.window = SymbolCvdWindow("BTCUSDT")
+        self.window.set_connected(True)
 
-    def test_taker_buys_and_sells_are_signed_as_usdt_notional(self):
-        self.window.add_trade(
-            "BTCUSDT", 1, price=100, quantity=2, buyer_is_maker=False
-        )
-        self.window.add_trade(
-            "BTCUSDT", 2, price=100, quantity=0.5, buyer_is_maker=True
-        )
-
-        snapshot = self.window.snapshot("BTCUSDT", now_ms=900_001)
-
-        self.assertEqual(snapshot["cvd15m"], 150)
-        self.assertEqual(snapshot["cvd15mRatio"], 0.6)
-        self.assertEqual(snapshot["cvdStatus"], "buying")
-        self.assertEqual(snapshot["cvdUpdatedAt"], 2)
-
-    def test_snapshot_is_collecting_until_the_full_window_has_elapsed(self):
-        self.window.add_trade(
-            "BTCUSDT", 1, price=100, quantity=1, buyer_is_maker=False
+    def update(self, minute, quote, buy, *, updated_at=None, source="wss"):
+        return self.window.update(
+            open_time=minute * MINUTE_MS,
+            quote_volume=quote,
+            taker_buy_quote_volume=buy,
+            closed=True,
+            source=source,
+            updated_at=updated_at or (minute + 1) * MINUTE_MS,
         )
 
-        snapshot = self.window.snapshot("BTCUSDT", now_ms=899_999)
+    def test_same_minute_update_overwrites_cumulative_values(self):
+        self.update(15, 100, 60, updated_at=901_000)
+        self.update(15, 150, 90, updated_at=902_000)
 
-        self.assertEqual(snapshot["cvdStatus"], "collecting")
+        row = self.window.snapshot(now_ms=15 * MINUTE_MS + 30_000)
 
-    def test_snapshot_prunes_events_older_than_the_rolling_window(self):
-        self.window.add_trade(
-            "BTCUSDT", 1, price=100, quantity=1, buyer_is_maker=False
+        self.assertEqual(row["cvd15m"], 30)
+        self.assertEqual(row["cvd15mRatio"], 0.2)
+        self.assertEqual(len(self.window.export_buckets(cutoff_ms=0)), 1)
+
+    def test_older_rest_value_cannot_overwrite_newer_wss_value(self):
+        self.update(15, 150, 90, updated_at=902_000)
+        accepted = self.update(
+            15,
+            100,
+            60,
+            updated_at=901_000,
+            source="rest",
         )
-        self.window.add_trade(
-            "BTCUSDT", 900_002, price=100, quantity=2, buyer_is_maker=True
-        )
 
-        snapshot = self.window.snapshot("BTCUSDT", now_ms=900_002)
-
-        self.assertEqual(snapshot["cvd15m"], -200)
-        self.assertEqual(snapshot["cvd15mRatio"], -1)
-        self.assertEqual(snapshot["cvdStatus"], "selling")
-
-    def test_snapshot_is_untracked_for_symbols_outside_the_universe(self):
+        self.assertFalse(accepted)
         self.assertEqual(
-            self.window.snapshot("ETHUSDT", now_ms=900_000),
-            {"cvdStatus": "untracked"},
+            self.window.snapshot(now_ms=15 * MINUTE_MS)["cvd15m"],
+            30,
         )
 
-    def test_small_imbalance_is_neutral_after_collection(self):
-        self.window.add_trade(
-            "BTCUSDT", 1, price=100, quantity=1.05, buyer_is_maker=False
-        )
-        self.window.add_trade(
-            "BTCUSDT", 2, price=100, quantity=1, buyer_is_maker=True
-        )
+    def test_window_uses_current_minute_and_previous_fourteen_only(self):
+        for minute in range(1, 17):
+            self.update(minute, 100, 60)
 
-        snapshot = self.window.snapshot("BTCUSDT", now_ms=900_001)
+        row = self.window.snapshot(now_ms=16 * MINUTE_MS)
 
-        self.assertEqual(snapshot["cvdStatus"], "neutral")
+        self.assertEqual(row["cvd15m"], 15 * 20)
+        self.assertEqual(row["cvdCoverageSeconds"], 900)
+        self.assertEqual(row["cvdHealth"], "live")
+        self.assertLessEqual(len(self.window.export_buckets(cutoff_ms=0)), BUCKET_COUNT)
+
+    def test_zero_volume_window_is_neutral(self):
+        for minute in range(1, 16):
+            self.update(minute, 0, 0)
+
+        row = self.window.snapshot(now_ms=15 * MINUTE_MS)
+
+        self.assertEqual(row["cvd15m"], 0)
+        self.assertEqual(row["cvd15mRatio"], 0)
+        self.assertEqual(row["cvdDirection"], "neutral")
+
+    def test_disconnect_marks_only_health_stale_and_keeps_value(self):
+        self.update(15, 100, 75)
+        self.window.set_connected(False, "shard disconnected")
+
+        row = self.window.snapshot(now_ms=15 * MINUTE_MS)
+
+        self.assertEqual(row["cvd15m"], 50)
+        self.assertEqual(row["cvdHealth"], "stale")
+        self.assertEqual(row["cvdStatus"], "buying")
+        self.assertEqual(row["cvdReason"], "shard disconnected")
+
+    def test_no_data_is_unavailable(self):
+        window = SymbolCvdWindow("ETHUSDT")
+        row = window.snapshot(now_ms=15 * MINUTE_MS)
+
+        self.assertIsNone(row["cvd15m"])
+        self.assertEqual(row["cvdHealth"], "unavailable")
+        self.assertEqual(row["cvdStatus"], "unavailable")
 
 
 if __name__ == "__main__":

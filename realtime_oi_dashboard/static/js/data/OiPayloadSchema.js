@@ -17,6 +17,14 @@ const CVD_STATUSES = new Set([
   "untracked",
   "unavailable",
 ]);
+const CVD_DIRECTIONS = new Set(["buying", "selling", "neutral"]);
+const CVD_HEALTH = new Set([
+  "warming",
+  "live",
+  "stale",
+  "partial",
+  "unavailable",
+]);
 
 export function assertOiPayload(payload) {
   if (payload?.schema_version !== OI_API_SCHEMA_VERSION) {
@@ -37,10 +45,33 @@ export function isOiPayload(payload) {
     && Number.isSafeInteger(payload.market_cap_loaded_symbols)
     && payload.market_cap_loaded_symbols >= 0
     && payload.market_cap_loaded_symbols <= payload.total_symbols
+    && isCvdMeta(payload.cvd_meta)
     && payload.active_symbols.every(isSymbol)
     && Array.isArray(payload.rows)
     && payload.rows.every(isOiRow),
   );
+}
+
+function isCvdMeta(value) {
+  if (!value || typeof value !== "object") return false;
+  const counts = value.healthCounts;
+  return ["live", "partial", "stale", "unavailable"].includes(
+    value.serviceHealth,
+  )
+    && [
+      value.universeSymbols,
+      value.desiredShards,
+      value.activeShards,
+      value.connectedShards,
+      value.backfillQueueSize,
+    ].every(item => Number.isSafeInteger(item) && item >= 0)
+    && isNonNegativeNumber(value.incomingMessagesPerSecond)
+    && isNonNegativeNumber(value.processingLagMs)
+    && counts
+    && typeof counts === "object"
+    && ["warming", "live", "stale", "partial", "unavailable"].every(
+      key => Number.isSafeInteger(counts[key]) && counts[key] >= 0,
+    );
 }
 
 export function isOiRow(item) {
@@ -66,7 +97,18 @@ export function isOiRow(item) {
   return CVD_STATUSES.has(item.cvdStatus)
     && isOptionalNumber(item.cvd15m)
     && isOptionalNumber(item.cvd15mRatio)
-    && isOptionalTimestamp(item.cvdUpdatedAt);
+    && isOptionalTimestamp(item.cvdUpdatedAt)
+    && (!Object.hasOwn(item, "cvdDirection")
+      || item.cvdDirection == null
+      || CVD_DIRECTIONS.has(item.cvdDirection))
+    && (!Object.hasOwn(item, "cvdHealth")
+      || CVD_HEALTH.has(item.cvdHealth))
+    && (!Object.hasOwn(item, "cvdAsOf") || isOptionalTimestamp(item.cvdAsOf))
+    && (!Object.hasOwn(item, "cvdCoverageSeconds")
+      || isOptionalNonNegativeNumber(item.cvdCoverageSeconds))
+    && (!Object.hasOwn(item, "cvdReason")
+      || item.cvdReason == null
+      || typeof item.cvdReason === "string");
 }
 
 function isSymbol(value) {

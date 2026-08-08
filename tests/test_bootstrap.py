@@ -59,6 +59,18 @@ class FakeServer:
         self.serve_calls += 1
 
 
+class FakeSharedCache:
+    def __init__(self):
+        self.closed = False
+        self.stopped = False
+
+    def stop(self):
+        self.stopped = True
+
+    def close(self):
+        self.closed = True
+
+
 class RunDashboardTests(unittest.TestCase):
     def test_oi_start_failure_closes_both_services_without_serving(self):
         oi_service = FakeService(should_fail_start=True)
@@ -115,6 +127,27 @@ class RunDashboardTests(unittest.TestCase):
         self.assertFalse(oi_service.started)
         self.assertFalse(signal_service.started)
 
+    def test_normal_shutdown_closes_the_shared_rest_cache(self):
+        oi_service = FakeService()
+        signal_service = FakeService()
+        shared_cache = FakeSharedCache()
+
+        with patch.object(
+            bootstrap,
+            "create_dashboard_server",
+            return_value=FakeServer(),
+        ), redirect_stdout(io.StringIO()):
+            result = bootstrap.run_dashboard(
+                FakeArgs(),
+                oi_service,
+                signal_service,
+                shared_rest_cache=shared_cache,
+            )
+
+        self.assertEqual(result, 0)
+        self.assertTrue(shared_cache.stopped)
+        self.assertTrue(shared_cache.closed)
+
 
 class MainTests(unittest.TestCase):
     def test_create_oi_service_returns_a_background_service(self):
@@ -134,8 +167,11 @@ class MainTests(unittest.TestCase):
         cvd_service = FakeService()
         oi_service = FakeService()
         signal_service = FakeService()
+        shared_cache = FakeSharedCache()
 
         with patch.object(bootstrap, "parse_args", return_value=args), patch.object(
+            bootstrap, "create_shared_rest_cache", return_value=shared_cache
+        ), patch.object(
             bootstrap, "create_cvd_service", return_value=cvd_service
         ), patch.object(
             bootstrap, "create_oi_service", return_value=oi_service
@@ -145,14 +181,29 @@ class MainTests(unittest.TestCase):
             result = bootstrap.main([])
 
         self.assertEqual(result, 0)
-        create_oi_service.assert_called_once_with(args, cvd_state_provider=cvd_service)
-        run_dashboard.assert_called_once_with(args, oi_service, signal_service, cvd_service)
+        create_oi_service.assert_called_once_with(
+            args,
+            cvd_state_provider=cvd_service,
+            shared_rest_cache=shared_cache,
+        )
+        run_dashboard.assert_called_once_with(
+            args,
+            oi_service,
+            signal_service,
+            cvd_service,
+            shared_cache,
+        )
 
     def test_signal_scan_creation_failure_still_runs_oi_dashboard(self):
         args = FakeArgs()
         oi_service = FakeService()
+        shared_cache = FakeSharedCache()
 
         with patch.object(bootstrap, "parse_args", return_value=args), patch.object(
+            bootstrap, "create_shared_rest_cache", return_value=shared_cache
+        ), patch.object(
+            bootstrap, "create_cvd_service", side_effect=RuntimeError("CVD failed")
+        ), patch.object(
             bootstrap, "create_oi_service", return_value=oi_service
         ), patch.object(
             bootstrap,
@@ -164,7 +215,13 @@ class MainTests(unittest.TestCase):
             result = bootstrap.main([])
 
         self.assertEqual(result, 0)
-        run_dashboard.assert_called_once_with(args, oi_service, None, None)
+        run_dashboard.assert_called_once_with(
+            args,
+            oi_service,
+            None,
+            None,
+            shared_cache,
+        )
 
 
 if __name__ == "__main__":

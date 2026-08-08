@@ -30,6 +30,7 @@ class SignalScanMarketSnapshotLoader:
         *,
         exchange_info_cache_seconds: float = EXCHANGE_INFO_CACHE_SECONDS,
         monotonic: Callable[[], float] = time.monotonic,
+        shared_rest_cache=None,
     ) -> None:
         if not callable(request_json):
             raise TypeError("request_json must be callable")
@@ -43,6 +44,7 @@ class SignalScanMarketSnapshotLoader:
             raise TypeError("monotonic must be callable")
 
         self._request_json = request_json
+        self._shared_rest_cache = shared_rest_cache
         self._stop_event = stop_event
         self._cache_seconds = cache_seconds
         self._monotonic = monotonic
@@ -53,10 +55,14 @@ class SignalScanMarketSnapshotLoader:
 
     def load(self) -> tuple[list, dict]:
         self._raise_if_stopped()
-        tickers = self._request_json(
-            TICKER_URL,
-            timeout=TICKER_TIMEOUT_SECONDS,
-            attempts=SIGNAL_SCAN_HTTP_ATTEMPTS,
+        tickers = (
+            self._shared_rest_cache.get_tickers()
+            if self._shared_rest_cache is not None
+            else self._request_json(
+                TICKER_URL,
+                timeout=TICKER_TIMEOUT_SECONDS,
+                attempts=SIGNAL_SCAN_HTTP_ATTEMPTS,
+            )
         )
         if not isinstance(tickers, list):
             raise ValueError("unexpected ticker response")
@@ -67,6 +73,13 @@ class SignalScanMarketSnapshotLoader:
 
     def load_exchange_info(self) -> dict:
         self._raise_if_stopped()
+        if self._shared_rest_cache is not None:
+            exchange_info = self._shared_rest_cache.get_exchange_info()
+            self._raise_if_stopped()
+            if not _is_exchange_info_payload(exchange_info):
+                raise ValueError("unexpected exchange-info response")
+            return exchange_info
+
         cached = self._fresh_exchange_info()
         if cached is not None:
             return cached

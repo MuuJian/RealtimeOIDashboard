@@ -37,6 +37,7 @@ class BinanceFuturesClient:
         ticker_cache_seconds: float,
         funding_cache_seconds: float,
         http_client=None,
+        shared_rest_cache=None,
     ) -> None:
         self.stop_event = stop_event
         self.record_error = record_error
@@ -55,6 +56,7 @@ class BinanceFuturesClient:
             if http_client is None
             else http_client
         )
+        self.shared_rest_cache = shared_rest_cache
         self.market_cache_lock = threading.Lock()
         self.ticker_cache = MarketCache(
             ticker_cache_seconds,
@@ -87,7 +89,12 @@ class BinanceFuturesClient:
             raise PollingStopped
 
     def get_active_symbols(self) -> list[str]:
-        data = self.request_json(self.info_url, timeout=12)
+        data = (
+            self.shared_rest_cache.get_exchange_info()
+            if self.shared_rest_cache is not None
+            else self.request_json(self.info_url, timeout=12)
+        )
+        self._raise_if_stopped()
         if not isinstance(data, dict) or not isinstance(data.get("symbols"), list):
             raise ValueError("unexpected exchange-info response")
 
@@ -110,6 +117,24 @@ class BinanceFuturesClient:
         self,
         active_symbols: set[str],
     ) -> dict[str, dict[str, float | None]]:
+        if self.shared_rest_cache is not None:
+            response = self.shared_rest_cache.get_tickers()
+            self._raise_if_stopped()
+            tickers = parse_market_tickers(response, active_symbols)
+            incomplete_symbols = incomplete_market_ticker_symbols(
+                tickers,
+                active_symbols,
+            )
+            if incomplete_symbols:
+                self.record_error(
+                    "ticker24h",
+                    ValueError(
+                        "ticker response incomplete for "
+                        f"{len(incomplete_symbols)} active symbols"
+                    ),
+                )
+            return tickers
+
         now = time.monotonic()
         with self.market_cache_lock:
             lookup = self.ticker_cache.get_fresh(now)

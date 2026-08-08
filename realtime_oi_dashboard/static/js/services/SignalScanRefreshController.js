@@ -32,18 +32,15 @@ export function createSignalScanRefreshController({
   let disposed = false;
   let generation = 0;
   let active = false;
-  let visibilityBound = false;
 
   function start() {
     if (disposed || active) return;
     active = true;
-    bindVisibilityHandlers();
     startGeneration();
   }
 
   function stop() {
     active = false;
-    unbindVisibilityHandlers();
     cancelGeneration();
   }
 
@@ -52,7 +49,6 @@ export function createSignalScanRefreshController({
       disposed
       || !active
       || refreshTimer !== null
-      || isPageInactive()
     ) return;
     const currentGeneration = ++generation;
     scheduleRefresh(currentGeneration);
@@ -71,53 +67,6 @@ export function createSignalScanRefreshController({
     requestController?.abort();
     for (const controller of activeRequestControllers) controller.abort();
     activeRequestControllers.clear();
-  }
-
-  function bindVisibilityHandlers() {
-    if (visibilityBound || typeof document === "undefined") return;
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", resumeFromInactivity);
-    window.addEventListener("blur", pauseForInactivity);
-    window.addEventListener("pagehide", pauseForInactivity);
-    window.addEventListener("pageshow", resumeFromInactivity);
-    visibilityBound = true;
-  }
-
-  function unbindVisibilityHandlers() {
-    if (!visibilityBound || typeof document === "undefined") return;
-    document.removeEventListener("visibilitychange", handleVisibilityChange);
-    window.removeEventListener("focus", resumeFromInactivity);
-    window.removeEventListener("blur", pauseForInactivity);
-    window.removeEventListener("pagehide", pauseForInactivity);
-    window.removeEventListener("pageshow", resumeFromInactivity);
-    visibilityBound = false;
-  }
-
-  function handleVisibilityChange() {
-    if (isPageInactive()) pauseForInactivity();
-    else resumeFromInactivity();
-  }
-
-  function pauseForInactivity() {
-    if (!active) return;
-    cancelGeneration();
-  }
-
-  function resumeFromInactivity() {
-    startGeneration();
-  }
-
-  function isPageInactive() {
-    return typeof document !== "undefined"
-      && (
-        document.hidden === true
-        || document.visibilityState === "hidden"
-        || document.visibilityState === "prerender"
-        || (
-          typeof document.hasFocus === "function"
-          && !document.hasFocus()
-        )
-      );
   }
 
   function scheduleRefresh(currentGeneration) {
@@ -152,7 +101,6 @@ export function createSignalScanRefreshController({
       requestPromise
       || disposed
       || !active
-      || isPageInactive()
       || currentGeneration !== generation
     ) return;
     const currentController = new AbortController();

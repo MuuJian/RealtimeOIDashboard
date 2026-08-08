@@ -12,4 +12,6 @@ test("returns readable status labels", () => {
   assert.equal(cvdStatusLabel("buying"), "買盤主導");
   assert.equal(cvdStatusLabel("collecting"), "資料累積中");
   assert.equal(cvdStatusLabel("unavailable"), "資料不可用");
+  assert.equal(cvdStatusLabel("buying", "stale"), "資料延遲");
+  assert.equal(cvdStatusLabel("selling", "partial"), "資料不完整");
 });
