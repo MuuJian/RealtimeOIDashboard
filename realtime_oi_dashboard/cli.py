@@ -74,17 +74,6 @@ def parse_args(argv=None):
         help="parallel OI requests",
     )
     parser.add_argument(
-        "--oi-history-cache-seconds",
-        "--oi-24h-cache-seconds",
-        dest="oi_history_cache_seconds",
-        type=non_negative_float,
-        default=300,
-        help=(
-            "maximum seconds to cache 24h/7d OI baselines; "
-            "source tolerance may expire sooner; 0 disables the cache"
-        ),
-    )
-    parser.add_argument(
         "--ticker-cache-seconds",
         type=non_negative_float,
         default=10,

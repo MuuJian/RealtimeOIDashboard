@@ -47,7 +47,6 @@ class OIPoller:
         batch_delay=1.0,
         oi_workers=3,
         refresh_symbols_interval=900,
-        oi_history_cache_seconds=300,
         ticker_cache_seconds=10,
         funding_cache_seconds=3600,
         market_cap_cache_seconds=DEFAULT_MARKET_CAP_REFRESH_SECONDS,
@@ -62,10 +61,6 @@ class OIPoller:
         self.refresh_symbols_interval = _non_negative_seconds(
             "refresh_symbols_interval",
             refresh_symbols_interval,
-        )
-        oi_history_cache_seconds = _non_negative_seconds(
-            "oi_history_cache_seconds",
-            oi_history_cache_seconds,
         )
         ticker_cache_seconds = _non_negative_seconds(
             "ticker_cache_seconds",
@@ -109,7 +104,6 @@ class OIPoller:
         self.binance = BinanceFuturesClient(
             self.stop_event,
             self.record_symbol_error,
-            oi_history_cache_seconds=oi_history_cache_seconds,
             ticker_cache_seconds=ticker_cache_seconds,
             funding_cache_seconds=funding_cache_seconds,
             http_client=self.http_client,

@@ -34,7 +34,6 @@ class BinanceFuturesClient:
         stop_event: threading.Event,
         record_error: Callable[[str, Exception], None],
         *,
-        oi_history_cache_seconds: float,
         ticker_cache_seconds: float,
         funding_cache_seconds: float,
         http_client=None,
@@ -68,7 +67,6 @@ class BinanceFuturesClient:
         self.oi_history = OiHistoryService(
             self._fetch_oi_history,
             record_error,
-            cache_seconds=oi_history_cache_seconds,
         )
 
     def request_json(self, url, params=None, timeout=10, attempts=3):

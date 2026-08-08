@@ -24,7 +24,6 @@ def create_oi_service(args):
         batch_size=args.oi_batch_size,
         batch_delay=args.oi_batch_delay,
         oi_workers=args.oi_workers,
-        oi_history_cache_seconds=args.oi_history_cache_seconds,
         ticker_cache_seconds=args.ticker_cache_seconds,
         funding_cache_seconds=args.funding_cache_seconds,
         market_cap_cache_seconds=args.market_cap_cache_seconds,
