@@ -1,6 +1,7 @@
 export function formatCurrency(value) {
   const number = finiteNumber(value);
   if (number == null) return "-";
+  if (Math.abs(number) >= 1000000000000) return "$" + (number / 1000000000000).toFixed(2) + "兆";
   if (Math.abs(number) >= 100000000) return "$" + (number / 100000000).toFixed(2) + "億";
   if (Math.abs(number) >= 10000) return "$" + (number / 10000).toFixed(2) + "萬";
   return "$" + number.toFixed(0);
