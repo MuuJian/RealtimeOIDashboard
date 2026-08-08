@@ -1,8 +1,8 @@
 export function formatCurrency(value) {
   const number = finiteNumber(value);
   if (number == null) return "-";
-  if (Math.abs(number) >= 100000000) return "$" + (number / 100000000).toFixed(2) + "亿";
-  if (Math.abs(number) >= 10000) return "$" + (number / 10000).toFixed(2) + "万";
+  if (Math.abs(number) >= 100000000) return "$" + (number / 100000000).toFixed(2) + "億";
+  if (Math.abs(number) >= 10000) return "$" + (number / 10000).toFixed(2) + "萬";
   return "$" + number.toFixed(0);
 }
 
@@ -56,7 +56,7 @@ export function formatFundingTitle(nextFundingTime) {
   if (time == null || time <= Date.now()) return "";
   const date = new Date(time);
   if (Number.isNaN(date.getTime())) return "";
-  return `下次资金费结算: ${date.toLocaleString()}`;
+  return `下次資金費結算: ${date.toLocaleString()}`;
 }
 
 export function formatOiUpdateAge(value, now = Date.now()) {
@@ -64,9 +64,9 @@ export function formatOiUpdateAge(value, now = Date.now()) {
   if (time == null || time <= 0) return "-";
 
   const ageMs = Math.max(0, now - time);
-  if (ageMs < 5000) return "刚刚";
+  if (ageMs < 5000) return "剛剛";
   if (ageMs < 60000) return `${Math.floor(ageMs / 1000)}秒前`;
-  return `${Math.floor(ageMs / 60000)}分钟前`;
+  return `${Math.floor(ageMs / 60000)}分鐘前`;
 }
 
 export function oiUpdateSignalState(value, now = Date.now()) {
@@ -84,7 +84,7 @@ export function formatOiUpdateTitle(value) {
   if (time == null || time <= 0) return "";
   const date = new Date(time);
   if (Number.isNaN(date.getTime())) return "";
-  return `OI 获取时间：${date.toLocaleString()}`;
+  return `OI 獲取時間：${date.toLocaleString()}`;
 }
 
 const TRADINGVIEW_SYMBOL_MAP = {

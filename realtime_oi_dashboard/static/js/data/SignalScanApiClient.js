@@ -35,7 +35,7 @@ export async function loadSignalScanSnapshot({ signal } = {}) {
         && payload.error.trim().length > 0
         ? `：${payload.error}`
         : "";
-      throw new Error(`訊號掃描请求失败 (${response.status})${detail}`);
+      throw new Error(`訊號掃描請求失敗 (${response.status})${detail}`);
     }
 
     return assertSignalScanPayload(payload);
@@ -59,8 +59,8 @@ function createAbortError(reason) {
   const normalizedReason = reason === "cancelled" ? "cancelled" : "timeout";
   const error = new Error(
     normalizedReason === "cancelled"
-      ? "訊號掃描请求已取消"
-      : "訊號掃描请求超时",
+      ? "訊號掃描請求已取消"
+      : "訊號掃描請求超時",
   );
   error.name = "AbortError";
   error.code = "ABORTED";

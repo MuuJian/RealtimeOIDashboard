@@ -25,6 +25,7 @@ from realtime_oi_dashboard.domain.oi_history_points import (
 )
 
 
+OI_HISTORY_CACHE_SECONDS = 60 * 60
 OI_HISTORY_RETRY_SECONDS = 60
 
 
@@ -35,12 +36,9 @@ class OiHistoryService:
         self,
         fetch_history: Callable[[str], object],
         record_error: Callable[[str, Exception], None],
-        *,
-        cache_seconds: float,
     ) -> None:
         self._fetch_history = fetch_history
         self._record_error = record_error
-        self._cache_seconds = cache_seconds
         self._lock = threading.Lock()
         self._cache: dict[str, OiHistoryCacheEntry] = {}
 
@@ -84,8 +82,7 @@ class OiHistoryService:
     ) -> _Baselines:
         cached = self._get_cached(symbol)
         if (
-            self._cache_seconds > 0
-            and cached is not None
+            cached is not None
             and cached.is_fresh(time.monotonic())
         ):
             target_24h_ms, target_7d_ms = _target_timestamps()
@@ -116,7 +113,7 @@ class OiHistoryService:
                 cached.past_7d_point if cached is not None else None
             )
             retry_in = min(
-                self._cache_seconds,
+                OI_HISTORY_CACHE_SECONDS,
                 OI_HISTORY_RETRY_SECONDS,
             )
 
@@ -184,10 +181,7 @@ class OiHistoryService:
         *,
         retry_in: float | None,
     ) -> None:
-        if self._cache_seconds <= 0:
-            return
-
-        refresh_in = self._cache_seconds
+        refresh_in = OI_HISTORY_CACHE_SECONDS
         if retry_in is not None:
             refresh_in = min(max(retry_in, 0), refresh_in)
         else:
@@ -230,7 +224,7 @@ class OiHistoryService:
 
     def restore_cache(self, records: object) -> int:
         """Restore still-fresh baselines without extending their cache life."""
-        if self._cache_seconds <= 0 or not isinstance(records, dict):
+        if not isinstance(records, dict):
             return 0
 
         wall_now = time.time()
@@ -238,7 +232,7 @@ class OiHistoryService:
         target_24h_ms, target_7d_ms = _target_timestamps()
         restored = restore_history_cache(
             records,
-            cache_seconds=self._cache_seconds,
+            cache_seconds=OI_HISTORY_CACHE_SECONDS,
             target_24h_ms=target_24h_ms,
             target_7d_ms=target_7d_ms,
             wall_now=wall_now,

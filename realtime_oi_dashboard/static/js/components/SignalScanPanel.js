@@ -37,8 +37,8 @@ export function createSignalScanPanel({ bullsBody, bearsBody, spikesBody, status
     const message = error?.message || String(error);
     const savedAt = formatSavedAt(lastPayload?.saved_at);
     statusEl.textContent = lastPayload?.saved_at
-      ? `刷新失败：${message}；上次扫描：${savedAt}`
-      : `刷新失败：${message}`;
+      ? `刷新失敗：${message}；上次掃描：${savedAt}`
+      : `刷新失敗：${message}`;
   }
 
   function renderStatus(payload) {
@@ -50,7 +50,7 @@ export function createSignalScanPanel({ bullsBody, bearsBody, spikesBody, status
       return;
     }
     if (!payload.saved_at && payload.scan_total === 0) {
-      statusEl.textContent = "等待首次扫描";
+      statusEl.textContent = "等待首次掃描";
       return;
     }
     const savedAt = formatSavedAt(payload.saved_at);

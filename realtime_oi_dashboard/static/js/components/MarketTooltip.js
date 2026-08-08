@@ -130,16 +130,16 @@ function createTooltipView() {
   const grid = document.createElement("dl");
   grid.className = "market-tooltip-grid";
   const fields = [
-    "价格",
-    "资金费率",
-    "价格 24h",
-    "价格 7d",
-    "持仓价值",
+    "價格",
+    "資金費率",
+    "價格 24h",
+    "價格 7d",
+    "持倉 24h",
+    "持倉 7d",
+    "持倉價值",
     "市值",
-    "持仓/市值",
-    "成交额 24h",
-    "持仓 24h",
-    "持仓 7d",
+    "持倉/市值",
+    "成交額 24h",
     "OI 更新",
   ].map(label => {
     const item = document.createElement("div");
@@ -162,12 +162,12 @@ function renderTooltip(tooltip, row) {
     [formatFundingRate(row.fundingRatePercent), row.fundingRatePercent],
     [formatPercent(row.priceChangePercent), row.priceChangePercent],
     [formatPercent(row.price7dChangePercent), row.price7dChangePercent],
+    [formatPercent(row.oi24hChangePercent), row.oi24hChangePercent],
+    [formatPercent(row.oi7dChangePercent), row.oi7dChangePercent],
     [formatCurrency(row.currentOiValue)],
     [formatCurrency(row.marketCap)],
     [formatRatioPercent(row.oiToMarketCapRatio)],
     [formatCurrency(row.volume24h)],
-    [formatPercent(row.oi24hChangePercent), row.oi24hChangePercent],
-    [formatPercent(row.oi7dChangePercent), row.oi7dChangePercent],
     [formatOiUpdateAge(row.oiUpdatedAt)],
   ];
 

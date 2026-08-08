@@ -8,10 +8,10 @@ const MAX_RECENT_ERROR_TEXT_LENGTH = 512;
 
 export function assertSignalScanPayload(payload) {
   if (payload?.schema_version !== SIGNAL_SCAN_API_SCHEMA_VERSION) {
-    throw new Error("前后端版本不一致，请刷新页面或重启服务");
+    throw new Error("前後端版本不一致，請重新整理頁面或重啟服務");
   }
   if (!isSignalScanPayload(payload)) {
-    throw new Error("訊號掃描响应格式错误");
+    throw new Error("訊號掃描響應格式錯誤");
   }
   return payload;
 }

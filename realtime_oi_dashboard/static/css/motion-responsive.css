@@ -33,8 +33,10 @@
     flex-direction: column;
   }
 
-  .status {
+  .status-group {
+    width: min(100%, 480px);
     min-width: 0;
+    align-self: flex-end;
   }
 
   .metrics {
@@ -55,6 +57,19 @@
 
   .metrics {
     grid-template-columns: 1fr;
+  }
+
+  .status-group {
+    grid-template-columns: minmax(0, .78fr) minmax(0, 1.22fr);
+  }
+
+  .status {
+    padding-inline: 14px;
+  }
+
+  .status-loaded {
+    gap: 8px;
+    padding-inline: 12px;
   }
 
   .metric {
@@ -88,6 +103,12 @@
 
   .controls {
     width: 100%;
+  }
+}
+
+@media (max-width: 360px) {
+  .status-group {
+    grid-template-columns: 1fr;
   }
 }
 

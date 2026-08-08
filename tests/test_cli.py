@@ -15,6 +15,11 @@ class ParseArgsTests(unittest.TestCase):
         self.assertEqual(args.host, "127.0.0.1")
         self.assertEqual(args.port, 8777)
         self.assertEqual(args.market_cap_cache_seconds, 3_600)
+        self.assertFalse(hasattr(args, "oi_history_cache_seconds"))
+
+    def test_oi_history_cache_option_is_removed(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parse_args(["--oi-history-cache-seconds", "300"])
 
     def test_platform_port_enables_public_bind(self):
         with patch.dict(os.environ, {"PORT": "8080"}, clear=True):

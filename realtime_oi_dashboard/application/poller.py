@@ -32,9 +32,9 @@ from realtime_oi_dashboard.application.symbol_refresher import SymbolRefresher
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 ROW_MAX_AGE_SECONDS = 15 * 60
 CLOCK_SKEW_SECONDS = 60
-EMPTY_BATCH_ERROR = "本批次没有成功更新任何 OI 数据"
-CLOCK_RESET_ERROR = "检测到系统休眠或时钟跳变，正在重新获取 OI 数据"
-STALE_ROWS_ERROR = "OI 数据已超过 15 分钟，等待重新获取"
+EMPTY_BATCH_ERROR = "本批次沒有成功更新任何 OI 數據"
+CLOCK_RESET_ERROR = "檢測到系統休眠或時鐘跳變，正在重新獲取 OI 數據"
+STALE_ROWS_ERROR = "OI 數據已超過 15 分鐘，等待重新獲取"
 OI_API_SCHEMA_VERSION = 7
 
 
@@ -47,7 +47,6 @@ class OIPoller:
         batch_delay=1.0,
         oi_workers=3,
         refresh_symbols_interval=900,
-        oi_history_cache_seconds=300,
         ticker_cache_seconds=10,
         funding_cache_seconds=3600,
         market_cap_cache_seconds=DEFAULT_MARKET_CAP_REFRESH_SECONDS,
@@ -63,10 +62,6 @@ class OIPoller:
         self.refresh_symbols_interval = _non_negative_seconds(
             "refresh_symbols_interval",
             refresh_symbols_interval,
-        )
-        oi_history_cache_seconds = _non_negative_seconds(
-            "oi_history_cache_seconds",
-            oi_history_cache_seconds,
         )
         ticker_cache_seconds = _non_negative_seconds(
             "ticker_cache_seconds",
@@ -110,7 +105,6 @@ class OIPoller:
         self.binance = BinanceFuturesClient(
             self.stop_event,
             self.record_symbol_error,
-            oi_history_cache_seconds=oi_history_cache_seconds,
             ticker_cache_seconds=ticker_cache_seconds,
             funding_cache_seconds=funding_cache_seconds,
             http_client=self.http_client,

@@ -20,6 +20,7 @@ export function createMarketRowCells({
   includeMarketCap = false,
   includeOiToMarketCapRatio = false,
   includeCvd = false,
+  oiChangesBeforeValue = false,
 } = {}) {
   const symbolCell = document.createElement("td");
   symbolCell.className = "symbol";
@@ -44,6 +45,7 @@ export function createMarketRowCells({
   const oiUpdatedAtCell = createOiUpdateSignalCell();
   const cvdCell = includeCvd ? document.createElement("td") : null;
   const cvdStatusCell = includeCvd ? document.createElement("td") : null;
+  const oiChangeCells = [oi24hChangeCell, oi7dChangeCell];
 
   return {
     orderedCells: [
@@ -52,12 +54,12 @@ export function createMarketRowCells({
       fundingRateCell,
       priceChangeCell,
       price7dChangeCell,
+      ...(oiChangesBeforeValue ? oiChangeCells : []),
       oiValueCell,
       ...(marketCapCell ? [marketCapCell] : []),
       ...(oiToMarketCapRatioCell ? [oiToMarketCapRatioCell] : []),
       volumeCell,
-      oi24hChangeCell,
-      oi7dChangeCell,
+      ...(!oiChangesBeforeValue ? oiChangeCells : []),
       ...(cvdCell ? [cvdCell, cvdStatusCell] : []),
       oiUpdatedAtCell,
     ],
@@ -117,8 +119,8 @@ export function updateMarketRowCells(cells, row, heatMax = null) {
   );
 
   cells.price7dChangeCell.title = Number.isFinite(row.price7dBaseline)
-    ? `7 天前参考价：${formatPrice(row.price7dBaseline)}`
-    : "等待 7 天历史价格";
+    ? `7 天前參考價：${formatPrice(row.price7dBaseline)}`
+    : "等待 7 天歷史價格";
   updateSignedCell(
     cells.price7dChangeCell,
     row.price7dChangePercent,

@@ -19,6 +19,7 @@ export function createRankingRow(row, context) {
     includeMarketCap: true,
     includeOiToMarketCapRatio: true,
     includeCvd: true,
+    oiChangesBeforeValue: true,
   });
   tr.append(favoriteCell, ...marketCells.orderedCells);
 

@@ -45,7 +45,7 @@ export function createOiRefreshController({
       onPayload(payload);
     } catch (error) {
       if (disposed) return;
-      if (error.message === "OI 请求已取消") return;
+      if (error.message === "OI 請求已取消") return;
 
       const dataExpired = Boolean(
         lastResponseAt && isResponseStale(lastResponseAt, maxStaleMs),
