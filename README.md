@@ -45,7 +45,6 @@ http://192.168.xxx.xxx:8777
 | `--oi-batch-size` | `25` | 每批更新的合约数量。调小会降低单批请求量，但完成全部更新需要更久。 |
 | `--oi-batch-delay` | `1` 秒 | 两批 OI 请求之间的等待时间。网络不稳定或请求过快时可以调大。 |
 | `--oi-workers` | `3` | 同时发送的 OI 请求数量。调小可以降低请求压力。 |
-| `--oi-history-cache-seconds` | `300` 秒 | 24 小时和 7 天 OI 历史数据的缓存时间。设为 `0` 表示不使用这层缓存。 |
 | `--ticker-cache-seconds` | `10` 秒 | 24 小时行情数据的缓存时间。调大可以减少请求次数。 |
 | `--funding-cache-seconds` | `3600` 秒 | 资金费率备用数据的缓存时间。 |
 | `--market-cap-refresh-seconds` | `3600` 秒 | 市值和 FDV 的刷新间隔，默认每小时更新一次。 |
@@ -88,4 +87,3 @@ node realtime_oi_dashboard/scripts/check-static-js.mjs
 - Binance Futures：合约价格、OI、成交额、资金费率和历史行情。
 - CoinGecko：币种市值和完全稀释估值（FDV）。
 - TradingView：图表页面。
-
