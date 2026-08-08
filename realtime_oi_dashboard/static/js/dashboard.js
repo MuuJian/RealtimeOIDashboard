@@ -182,6 +182,7 @@ function disposeResources() {
   marketTooltip.dispose();
   motionEffects.dispose();
   table.dispose();
+  dashboardStatus.dispose();
   liveUpdates.dispose();
   uiScheduler.dispose();
 }
