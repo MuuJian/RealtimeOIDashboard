@@ -20,13 +20,13 @@ export async function loadOiSnapshot({ signal } = {}) {
       cache: "no-store",
       signal: controller.signal,
     });
-    if (!response.ok) throw new Error(`OI 请求失败 (${response.status})`);
+    if (!response.ok) throw new Error(`OI 請求失敗 (${response.status})`);
 
     return assertOiPayload(await response.json());
   } catch (error) {
     if (error?.name === "AbortError") {
       throw new Error(
-        abortReason === "cancelled" ? "OI 请求已取消" : "OI 请求超时",
+        abortReason === "cancelled" ? "OI 請求已取消" : "OI 請求超時",
       );
     }
     throw error;

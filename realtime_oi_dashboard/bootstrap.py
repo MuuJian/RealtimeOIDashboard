@@ -44,7 +44,7 @@ def run_dashboard(args, oi_service):
             oi_state_provider=oi_service,
         )
     except OSError as exc:
-        print(f"无法启动面板: {exc}")
+        print(f"無法啟動面板: {exc}")
         _close_after_start_failure(oi_service, "OI poller")
         return 1
 
@@ -52,7 +52,7 @@ def run_dashboard(args, oi_service):
         try:
             oi_service.start()
         except Exception as exc:
-            print(f"无法启动 OI 轮询线程: {exc}")
+            print(f"無法啟動 OI 輪詢線程: {exc}")
             _close_after_start_failure(oi_service, "OI poller")
             return 1
 

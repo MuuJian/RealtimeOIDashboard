@@ -11,10 +11,10 @@ const OPTIONAL_NUMBER_FIELDS = [
 
 export function assertOiPayload(payload) {
   if (payload?.schema_version !== OI_API_SCHEMA_VERSION) {
-    throw new Error("前后端版本不一致，请刷新页面或重启服务");
+    throw new Error("前後端版本不一致，請重新整理頁面或重啟服務");
   }
   if (!isOiPayload(payload)) {
-    throw new Error("OI 响应格式错误");
+    throw new Error("OI 響應格式錯誤");
   }
   return payload;
 }

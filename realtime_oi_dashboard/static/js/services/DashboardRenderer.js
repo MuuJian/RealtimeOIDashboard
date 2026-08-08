@@ -1,11 +1,11 @@
 import { renderStatCards, renderWsState } from "../components/StatCard.js";
 
 const PRICE_STATUS_LABELS = Object.freeze({
-  connecting: "连接中",
-  error: "异常",
-  live: "实时",
-  paused: "暂停",
-  reconnecting: "重连中",
+  connecting: "連接中",
+  error: "異常",
+  live: "實時",
+  paused: "暫停",
+  reconnecting: "重連中",
 });
 
 export function createDashboardRenderer({
@@ -31,7 +31,7 @@ export function createDashboardRenderer({
     patchSymbols,
   }) {
     if (priceStatus) {
-      const label = PRICE_STATUS_LABELS[priceStatus] || "连接中";
+      const label = PRICE_STATUS_LABELS[priceStatus] || "連接中";
       motionEffects.pulseValues(renderWsState(elements.wsState, label));
     }
 

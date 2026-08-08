@@ -32,9 +32,9 @@ from realtime_oi_dashboard.application.symbol_refresher import SymbolRefresher
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 ROW_MAX_AGE_SECONDS = 15 * 60
 CLOCK_SKEW_SECONDS = 60
-EMPTY_BATCH_ERROR = "本批次没有成功更新任何 OI 数据"
-CLOCK_RESET_ERROR = "检测到系统休眠或时钟跳变，正在重新获取 OI 数据"
-STALE_ROWS_ERROR = "OI 数据已超过 15 分钟，等待重新获取"
+EMPTY_BATCH_ERROR = "本批次沒有成功更新任何 OI 數據"
+CLOCK_RESET_ERROR = "檢測到系統休眠或時鐘跳變，正在重新獲取 OI 數據"
+STALE_ROWS_ERROR = "OI 數據已超過 15 分鐘，等待重新獲取"
 OI_API_SCHEMA_VERSION = 7
 
 

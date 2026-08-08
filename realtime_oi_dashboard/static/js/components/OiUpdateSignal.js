@@ -5,9 +5,9 @@ import {
 } from "../utils/format.js";
 
 const STATUS_LABELS = Object.freeze({
-  fresh: "数据新鲜",
-  warning: "数据开始变旧",
-  danger: "数据接近失效",
+  fresh: "數據新鮮",
+  warning: "數據開始變舊",
+  danger: "數據接近失效",
 });
 
 export function createOiUpdateSignalCell() {
@@ -32,8 +32,8 @@ export function updateOiUpdateSignalCell(cell, value, now = Date.now()) {
   const status = age === "-" ? "尚未更新" : STATUS_LABELS[state];
   const exactTime = formatOiUpdateTitle(value);
   const details = age === "-"
-    ? `OI 更新状态：${status}`
-    : `OI 更新状态：${status}，${age}`;
+    ? `OI 更新狀態：${status}`
+    : `OI 更新狀態：${status}，${age}`;
 
   cell.className = `oi-update-cell oi-update-${state}`;
   cell.title = exactTime ? `${details} · ${exactTime}` : details;
