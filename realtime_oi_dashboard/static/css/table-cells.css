@@ -169,27 +169,27 @@
 .oi-table th:nth-child(4),
 .oi-table td:nth-child(4) { width: 120px; }
 .oi-table th:nth-child(5),
-.oi-table td:nth-child(5) { width: 135px; }
+.oi-table td:nth-child(5) { width: 130px; }
 .oi-table th:nth-child(6),
 .oi-table td:nth-child(6) { width: 130px; }
 .oi-table th:nth-child(7),
 .oi-table td:nth-child(7) { width: 130px; }
 .oi-table th:nth-child(8),
-.oi-table td:nth-child(8) { width: 135px; }
+.oi-table td:nth-child(8) { width: 130px; }
 .oi-table th:nth-child(9),
-.oi-table td:nth-child(9) { width: 145px; }
+.oi-table td:nth-child(9) { width: 120px; }
 .oi-table th:nth-child(10),
 .oi-table td:nth-child(10) { width: 120px; }
 .oi-table th:nth-child(11),
 .oi-table td:nth-child(11) { width: 120px; }
 .oi-table th:nth-child(12),
-.oi-table td:nth-child(12) { width: 125px; }
+.oi-table td:nth-child(12) { width: 120px; }
 .oi-table th:nth-child(13),
-.oi-table td:nth-child(13) { width: 130px; }
+.oi-table td:nth-child(13) { width: 120px; }
 .oi-table th:nth-child(14),
-.oi-table td:nth-child(14) { width: 100px; }
+.oi-table td:nth-child(14) { width: 80px; }
 .oi-table th:nth-child(15),
-.oi-table td:nth-child(15) { width: 90px; }
+.oi-table td:nth-child(15) { width: 120px; }
 
 .cvd-value {
   font-variant-numeric: tabular-nums;
