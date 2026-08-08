@@ -23,6 +23,8 @@ const elements = getDashboardElements();
 const dashboardStatus = createDashboardStatus({
   title: elements.statusTitle,
   detail: elements.statusText,
+  oiLoaded: elements.oiLoadedText,
+  marketCapLoaded: elements.marketCapLoadedText,
 });
 
 const rankingData = createOiRankingStore();
@@ -237,6 +239,7 @@ function handlePriceBatch(changedSymbols, priceMap) {
   const affectedSymbols = rankingData.applyPriceUpdates(changedSymbols, priceMap);
   if (!affectedSymbols.length) return;
 
+  scheduleUiRender({ stats: true });
   requestRankingView({
     patchRows: affectedSymbols
       .map(symbol => rankingData.getRow(symbol))

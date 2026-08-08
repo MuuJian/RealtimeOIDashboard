@@ -8,7 +8,7 @@
 .metric {
   --accent: var(--cyan);
   position: relative;
-  min-height: 148px;
+  min-height: 174px;
   overflow: hidden;
   padding: 18px;
   border: 1px solid var(--line);
@@ -152,4 +152,118 @@
 
 .metric-red .note {
   color: rgba(var(--red), .78);
+}
+
+.metric-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 15px;
+}
+
+.metric-summary .value {
+  margin-top: 0;
+}
+
+.metric-symbol-stack {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.metric-symbol-stack .value {
+  max-width: 100%;
+}
+
+.metric-current-price {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.metric-change-stack {
+  display: grid;
+  min-width: 116px;
+  gap: 8px;
+}
+
+.metric-price-change {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 3px;
+  padding-right: 2px;
+  text-align: right;
+}
+
+.metric-price-change strong {
+  color: var(--accent);
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.metric-detail span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
+.metric-details {
+  display: grid;
+  gap: 5px;
+}
+
+.metric-detail {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-width: 0;
+  align-items: baseline;
+  justify-content: end;
+  gap: 6px;
+  text-align: right;
+}
+
+.metric-detail strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-green .metric-detail:first-child strong {
+  color: rgba(var(--green), .9);
+}
+
+.metric-red .metric-detail:first-child strong {
+  color: rgba(var(--red), .9);
+}
+
+@media (max-width: 640px) {
+  .metric-summary {
+    gap: 12px;
+    margin-top: 13px;
+  }
+
+  .metric-change-stack {
+    min-width: 128px;
+    gap: 7px;
+  }
+
+  .metric-price-change strong {
+    font-size: 28px;
+  }
+
+  .metric-detail span {
+    font-size: 9px;
+  }
+
+  .metric-detail strong {
+    font-size: 11px;
+  }
 }

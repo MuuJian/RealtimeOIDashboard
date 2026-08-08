@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-Hans">
+<html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>实时 OI 面板</title>
+  <title>實時 OI 面板</title>
   <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
 <body>
@@ -12,33 +12,84 @@
       <div class="hero-copy">
         <div class="eyebrow"><span></span>BINANCE USDⓈ-M · LIVE</div>
       </div>
-      <div class="status" data-motion="status" role="status" aria-live="polite" aria-atomic="true">
-        <div class="status-heading">
-          <span class="status-pulse" aria-hidden="true"></span>
-          <strong id="statusTitle">启动中</strong>
+      <div class="status-group" data-motion="status" role="status" aria-live="polite" aria-atomic="true">
+        <div class="status status-main">
+          <div class="status-heading">
+            <span class="status-pulse" aria-hidden="true"></span>
+            <strong id="statusTitle">啟動中</strong>
+          </div>
+          <span id="statusText">等待本次 OI 數據和價格 WebSocket</span>
         </div>
-        <span id="statusText">等待本次 OI 数据和价格 WebSocket</span>
+        <div class="status status-loaded">
+          <div class="status-loaded-item">
+            <span>OI 已載入</span>
+            <strong id="oiLoadedText">0/0</strong>
+          </div>
+          <span class="status-loaded-divider" aria-hidden="true"></span>
+          <div class="status-loaded-item">
+            <span>市值已載入</span>
+            <strong id="marketCapLoadedText">0/0</strong>
+          </div>
+        </div>
       </div>
     </header>
 
     <section class="metrics">
       <div class="metric metric-blue" data-motion="metric" data-connection="connecting">
         <div class="metric-icon metric-icon-signal" aria-hidden="true"><i></i><i></i><i></i></div>
-        <div class="label">价格连接</div>
+        <div class="label">價格連接</div>
         <div class="value" id="wsState" role="status" aria-live="polite" aria-atomic="true">-</div>
         <div class="note">Binance WebSocket</div>
       </div>
       <div class="metric metric-green" data-motion="metric">
         <div class="metric-icon" aria-hidden="true">↗</div>
-        <div class="label">24h 最大增仓</div>
-        <div class="value" id="topIncrease">-</div>
-        <div class="note" id="topIncreaseNote">24h OI 变化</div>
+        <div class="label">24h 最大漲幅</div>
+        <div class="metric-summary">
+          <div class="metric-symbol-stack">
+            <div class="value" id="topIncrease">-</div>
+            <div class="metric-current-price" id="topIncreasePrice">-</div>
+          </div>
+          <div class="metric-change-stack">
+            <div class="metric-price-change">
+              <strong id="topIncreaseNote">-</strong>
+            </div>
+            <div class="metric-details">
+              <div class="metric-detail">
+                <span>OI 24h</span>
+                <strong id="topIncreaseOiChange">-</strong>
+              </div>
+              <div class="metric-detail">
+                <span>持倉價值</span>
+                <strong id="topIncreaseOiValue">-</strong>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="metric metric-red" data-motion="metric">
         <div class="metric-icon" aria-hidden="true">↘</div>
-        <div class="label">24h 最大减仓</div>
-        <div class="value" id="topDecrease">-</div>
-        <div class="note" id="topDecreaseNote">24h OI 变化</div>
+        <div class="label">24h 最大跌幅</div>
+        <div class="metric-summary">
+          <div class="metric-symbol-stack">
+            <div class="value" id="topDecrease">-</div>
+            <div class="metric-current-price" id="topDecreasePrice">-</div>
+          </div>
+          <div class="metric-change-stack">
+            <div class="metric-price-change">
+              <strong id="topDecreaseNote">-</strong>
+            </div>
+            <div class="metric-details">
+              <div class="metric-detail">
+                <span>OI 24h</span>
+                <strong id="topDecreaseOiChange">-</strong>
+              </div>
+              <div class="metric-detail">
+                <span>持倉價值</span>
+                <strong id="topDecreaseOiValue">-</strong>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -46,40 +97,41 @@
       <div class="toolbar">
         <div class="panel-title">
           <span class="panel-kicker">MOMENTUM SIGNAL</span>
-          <strong>7D OI 异动信号</strong>
+          <strong>7D OI 異動信號</strong>
         </div>
         <div class="controls signal-controls">
-          <select id="signalOi7dFilter" aria-label="7 天 OI 最低变化">
+          <select id="signalOi7dFilter" aria-label="7 天 OI 最低變化">
             <option value="50">7D OI &gt; 50%</option>
             <option value="100" selected>7D OI &gt; 100%</option>
             <option value="200">7D OI &gt; 200%</option>
           </select>
-          <select id="signalOiValueFilter" aria-label="最低持仓价值">
-            <option value="5000000">持仓价值 &gt; $500万</option>
-            <option value="10000000" selected>持仓价值 &gt; $1000万</option>
-            <option value="50000000">持仓价值 &gt; $5000万</option>
+          <select id="signalOiValueFilter" aria-label="最低持倉價值">
+            <option value="5000000">持倉價值 &gt; $500萬</option>
+            <option value="10000000" selected>持倉價值 &gt; $1000萬</option>
+            <option value="50000000">持倉價值 &gt; $5000萬</option>
           </select>
         </div>
       </div>
 
       <div class="table-wrap signal-wrap">
-        <table class="signal-table" aria-label="7 天 OI 高增长合约">
+        <table class="signal-table" aria-label="7 天 OI 高增長合約">
           <thead>
             <tr>
-              <th scope="col">币种</th>
-              <th scope="col">价格</th>
-              <th scope="col">资金费率</th>
-              <th scope="col">价格(24h%)</th>
-              <th scope="col">价格(7d%)</th>
-              <th scope="col">持仓价值</th>
-              <th scope="col">成交额(24h)</th>
-              <th scope="col">持仓(24h%)</th>
-              <th scope="col">持仓(7d%)</th>
-              <th scope="col" title="20 秒内：1 格绿色；约 40 秒：3 格黄色；满 1 分钟：5 格红色">OI 更新状态</th>
+              <th scope="col">幣種</th>
+              <th scope="col">價格</th>
+              <th scope="col">資金費率</th>
+              <th scope="col"><span class="desktop-column-label">價格(24h)</span><span class="mobile-column-label">價格 24h</span></th>
+              <th scope="col">價格(7d)</th>
+              <th scope="col"><span class="desktop-column-label">持倉(24h)</span><span class="mobile-column-label">OI 24h</span></th>
+              <th scope="col">持倉(7d)</th>
+              <th scope="col">持倉價值</th>
+              <th scope="col">市值</th>
+              <th scope="col">成交額(24h)</th>
+              <th scope="col" title="20 秒內：1 格綠色；約 40 秒：3 格黃色；滿 1 分鐘：5 格紅色">OI 更新狀態</th>
             </tr>
           </thead>
           <tbody id="highOi7dBody">
-            <tr><td colspan="10" class="empty">等待本次 OI 数据。</td></tr>
+            <tr><td colspan="11" class="empty">等待本次 OI 數據。</td></tr>
           </tbody>
         </table>
       </div>
@@ -89,41 +141,41 @@
       <div class="toolbar">
         <div class="panel-title">
           <span class="panel-kicker">MARKET SCANNER</span>
-          <strong>OI 变化排行</strong>
-          <div class="sub">默认按持仓价值从高到低排序；价格及其 24h / 7d 变化实时跳动，OI 变化按批次更新。</div>
+          <strong>OI 變化排行</strong>
+          <div class="sub">默認按持倉價值從高到低排序；價格及其 24h / 7d 變化實時跳動，OI 變化按批次更新。</div>
         </div>
         <div class="controls">
           <button id="favoritesOnlyBtn" class="ghost-btn" type="button" aria-pressed="false">只看收藏</button>
-          <input id="searchInput" type="search" placeholder="搜索币种" aria-label="搜索币种">
+          <input id="searchInput" type="search" placeholder="搜尋幣種" aria-label="搜尋幣種">
           <select id="sortSelect" class="sort-select" aria-label="排行排序方式">
-            <option value="currentOiValue" selected>排序：持仓价值 高 → 低</option>
-            <option value="oi24hChangePercent">排序：持仓(24h%) 高 → 低</option>
-            <option value="oi7dChangePercent">排序：持仓(7d%) 高 → 低</option>
-            <option value="priceChangePercent">排序：价格(24h%) 高 → 低</option>
-            <option value="price7dChangePercent">排序：价格(7d%) 高 → 低</option>
-            <option value="fundingRatePercent">排序：资金费率 高 → 低</option>
+            <option value="currentOiValue" selected>排序：持倉價值 高 → 低</option>
+            <option value="oi24hChangePercent">排序：持倉(24h%) 高 → 低</option>
+            <option value="oi7dChangePercent">排序：持倉(7d%) 高 → 低</option>
+            <option value="priceChangePercent">排序：價格(24h%) 高 → 低</option>
+            <option value="price7dChangePercent">排序：價格(7d%) 高 → 低</option>
+            <option value="fundingRatePercent">排序：資金費率 高 → 低</option>
             <option value="marketCap">排序：市值 高 → 低</option>
-            <option value="oiToMarketCapRatio">排序：持仓/市值 高 → 低</option>
-            <option value="volume24h">排序：成交额(24h) 高 → 低</option>
-            <option value="price">排序：价格 高 → 低</option>
+            <option value="oiToMarketCapRatio">排序：持倉/市值 高 → 低</option>
+            <option value="volume24h">排序：成交額(24h) 高 → 低</option>
+            <option value="price">排序：價格 高 → 低</option>
           </select>
-          <select id="oiValueFilter" aria-label="最低持仓价值">
-            <option value="0">持仓价值: 全部</option>
-            <option value="1000000">持仓价值 ≥ $100万</option>
-            <option value="5000000">持仓价值 ≥ $500万</option>
-            <option value="10000000">持仓价值 ≥ $1000万</option>
-            <option value="50000000">持仓价值 ≥ $5000万</option>
-            <option value="100000000">持仓价值 ≥ $1亿</option>
+          <select id="oiValueFilter" aria-label="最低持倉價值">
+            <option value="0">持倉價值: 全部</option>
+            <option value="1000000">持倉價值 ≥ $100萬</option>
+            <option value="5000000">持倉價值 ≥ $500萬</option>
+            <option value="10000000">持倉價值 ≥ $1000萬</option>
+            <option value="50000000">持倉價值 ≥ $5000萬</option>
+            <option value="100000000">持倉價值 ≥ $1億</option>
           </select>
-          <select id="volumeFilter" aria-label="最低 24 小时成交额">
-            <option value="0">成交额: 全部</option>
-            <option value="1000000">成交额 ≥ $100万</option>
-            <option value="5000000">成交额 ≥ $500万</option>
-            <option value="10000000">成交额 ≥ $1000万</option>
-            <option value="50000000">成交额 ≥ $5000万</option>
-            <option value="100000000">成交额 ≥ $1亿</option>
+          <select id="volumeFilter" aria-label="最低 24 小時成交額">
+            <option value="0">成交額: 全部</option>
+            <option value="1000000">成交額 ≥ $100萬</option>
+            <option value="5000000">成交額 ≥ $500萬</option>
+            <option value="10000000">成交額 ≥ $1000萬</option>
+            <option value="50000000">成交額 ≥ $5000萬</option>
+            <option value="100000000">成交額 ≥ $1億</option>
           </select>
-          <select id="limitSelect" aria-label="显示数量">
+          <select id="limitSelect" aria-label="顯示數量">
             <option value="20">前 20</option>
             <option value="50">前 50</option>
             <option value="100">前 100</option>
@@ -133,22 +185,22 @@
       </div>
 
       <div class="table-wrap ranking-wrap">
-        <table class="oi-table" aria-label="OI 变化排行">
+        <table class="oi-table" aria-label="OI 變化排行">
           <thead>
             <tr>
               <th class="favorite-cell" scope="col" aria-label="收藏"></th>
-              <th scope="col" data-sort="symbol"><span class="sort-label">币种<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="price"><span class="sort-label">价格<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="fundingRatePercent"><span class="sort-label">资金费率<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="priceChangePercent"><span class="sort-label">价格(24h%)<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="price7dChangePercent"><span class="sort-label">价格(7d%)<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="currentOiValue"><span class="sort-label">持仓价值<span class="sort-arrows"></span></span></th>
+              <th scope="col" data-sort="symbol"><span class="sort-label">幣種<span class="sort-arrows"></span></span></th>
+              <th scope="col" data-sort="price"><span class="sort-label">價格<span class="sort-arrows"></span></span></th>
+              <th scope="col" data-sort="fundingRatePercent"><span class="sort-label">資金費率<span class="sort-arrows"></span></span></th>
+              <th scope="col" data-sort="priceChangePercent"><span class="sort-label"><span class="desktop-column-label">價格(24h)</span><span class="mobile-column-label">價格 24h</span><span class="sort-arrows"></span></span></th>
+              <th scope="col" data-sort="price7dChangePercent"><span class="sort-label">價格(7d)<span class="sort-arrows"></span></span></th>
+              <th scope="col" data-sort="oi24hChangePercent"><span class="sort-label"><span class="desktop-column-label">持倉(24h)</span><span class="mobile-column-label">OI 24h</span><span class="sort-arrows"></span></span></th>
+              <th scope="col" data-sort="oi7dChangePercent"><span class="sort-label"><span class="desktop-column-label">持倉(7d)</span><span class="mobile-column-label">OI 7d</span><span class="sort-arrows"></span></span></th>
+              <th scope="col" data-sort="currentOiValue"><span class="sort-label">持倉價值<span class="sort-arrows"></span></span></th>
               <th scope="col" data-sort="marketCap"><span class="sort-label">市值<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="oiToMarketCapRatio"><span class="sort-label">持仓/市值<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="volume24h"><span class="sort-label">成交额(24h)<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="oi24hChangePercent"><span class="sort-label">持仓(24h%)<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="oi7dChangePercent"><span class="sort-label">持仓(7d%)<span class="sort-arrows"></span></span></th>
-              <th scope="col" title="20 秒内：1 格绿色；约 40 秒：3 格黄色；满 1 分钟：5 格红色">OI 更新状态</th>
+              <th scope="col" data-sort="oiToMarketCapRatio"><span class="sort-label">持倉/市值<span class="sort-arrows"></span></span></th>
+              <th scope="col" data-sort="volume24h"><span class="sort-label">成交額(24h)<span class="sort-arrows"></span></span></th>
+              <th scope="col" title="20 秒內：1 格綠色；約 40 秒：3 格黃色；滿 1 分鐘：5 格紅色">OI 更新狀態</th>
             </tr>
           </thead>
           <tbody id="rankBody"></tbody>

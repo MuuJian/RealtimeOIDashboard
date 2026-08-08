@@ -84,9 +84,17 @@ header {
   line-height: 1.55;
 }
 
+.status-group {
+  display: grid;
+  width: min(100%, 480px);
+  min-width: 480px;
+  grid-template-columns: 210px 260px;
+  gap: 10px;
+}
+
 .status {
   position: relative;
-  min-width: 350px;
+  min-width: 0;
   overflow: hidden;
   padding: 16px 18px;
   border: 1px solid var(--line-bright);
@@ -147,4 +155,38 @@ header {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.status-loaded {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 16px;
+}
+
+.status-loaded-item {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.status-loaded-item span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.status-loaded-item strong {
+  color: var(--ink);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-loaded-divider {
+  width: 1px;
+  height: 32px;
+  flex: 0 0 auto;
+  background: var(--line-bright);
 }

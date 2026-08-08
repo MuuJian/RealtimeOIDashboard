@@ -18,6 +18,7 @@ export function createRankingRow(row, context) {
   const marketCells = createMarketRowCells({
     includeMarketCap: true,
     includeOiToMarketCapRatio: true,
+    oiChangesBeforeValue: true,
   });
   tr.append(favoriteCell, ...marketCells.orderedCells);
 

@@ -5,7 +5,7 @@ import {
   updateMarketRowCells,
 } from "./MarketRowCells.js";
 
-const LOADING_MESSAGE = "正在获取本次启动后的 OI 数据。";
+const LOADING_MESSAGE = "正在獲取本次啟動後的 OI 數據。";
 
 export function createHighOi7dTable({ tbody }) {
   const rowsBySymbol = new Map();
@@ -51,7 +51,10 @@ export function createHighOi7dTable({ tbody }) {
 
   function createRow() {
     const tr = document.createElement("tr");
-    tr._marketCells = createMarketRowCells();
+    tr._marketCells = createMarketRowCells({
+      includeMarketCap: true,
+      oiChangesBeforeValue: true,
+    });
     tr.append(...tr._marketCells.orderedCells);
     return tr;
   }
@@ -64,7 +67,7 @@ export function createHighOi7dTable({ tbody }) {
   function createEmptyRow() {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 10;
+    td.colSpan = 11;
     td.className = "empty";
     tr.append(td);
     tr._message = td;
@@ -78,5 +81,5 @@ function emptyMessage(signalFilters) {
   const oiThreshold = Number(signalFilters?.minOi7dChangePercent ?? 100);
   const valueThreshold = Number(signalFilters?.minOiValue ?? 10000000);
   const formattedValue = formatCurrency(valueThreshold).replace(".00", "");
-  return `暂无满足 7D 持仓 > ${oiThreshold}% 且持仓价值 > ${formattedValue} 的币种。`;
+  return `暫無滿足 7D 持倉 > ${oiThreshold}% 且持倉價值 > ${formattedValue} 的幣種。`;
 }
