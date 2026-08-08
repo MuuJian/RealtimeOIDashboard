@@ -7,17 +7,10 @@ const STATUS_LABELS = {
   unavailable: "資料不可用",
 };
 
-export function formatCvd(value, ratio) {
-  if (!Number.isFinite(value) || !Number.isFinite(ratio)) return "-";
-  const sign = value >= 0 ? "+" : "-";
-  const absolute = Math.abs(value);
-  const amount = absolute >= 1_000_000
-    ? `$${(absolute / 1_000_000).toFixed(2)}M`
-    : absolute >= 1_000
-      ? `$${(absolute / 1_000).toFixed(2)}K`
-      : `$${absolute.toFixed(0)}`;
+export function formatCvd(_value, ratio) {
+  if (!Number.isFinite(ratio)) return "-";
   const ratioPercent = ratio * 100;
-  return `${sign}${amount} · ${ratioPercent >= 0 ? "+" : ""}${ratioPercent.toFixed(1)}%`;
+  return `${ratioPercent >= 0 ? "+" : ""}${ratioPercent.toFixed(1)}%`;
 }
 
 export function cvdStatusLabel(status) {
