@@ -177,7 +177,7 @@
 
 .metric-current-price {
   margin-top: 9px;
-  color: var(--muted);
+  color: var(--ink);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
@@ -264,6 +264,10 @@
   }
 
   .metric-detail strong {
+    font-size: 11px;
+  }
+
+  .metric-current-price {
     font-size: 11px;
   }
 }
