@@ -10,6 +10,7 @@ const VALID_SORT_KEYS = new Set([
   "volume24h",
   "oi24hChangePercent",
   "oi7dChangePercent",
+  "cvd15mRatio",
 ]);
 
 export function useTableSort({

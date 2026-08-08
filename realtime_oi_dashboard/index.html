@@ -163,6 +163,7 @@
             <option value="marketCap">排序：市值 高 → 低</option>
             <option value="oiToMarketCapRatio">排序：持倉/市值 高 → 低</option>
             <option value="volume24h">排序：成交額(24h) 高 → 低</option>
+            <option value="cvd15mRatio">排序：CVD比例(15m) 高 → 低</option>
             <option value="price">排序：價格 高 → 低</option>
           </select>
           <select id="oiValueFilter" aria-label="最低持倉價值">
@@ -206,7 +207,7 @@
               <th scope="col" data-sort="marketCap"><span class="sort-label">市值<span class="sort-arrows"></span></span></th>
               <th scope="col" data-sort="oiToMarketCapRatio"><span class="sort-label">持倉/市值<span class="sort-arrows"></span></span></th>
               <th scope="col" data-sort="volume24h"><span class="sort-label">成交額(24h)<span class="sort-arrows"></span></span></th>
-              <th scope="col" title="15 分鐘主動買賣成交額差">CVD (15m)</th>
+              <th scope="col" data-sort="cvd15mRatio" title="15 分鐘主動買賣成交額差；點擊按CVD比例排序"><span class="sort-label">CVD (15m)<span class="sort-arrows"></span></span></th>
               <th scope="col" title="CVD 只提供成交主動方判讀，不保證價格方向">判讀</th>
               <th scope="col" title="20 秒內：1 格綠色；約 40 秒：3 格黃色；滿 1 分鐘：5 格紅色">OI 更新狀態</th>
             </tr>

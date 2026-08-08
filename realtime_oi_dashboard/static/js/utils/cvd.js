@@ -15,9 +15,18 @@ const HEALTH_LABELS = {
 
 export function formatCvd(value, ratio) {
   if (!Number.isFinite(value) || !Number.isFinite(ratio)) return "-";
+  return `${formatCvdAmount(value)} · ${formatCvdRatio(ratio)}`;
+}
+
+export function formatCvdAmount(value) {
+  if (!Number.isFinite(value)) return "-";
+  return formatSignedNotional(value);
+}
+
+export function formatCvdRatio(ratio) {
+  if (!Number.isFinite(ratio)) return "-";
   const ratioPercent = ratio * 100;
-  return `${formatSignedNotional(value)} · `
-    + `${ratioPercent >= 0 ? "+" : ""}${ratioPercent.toFixed(1)}%`;
+  return `${ratioPercent >= 0 ? "+" : ""}${ratioPercent.toFixed(1)}%`;
 }
 
 export function cvdStatusLabel(status, health = null) {

@@ -10,7 +10,12 @@ import {
   signClass,
   tradingViewUrl,
 } from "../utils/format.js";
-import { cvdStatusLabel, formatCvd } from "../utils/cvd.js";
+import {
+  cvdStatusLabel,
+  formatCvd,
+  formatCvdAmount,
+  formatCvdRatio,
+} from "../utils/cvd.js";
 import {
   createOiUpdateSignalCell,
   updateOiUpdateSignalCell,
@@ -44,8 +49,16 @@ export function createMarketRowCells({
   const oi7dChangeCell = document.createElement("td");
   const oiUpdatedAtCell = createOiUpdateSignalCell();
   const cvdCell = includeCvd ? document.createElement("td") : null;
+  const cvdAmount = includeCvd ? document.createElement("span") : null;
+  const cvdRatio = includeCvd ? document.createElement("span") : null;
   const cvdStatusCell = includeCvd ? document.createElement("td") : null;
   const oiChangeCells = [oi24hChangeCell, oi7dChangeCell];
+
+  if (cvdCell) {
+    cvdAmount.className = "cvd-amount";
+    cvdRatio.className = "cvd-ratio";
+    cvdCell.append(cvdAmount, cvdRatio);
+  }
 
   return {
     orderedCells: [
@@ -75,6 +88,8 @@ export function createMarketRowCells({
     oi24hChangeCell,
     oi7dChangeCell,
     cvdCell,
+    cvdAmount,
+    cvdRatio,
     cvdStatusCell,
     oiUpdatedAtCell,
   };
@@ -97,8 +112,10 @@ export function updateMarketRowCells(cells, row, heatMax = null) {
   cells.volumeCell.textContent = formatCurrency(row.volume24h);
   updateOiUpdateSignalCell(cells.oiUpdatedAtCell, row.oiUpdatedAt);
   if (cells.cvdCell) {
-    cells.cvdCell.textContent = formatCvd(row.cvd15m, row.cvd15mRatio);
+    cells.cvdAmount.textContent = formatCvdAmount(row.cvd15m);
+    cells.cvdRatio.textContent = formatCvdRatio(row.cvd15mRatio);
     cells.cvdCell.className = `cvd-value ${signClass(row.cvd15m)}`;
+    cells.cvdCell.title = formatCvd(row.cvd15m, row.cvd15mRatio);
     const cvdState = row.cvdHealth || row.cvdStatus || "unavailable";
     cells.cvdStatusCell.textContent = cvdStatusLabel(
       row.cvdStatus,

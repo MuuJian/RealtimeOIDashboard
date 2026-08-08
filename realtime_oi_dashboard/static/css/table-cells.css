@@ -185,15 +185,34 @@
 .oi-table th:nth-child(12),
 .oi-table td:nth-child(12) { width: 120px; }
 .oi-table th:nth-child(13),
-.oi-table td:nth-child(13) { width: 120px; }
+.oi-table td:nth-child(13) { width: 130px; }
 .oi-table th:nth-child(14),
 .oi-table td:nth-child(14) { width: 80px; }
 .oi-table th:nth-child(15),
 .oi-table td:nth-child(15) { width: 120px; }
 
 .cvd-value {
+  overflow: visible;
   font-variant-numeric: tabular-nums;
   font-weight: 800;
+  line-height: 1.05;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.cvd-amount,
+.cvd-ratio {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cvd-ratio {
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 750;
+  opacity: .78;
 }
 
 .cvd-status {
