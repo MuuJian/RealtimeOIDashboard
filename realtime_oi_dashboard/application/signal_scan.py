@@ -328,6 +328,17 @@ class SignalScanPoller:
         except BaseException as exc:
             task.error = exc
         finally:
+            release_session = getattr(
+                self.http_client,
+                "release_current_thread_session",
+                None,
+            )
+            if self._owns_http_client and callable(release_session):
+                try:
+                    release_session()
+                except BaseException as exc:
+                    if task.error is None:
+                        task.error = exc
             task.done.set()
 
     def _classify_ticker(self, ticker: dict) -> dict | None:

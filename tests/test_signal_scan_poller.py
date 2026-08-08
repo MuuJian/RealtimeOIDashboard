@@ -1298,6 +1298,30 @@ class SignalScanPollerTests(unittest.TestCase):
             ["AUSDT", "BUSDT", "CUSDT"],
         )
 
+    def test_owned_client_sessions_are_released_when_kline_threads_exit(self):
+        client = FakeHttpClient([], make_exchange_info([]), {})
+        released_by = []
+        client.release_current_thread_session = lambda: released_by.append(
+            threading.current_thread().name
+        )
+        poller = SignalScanPoller(http_client=client)
+        poller._owns_http_client = True
+        poller._classify_ticker = lambda ticker: {"symbol": ticker["symbol"]}
+
+        entries = poller._classify_scan_pool(
+            [{"symbol": "AUSDT"}, {"symbol": "BUSDT"}, {"symbol": "CUSDT"}]
+        )
+
+        self.assertEqual(len(entries), 3)
+        self.assertCountEqual(
+            released_by,
+            [
+                "signal-kline-AUSDT",
+                "signal-kline-BUSDT",
+                "signal-kline-CUSDT",
+            ],
+        )
+
     def test_parallel_classification_keeps_only_one_worker_window_in_flight(self):
         started = []
         window_ready = threading.Event()

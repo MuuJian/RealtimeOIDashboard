@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+import weakref
 from collections.abc import Callable
 from datetime import timezone
 from email.utils import parsedate_to_datetime
@@ -59,7 +60,9 @@ class JsonHttpClient:
         self._retry_base_delay = retry_base_delay
         self._thread_local = threading.local()
         self._sessions_lock = threading.Lock()
-        self._sessions: list[requests.Session] = []
+        self._sessions: list[
+            tuple[weakref.ReferenceType[threading.Thread], requests.Session]
+        ] = []
         self._closed = False
 
     def get_json(
@@ -125,10 +128,26 @@ class JsonHttpClient:
         session = getattr(self._thread_local, "session", None)
         if session is None:
             session = self._session_factory()
+            owner = threading.current_thread()
+            expired_sessions = []
             with self._sessions_lock:
                 client_closed = self._closed
                 if not client_closed:
-                    self._sessions.append(session)
+                    active_records = []
+                    for owner_ref, tracked_session in self._sessions:
+                        tracked_owner = owner_ref()
+                        if (
+                            tracked_owner is None
+                            or (
+                                tracked_owner is not owner
+                                and not tracked_owner.is_alive()
+                            )
+                        ):
+                            expired_sessions.append(tracked_session)
+                        else:
+                            active_records.append((owner_ref, tracked_session))
+                    active_records.append((weakref.ref(owner), session))
+                    self._sessions = active_records
             if client_closed:
                 try:
                     session.close()
@@ -136,8 +155,38 @@ class JsonHttpClient:
                     # The client state is the reason this session is unusable.
                     pass
                 raise RuntimeError("HTTP client is closed")
+            for expired_session in expired_sessions:
+                try:
+                    expired_session.close()
+                except BaseException:
+                    # The owning thread has already exited. Do not retain a
+                    # failed close forever and recreate the memory leak this
+                    # cleanup is meant to prevent.
+                    pass
             self._thread_local.session = session
         return session
+
+    def release_current_thread_session(self) -> None:
+        """Close and forget the calling thread's cached HTTP session."""
+        session = getattr(self._thread_local, "session", None)
+        if session is None:
+            return
+        del self._thread_local.session
+        with self._sessions_lock:
+            self._sessions = [
+                record
+                for record in self._sessions
+                if record[1] is not session
+            ]
+        try:
+            session.close()
+        except BaseException:
+            with self._sessions_lock:
+                if not self._closed:
+                    self._sessions.append(
+                        (weakref.ref(threading.current_thread()), session)
+                    )
+            raise
 
     def close(self) -> None:
         """Close every worker session after callers have stopped using the client."""
@@ -145,21 +194,25 @@ class JsonHttpClient:
             if self._closed and not self._sessions:
                 return
             self._closed = True
-            sessions = self._sessions
+            records = self._sessions
             self._sessions = []
 
         errors = []
-        failed_sessions = []
-        for session in {id(item): item for item in sessions}.values():
+        failed_records = []
+        unique_records = {
+            id(session): (owner_ref, session)
+            for owner_ref, session in records
+        }
+        for owner_ref, session in unique_records.values():
             try:
                 session.close()
             except BaseException as error:
                 errors.append(error)
-                failed_sessions.append(session)
+                failed_records.append((owner_ref, session))
 
-        if failed_sessions:
+        if failed_records:
             with self._sessions_lock:
-                self._sessions.extend(failed_sessions)
+                self._sessions.extend(failed_records)
             raise errors[0]
 
     def _should_retry(self, exc: Exception) -> bool:
