@@ -55,9 +55,8 @@ export function heatStyle(value, max) {
 export function formatFundingTitle(nextFundingTime) {
   const time = finiteNumber(nextFundingTime);
   if (time == null || time <= Date.now()) return "";
-  const date = new Date(time);
-  if (Number.isNaN(date.getTime())) return "";
-  return `下次資金費結算: ${date.toLocaleString()}`;
+  const formatted = formatUtc8DateTime(time);
+  return formatted ? `下次資金費結算: ${formatted}` : "";
 }
 
 export function formatOiUpdateAge(value, now = Date.now()) {
@@ -83,9 +82,26 @@ export function oiUpdateSignalState(value, now = Date.now()) {
 export function formatOiUpdateTitle(value) {
   const time = finiteNumber(value);
   if (time == null || time <= 0) return "";
-  const date = new Date(time);
+  const formatted = formatUtc8DateTime(time);
+  return formatted ? `OI 獲取時間：${formatted}` : "";
+}
+
+export function formatUtc8DateTime(value) {
+  const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return `OI 獲取時間：${date.toLocaleString()}`;
+
+  const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+  const datePart = [
+    shifted.getUTCFullYear(),
+    twoDigits(shifted.getUTCMonth() + 1),
+    twoDigits(shifted.getUTCDate()),
+  ].join("-");
+  const timePart = [
+    twoDigits(shifted.getUTCHours()),
+    twoDigits(shifted.getUTCMinutes()),
+    twoDigits(shifted.getUTCSeconds()),
+  ].join(":");
+  return `${datePart} ${timePart} +08:00`;
 }
 
 const TRADINGVIEW_SYMBOL_MAP = {
@@ -109,4 +125,8 @@ function finiteNumber(value) {
   if (value == null || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function twoDigits(value) {
+  return String(value).padStart(2, "0");
 }

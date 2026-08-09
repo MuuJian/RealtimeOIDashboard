@@ -1,3 +1,5 @@
+import { formatUtc8DateTime } from "../utils/format.js";
+
 export function createDashboardStatus({
   title,
   detail,
@@ -5,7 +7,6 @@ export function createDashboardStatus({
   marketCapLoaded,
 }) {
   let clockTimer = null;
-  let clockOffsetMinutes = null;
   let clockSuffix = "";
 
   function renderPayload(payload) {
@@ -24,8 +25,7 @@ export function createDashboardStatus({
     const marketCapSymbols = payload.market_cap_loaded_symbols || 0;
     clockSuffix = `${errorText}${batchError}`;
     if (payload.saved_at && Number.isFinite(Date.parse(payload.saved_at))) {
-      clockOffsetMinutes = timestampOffsetMinutes(payload.saved_at);
-      detail.title = `最近一次 OI 更新：${savedAt}`;
+      detail.title = `最近一次 OI 更新：${formatUtc8DateTime(savedAt)}`;
       renderClock();
       startClock();
     } else {
@@ -64,7 +64,7 @@ export function createDashboardStatus({
   }
 
   function renderClock() {
-    detail.textContent = `${formatClock(new Date(), clockOffsetMinutes)}${clockSuffix}`;
+    detail.textContent = `${formatUtc8DateTime(new Date())}${clockSuffix}`;
   }
 
   return {
@@ -73,36 +73,4 @@ export function createDashboardStatus({
     renderPayload,
     renderRankingError,
   };
-}
-
-function timestampOffsetMinutes(timestamp) {
-  if (timestamp.endsWith("Z")) return 0;
-  const match = timestamp.match(/([+-])(\d{2}):(\d{2})$/);
-  if (!match) return -new Date().getTimezoneOffset();
-
-  const minutes = Number(match[2]) * 60 + Number(match[3]);
-  return match[1] === "-" ? -minutes : minutes;
-}
-
-function formatClock(date, offsetMinutes) {
-  const shifted = new Date(date.getTime() + offsetMinutes * 60 * 1000);
-  const datePart = [
-    shifted.getUTCFullYear(),
-    twoDigits(shifted.getUTCMonth() + 1),
-    twoDigits(shifted.getUTCDate()),
-  ].join("-");
-  const timePart = [
-    twoDigits(shifted.getUTCHours()),
-    twoDigits(shifted.getUTCMinutes()),
-    twoDigits(shifted.getUTCSeconds()),
-  ].join(":");
-  const sign = offsetMinutes < 0 ? "-" : "+";
-  const absoluteOffset = Math.abs(offsetMinutes);
-  const offset = `${sign}${twoDigits(Math.floor(absoluteOffset / 60))}`
-    + `:${twoDigits(absoluteOffset % 60)}`;
-  return `${datePart} ${timePart} ${offset}`;
-}
-
-function twoDigits(value) {
-  return String(value).padStart(2, "0");
 }
