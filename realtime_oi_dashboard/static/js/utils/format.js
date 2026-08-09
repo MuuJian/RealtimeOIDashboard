@@ -52,11 +52,10 @@ export function heatStyle(value, max) {
   return `background: rgba(${color}, ${alpha});`;
 }
 
-export function formatFundingTitle(nextFundingTime) {
+export function formatFundingTime(nextFundingTime) {
   const time = finiteNumber(nextFundingTime);
-  if (time == null || time <= Date.now()) return "";
-  const formatted = formatUtc8DateTime(time);
-  return formatted ? `下次資金費結算: ${formatted}` : "";
+  if (time == null || time <= Date.now()) return "-";
+  return formatUtc8Time(time) || "-";
 }
 
 export function formatOiUpdateAge(value, now = Date.now()) {
@@ -102,6 +101,11 @@ export function formatUtc8DateTime(value) {
     twoDigits(shifted.getUTCSeconds()),
   ].join(":");
   return `${datePart} ${timePart}`;
+}
+
+export function formatUtc8Time(value) {
+  const formatted = formatUtc8DateTime(value);
+  return formatted ? formatted.slice(11) : "";
 }
 
 const TRADINGVIEW_SYMBOL_MAP = {

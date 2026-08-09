@@ -2,7 +2,6 @@ import {
   binanceFuturesUrl,
   formatCurrency,
   formatFundingRate,
-  formatFundingTitle,
   formatPercent,
   formatPrice,
   formatRatioPercent,
@@ -126,7 +125,7 @@ export function updateMarketRowCells(cells, row, heatMax = null) {
       || "CVD 反映主動買賣流，不保證價格方向。";
   }
 
-  cells.fundingRateCell.title = formatFundingTitle(row.nextFundingTime);
+  cells.fundingRateCell.removeAttribute("title");
   updateSignedCell(
     cells.fundingRateCell,
     row.fundingRatePercent,
