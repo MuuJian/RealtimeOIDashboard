@@ -9,8 +9,6 @@ export function createPageLifecycle({
     if (started || disposed) return;
     started = true;
     document.addEventListener("visibilitychange", syncActiveState);
-    window.addEventListener("focus", syncActiveState);
-    window.addEventListener("blur", syncActiveState);
     window.addEventListener("pagehide", handlePageHide);
     window.addEventListener("pageshow", handlePageShow);
     syncActiveState();
@@ -21,8 +19,6 @@ export function createPageLifecycle({
     disposed = true;
     if (started) {
       document.removeEventListener("visibilitychange", syncActiveState);
-      window.removeEventListener("focus", syncActiveState);
-      window.removeEventListener("blur", syncActiveState);
       window.removeEventListener("pagehide", handlePageHide);
       window.removeEventListener("pageshow", handlePageShow);
     }
@@ -33,8 +29,7 @@ export function createPageLifecycle({
     if (disposed) return;
     const pageActive = document.hidden !== true
       && document.visibilityState !== "hidden"
-      && document.visibilityState !== "prerender"
-      && document.hasFocus();
+      && document.visibilityState !== "prerender";
     onActiveChange(pageActive);
   }
 
