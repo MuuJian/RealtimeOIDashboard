@@ -101,7 +101,7 @@ export function formatUtc8DateTime(value) {
     twoDigits(shifted.getUTCMinutes()),
     twoDigits(shifted.getUTCSeconds()),
   ].join(":");
-  return `${datePart} ${timePart} +08:00`;
+  return `${datePart} ${timePart}`;
 }
 
 const TRADINGVIEW_SYMBOL_MAP = {
