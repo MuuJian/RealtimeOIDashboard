@@ -14,7 +14,7 @@ import {
   formatCvd,
   formatCvdAmount,
   formatCvdRatio,
-} from "../utils/cvd.js";
+} from "../features/cvd/format.js";
 import {
   createOiUpdateSignalCell,
   updateOiUpdateSignalCell,

@@ -13,7 +13,7 @@ if __package__ in {None, ""}:
 from realtime_oi_dashboard.application.background_service import (
     BackgroundServiceStopped,
 )
-from realtime_oi_dashboard.application.poller import timestamp
+from realtime_oi_dashboard.application.oi.poller import timestamp
 from realtime_oi_dashboard.web import DashboardRequestHandler
 
 

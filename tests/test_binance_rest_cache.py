@@ -1,15 +1,15 @@
 import threading
 import unittest
 
-from realtime_oi_dashboard.application.cvd import CvdPoller
-from realtime_oi_dashboard.application.signal_scan_market_snapshot import (
+from realtime_oi_dashboard.application.cvd.poller import CvdPoller
+from realtime_oi_dashboard.application.signal_scan.market_snapshot import (
     SignalScanMarketSnapshotLoader,
 )
 from realtime_oi_dashboard.domain.errors import PollingStopped
-from realtime_oi_dashboard.infrastructure.binance_client import (
+from realtime_oi_dashboard.infrastructure.binance.futures_client import (
     BinanceFuturesClient,
 )
-from realtime_oi_dashboard.infrastructure.binance_rest_cache import (
+from realtime_oi_dashboard.infrastructure.binance.rest_cache import (
     EXCHANGE_INFO_URL,
     TICKER_URL,
     BinanceRestCache,

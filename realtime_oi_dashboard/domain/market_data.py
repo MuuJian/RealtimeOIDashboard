@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 
 from realtime_oi_dashboard.domain.parsing import optional_float, optional_int
-from realtime_oi_dashboard.domain.oi_history_points import MAX_SAFE_INTEGER
+from realtime_oi_dashboard.domain.oi.history_points import MAX_SAFE_INTEGER
 from realtime_oi_dashboard.domain.symbols import is_valid_binance_symbol
 
 

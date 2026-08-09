@@ -1,6 +1,6 @@
 import unittest
 
-from realtime_oi_dashboard.domain.cvd import (
+from realtime_oi_dashboard.domain.cvd.model import (
     BUCKET_COUNT,
     MINUTE_MS,
     SymbolCvdWindow,

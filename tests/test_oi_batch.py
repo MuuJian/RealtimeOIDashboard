@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
-from realtime_oi_dashboard.application.oi_batch import OIBatchRunner
+from realtime_oi_dashboard.application.oi.batch import OIBatchRunner
 
 
 class FakeClient:
@@ -118,9 +118,9 @@ class OIBatchRunnerTests(unittest.TestCase):
         market_caps = {"BTCUSDT": {"marketCap": 2_000.0}}
 
         with (
-            patch("realtime_oi_dashboard.application.oi_batch.time.time", return_value=1_700_000_000),
+            patch("realtime_oi_dashboard.application.oi.batch.time.time", return_value=1_700_000_000),
             patch(
-                "realtime_oi_dashboard.application.oi_batch.time.monotonic",
+                "realtime_oi_dashboard.application.oi.batch.time.monotonic",
                 return_value=123.0,
             ),
         ):

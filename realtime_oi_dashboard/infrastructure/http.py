@@ -13,7 +13,7 @@ from typing import Any
 
 import requests
 
-from realtime_oi_dashboard.infrastructure.binance_weight_budget import (
+from realtime_oi_dashboard.infrastructure.binance.weight_budget import (
     GLOBAL_BINANCE_WEIGHT_BUDGET,
 )
 

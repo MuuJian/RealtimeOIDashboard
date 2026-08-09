@@ -8,6 +8,7 @@ pyvenv.*
 
 # Runtime data and local config
 realtime_oi_dashboard/data/
+realtime_oi_dashboard/application/data/
 .env
 .DS_Store
 

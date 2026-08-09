@@ -5,23 +5,23 @@ import time
 import unittest
 from pathlib import Path
 
-from realtime_oi_dashboard.application.cvd_backfill import CvdBackfillQueue
-from realtime_oi_dashboard.application.cvd_shard_allocator import (
+from realtime_oi_dashboard.application.cvd.backfill import CvdBackfillQueue
+from realtime_oi_dashboard.application.cvd.shard_allocator import (
     CvdShardAllocator,
     desired_shard_count,
 )
-from realtime_oi_dashboard.application.cvd_universe import (
+from realtime_oi_dashboard.application.cvd.universe import (
     CvdUniverseManager,
     select_cvd_symbols,
 )
-from realtime_oi_dashboard.infrastructure.binance_cvd_stream import (
+from realtime_oi_dashboard.infrastructure.binance.cvd_stream import (
     BinanceCvdShard,
 )
-from realtime_oi_dashboard.infrastructure.binance_weight_budget import (
+from realtime_oi_dashboard.infrastructure.binance.weight_budget import (
     BinanceWeightBudget,
     request_weight,
 )
-from realtime_oi_dashboard.infrastructure.cvd_snapshot_repository import (
+from realtime_oi_dashboard.infrastructure.storage.cvd_snapshot import (
     CvdSnapshotRepository,
 )
 

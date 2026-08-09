@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createSignalScanPanel } from "../realtime_oi_dashboard/static/js/components/SignalScanPanel.js";
+import { createSignalScanPanel } from "../realtime_oi_dashboard/static/js/features/signal-scan/SignalScanPanel.js";
 
 class FakeNode {
   constructor(tagName) {

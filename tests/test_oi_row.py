@@ -1,6 +1,6 @@
 import unittest
 
-from realtime_oi_dashboard.domain.oi_row import OIRowBuilder
+from realtime_oi_dashboard.domain.oi.row import OIRowBuilder
 
 
 class OIRowBuilderTests(unittest.TestCase):

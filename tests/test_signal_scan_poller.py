@@ -5,7 +5,7 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-from realtime_oi_dashboard.application.signal_scan import (
+from realtime_oi_dashboard.application.signal_scan.poller import (
     EXCHANGE_INFO_URL,
     KLINE_CACHE_MAX_SYMBOLS,
     KLINE_INTERVAL_MILLISECONDS,
@@ -139,7 +139,7 @@ class SignalScanPollerTests(unittest.TestCase):
         waits = []
 
         with patch(
-            "realtime_oi_dashboard.application.signal_scan._wait_for_event",
+            "realtime_oi_dashboard.application.signal_scan.poller._wait_for_event",
             side_effect=lambda event, delay: waits.append(delay) or True,
         ):
             poller.run_forever()
@@ -306,7 +306,7 @@ class SignalScanPollerTests(unittest.TestCase):
         poller._owns_http_client = True
 
         with patch(
-            "realtime_oi_dashboard.application.signal_scan.SIGNAL_SCAN_CLOSE_RETRY_INITIAL_DELAY_SECONDS",
+            "realtime_oi_dashboard.application.signal_scan.poller.SIGNAL_SCAN_CLOSE_RETRY_INITIAL_DELAY_SECONDS",
             0.01,
         ), redirect_stdout(io.StringIO()):
             poller.run_forever()
@@ -342,7 +342,7 @@ class SignalScanPollerTests(unittest.TestCase):
         poller._owns_http_client = True
 
         with patch(
-            "realtime_oi_dashboard.application.signal_scan.SIGNAL_SCAN_CLOSE_RETRY_INITIAL_DELAY_SECONDS",
+            "realtime_oi_dashboard.application.signal_scan.poller.SIGNAL_SCAN_CLOSE_RETRY_INITIAL_DELAY_SECONDS",
             0.001,
         ), redirect_stdout(io.StringIO()):
             poller.run_forever()
@@ -538,7 +538,7 @@ class SignalScanPollerTests(unittest.TestCase):
         self.assertTrue(started.wait(timeout=2))
 
         with patch(
-            "realtime_oi_dashboard.application.signal_scan.SIGNAL_SCAN_CLOSE_SCAN_WAIT_SECONDS",
+            "realtime_oi_dashboard.application.signal_scan.poller.SIGNAL_SCAN_CLOSE_SCAN_WAIT_SECONDS",
             min(0.01, SIGNAL_SCAN_CLOSE_SCAN_WAIT_SECONDS),
         ), redirect_stdout(io.StringIO()):
             with self.assertRaisesRegex(TimeoutError, "still running"):
@@ -577,7 +577,7 @@ class SignalScanPollerTests(unittest.TestCase):
         poller._owns_http_client = True
 
         with patch(
-            "realtime_oi_dashboard.application.signal_scan.SIGNAL_SCAN_CLOSE_CLIENT_WAIT_SECONDS",
+            "realtime_oi_dashboard.application.signal_scan.poller.SIGNAL_SCAN_CLOSE_CLIENT_WAIT_SECONDS",
             min(0.01, SIGNAL_SCAN_CLOSE_CLIENT_WAIT_SECONDS),
         ), redirect_stdout(io.StringIO()):
             with self.assertRaisesRegex(TimeoutError, "HTTP client close"):
@@ -663,7 +663,7 @@ class SignalScanPollerTests(unittest.TestCase):
         poller._owns_http_client = True
 
         with patch(
-            "realtime_oi_dashboard.application.signal_scan.SIGNAL_SCAN_CLOSE_RETRY_INITIAL_DELAY_SECONDS",
+            "realtime_oi_dashboard.application.signal_scan.poller.SIGNAL_SCAN_CLOSE_RETRY_INITIAL_DELAY_SECONDS",
             0.05,
         ), self.assertRaisesRegex(RuntimeError, "close failed"):
             poller.close()
@@ -699,7 +699,7 @@ class SignalScanPollerTests(unittest.TestCase):
         poller._owns_http_client = True
 
         with patch(
-            "realtime_oi_dashboard.application.signal_scan.SIGNAL_SCAN_CLOSE_RETRY_INITIAL_DELAY_SECONDS",
+            "realtime_oi_dashboard.application.signal_scan.poller.SIGNAL_SCAN_CLOSE_RETRY_INITIAL_DELAY_SECONDS",
             0.001,
         ), redirect_stdout(io.StringIO()):
             with self.assertRaisesRegex(RuntimeError, "KeyboardInterrupt"):
@@ -730,16 +730,16 @@ class SignalScanPollerTests(unittest.TestCase):
         output = io.StringIO()
 
         with patch(
-            "realtime_oi_dashboard.application.signal_scan.SIGNAL_SCAN_CLOSE_RETRY_INITIAL_DELAY_SECONDS",
+            "realtime_oi_dashboard.application.signal_scan.poller.SIGNAL_SCAN_CLOSE_RETRY_INITIAL_DELAY_SECONDS",
             0.001,
         ), patch(
-            "realtime_oi_dashboard.application.signal_scan.SIGNAL_SCAN_CLOSE_RETRY_MAX_DELAY_SECONDS",
+            "realtime_oi_dashboard.application.signal_scan.poller.SIGNAL_SCAN_CLOSE_RETRY_MAX_DELAY_SECONDS",
             0.002,
         ), patch(
-            "realtime_oi_dashboard.application.signal_scan.SIGNAL_SCAN_CLOSE_RETRY_MAX_ATTEMPTS",
+            "realtime_oi_dashboard.application.signal_scan.poller.SIGNAL_SCAN_CLOSE_RETRY_MAX_ATTEMPTS",
             100,
         ), patch(
-            "realtime_oi_dashboard.application.signal_scan.SIGNAL_SCAN_CLOSE_LOG_COOLDOWN_SECONDS",
+            "realtime_oi_dashboard.application.signal_scan.poller.SIGNAL_SCAN_CLOSE_LOG_COOLDOWN_SECONDS",
             60,
         ), redirect_stdout(output):
             poller.run_forever()

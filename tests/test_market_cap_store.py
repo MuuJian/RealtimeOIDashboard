@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from realtime_oi_dashboard.infrastructure.market_cap_store import (
+from realtime_oi_dashboard.infrastructure.coingecko.store import (
     load_market_cap_file,
     write_market_cap_file,
 )

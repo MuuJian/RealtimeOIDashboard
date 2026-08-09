@@ -6,20 +6,20 @@ import { createOiRankingTable } from "./components/OiRankingTable.js";
 import { createSortableHeaders } from "./components/SortableHeader.js";
 import { createBinancePriceFeed } from "./data/BinancePriceFeed.js";
 import { getDashboardElements } from "./data/DashboardElements.js";
-import { createOiRankingStore } from "./data/OiRankingStore.js";
+import { createOiFeatureController } from "./features/oi/OiFeatureController.js";
+import { createOiRankingStore } from "./features/oi/OiRankingStore.js";
 import { useFavorites } from "./hooks/useFavorites.js";
 import { useTableFilters } from "./hooks/useTableFilters.js";
 import { useTableSort } from "./hooks/useTableSort.js";
 import { createMotionEffects } from "./motionEffects.js";
-import { createOiRefreshController } from "./services/OiRefreshController.js";
 import { createPageLifecycle } from "./services/PageLifecycle.js";
 import { createLiveUpdateCoordinator } from "./services/LiveUpdateCoordinator.js";
 import { createDashboardRenderer } from "./services/DashboardRenderer.js";
 import { createRankingProcessor } from "./services/RankingProcessor.js";
 import { createRankingViewController } from "./services/RankingViewController.js";
 import { createUiRenderScheduler } from "./services/UiRenderScheduler.js";
-import { createSignalScanPanel } from "./components/SignalScanPanel.js";
-import { createSignalScanRefreshController } from "./services/SignalScanRefreshController.js";
+import { createSignalScanPanel } from "./features/signal-scan/SignalScanPanel.js";
+import { createSignalScanRefreshController } from "./features/signal-scan/SignalScanRefreshController.js";
 
 const lifecycleController = new AbortController();
 const elements = getDashboardElements();
@@ -110,26 +110,27 @@ const rankingView = createRankingViewController({
   scheduleRender: scheduleUiRender,
   onError: handleRankingError,
 });
-const oiRefresh = createOiRefreshController({
-  onPayload: handleOiPayload,
-  onError: handleOiError,
-  onSettled: handleOiSettled,
+let pageLifecycle = null;
+const oiFeature = createOiFeatureController({
+  dashboardStatus,
+  favorites,
+  isDisposed: () => pageLifecycle?.isDisposed() ?? false,
+  priceFeed,
+  rankingData,
+  rankingView,
+  requestRankingView,
+  scheduleUiRender,
 });
+const oiRefresh = oiFeature.refresh;
 const liveUpdates = createLiveUpdateCoordinator({
   oiRefresh,
   signalScanRefresh,
   priceFeed,
 });
-const pageLifecycle = createPageLifecycle({
+pageLifecycle = createPageLifecycle({
   onActiveChange: handlePageActiveChange,
   onDispose: disposeResources,
 });
-
-const unsubscribePriceStatus = priceFeed.subscribeStatus(status => {
-  if (pageLifecycle.isDisposed()) return;
-  scheduleUiRender({ priceStatus: status });
-});
-const unsubscribePrices = priceFeed.subscribePrices(handlePriceBatch);
 
 for (const select of [
   elements.signalOi7dFilter,
@@ -176,8 +177,7 @@ motionEffects.playEntrance();
 
 function disposeResources() {
   lifecycleController.abort();
-  unsubscribePriceStatus();
-  unsubscribePrices();
+  oiFeature.dispose();
   rankingView.dispose();
   marketTooltip.dispose();
   motionEffects.dispose();
@@ -191,40 +191,6 @@ function handlePageActiveChange(pageActive) {
   document.documentElement.classList.toggle("page-hidden", !pageActive);
   motionEffects.setPaused(!pageActive);
   liveUpdates.setPageActive(pageActive);
-}
-
-function handleOiPayload(payload) {
-  const favoritesChanged = favorites.pruneInactive(payload.active_symbols);
-  rankingData.setRows(payload.rows, priceFeed.getPrices());
-  dashboardStatus.renderPayload(payload);
-  requestRankingView({
-    replaceRows: rankingData.getRows(),
-    changedSymbols: rankingData.getRows().map(row => row.symbol),
-    forceFull: !rankingView.getVisibleRows().length,
-  });
-  scheduleUiRender({
-    controls: favoritesChanged,
-    stats: true,
-  });
-}
-
-function handleOiError(error, { dataExpired }) {
-  if (dataExpired) {
-    rankingData.setRows([], priceFeed.getPrices());
-    requestRankingView({
-      replaceRows: [],
-      forceFull: true,
-    });
-    scheduleUiRender({ stats: true });
-  }
-  dashboardStatus.renderConnectionError(error);
-}
-
-function handleOiSettled() {
-  scheduleUiRender({
-    high: true,
-    patchSymbols: rankingView.getVisibleRows().map(row => row.symbol),
-  });
 }
 
 function resetTableAndRequestView() {
@@ -242,20 +208,6 @@ function getSignalFilters() {
     minOi7dChangePercent: Number(elements.signalOi7dFilter.value),
     minOiValue: Number(elements.signalOiValueFilter.value),
   };
-}
-
-function handlePriceBatch(changedSymbols, priceMap) {
-  if (pageLifecycle.isDisposed()) return;
-  const affectedSymbols = rankingData.applyPriceUpdates(changedSymbols, priceMap);
-  if (!affectedSymbols.length) return;
-
-  scheduleUiRender({ stats: true });
-  requestRankingView({
-    patchRows: affectedSymbols
-      .map(symbol => rankingData.getRow(symbol))
-      .filter(Boolean),
-    changedSymbols: affectedSymbols,
-  });
 }
 
 function requestRankingView(options) {

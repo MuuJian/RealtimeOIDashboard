@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { loadSignalScanSnapshot } from "../realtime_oi_dashboard/static/js/data/SignalScanApiClient.js";
+import { loadSignalScanSnapshot } from "../realtime_oi_dashboard/static/js/features/signal-scan/SignalScanApiClient.js";
 
 const validPayload = {
   schema_version: 2,

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createOiRefreshController } from "../realtime_oi_dashboard/static/js/services/OiRefreshController.js";
+import { createOiRefreshController } from "../realtime_oi_dashboard/static/js/features/oi/OiRefreshController.js";
 
 const validPayload = {
   schema_version: 7,

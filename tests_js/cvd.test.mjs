@@ -6,7 +6,7 @@ import {
   formatCvd,
   formatCvdAmount,
   formatCvdRatio,
-} from "../realtime_oi_dashboard/static/js/utils/cvd.js";
+} from "../realtime_oi_dashboard/static/js/features/cvd/format.js";
 import { buildVisibleRows } from "../realtime_oi_dashboard/static/js/utils/rankingRows.js";
 
 test("formats signed CVD notional and ratio", () => {

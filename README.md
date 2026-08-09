@@ -87,6 +87,38 @@ http://192.168.xxx.xxx:8777
 node realtime_oi_dashboard/scripts/check-static-js.mjs
 ```
 
+## 代码结构
+
+后端继续保持 domain、application、infrastructure 三层，但每层再按功能分包，
+避免 OI、Signal Scan 和 CVD 的文件混在同一个目录：
+
+```text
+realtime_oi_dashboard/
+├── application/
+│   ├── oi/
+│   ├── signal_scan/
+│   └── cvd/
+├── domain/
+│   ├── oi/
+│   ├── signal_scan/
+│   └── cvd/
+├── infrastructure/
+│   ├── binance/
+│   ├── coingecko/
+│   └── storage/
+├── shared/
+│   ├── ports/
+│   └── runtime/
+└── static/js/features/
+    ├── oi/
+    ├── signal-scan/
+    └── cvd/
+```
+
+`infrastructure/binance/market_data.py` 定义直连适配器，
+`rest_cache.py` 以装饰器方式提供进程级 single-flight 缓存；OI、Signal Scan
+和 CVD 都通过同一个 market-data port 获取共享行情与 exchange info。
+
 
 
 ## 数据来源

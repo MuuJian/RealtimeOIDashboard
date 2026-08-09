@@ -1,6 +1,6 @@
 import unittest
 
-from realtime_oi_dashboard.domain.signal_scan_klines import (
+from realtime_oi_dashboard.domain.signal_scan.klines import (
     KLINE_INTERVAL_MILLISECONDS,
     KLINE_MAX_RESPONSE_ROWS,
     merge_kline_history,

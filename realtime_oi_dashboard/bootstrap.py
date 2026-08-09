@@ -5,13 +5,14 @@ from __future__ import annotations
 from realtime_oi_dashboard.application.background_service import (
     BackgroundPollerService,
 )
-from realtime_oi_dashboard.application.poller import OIPoller, timestamp
-from realtime_oi_dashboard.application.signal_scan import SignalScanPoller
+from realtime_oi_dashboard.application.oi.poller import OIPoller, timestamp
+from realtime_oi_dashboard.application.signal_scan.poller import SignalScanPoller
 from realtime_oi_dashboard.cli import parse_args
-from realtime_oi_dashboard.infrastructure.binance_rest_cache import (
+from realtime_oi_dashboard.infrastructure.binance.rest_cache import (
     BinanceRestCache,
 )
 from realtime_oi_dashboard.server import create_dashboard_server
+from realtime_oi_dashboard.shared.runtime.services import ServiceGroup
 
 
 SHUTDOWN_TIMEOUT_SECONDS = 15
@@ -89,7 +90,7 @@ def create_oi_service(
 
 
 def create_cvd_service(args, *, shared_rest_cache=None):
-    from realtime_oi_dashboard.application.cvd import CvdPoller
+    from realtime_oi_dashboard.application.cvd.poller import CvdPoller
 
     poller = CvdPoller(
         shared_rest_cache=shared_rest_cache,
@@ -146,6 +147,11 @@ def run_dashboard(
     cvd_service=None,
     shared_rest_cache=None,
 ):
+    services = ServiceGroup(
+        oi=("OI poller", oi_service),
+        signal_scan=("signal scan poller", signal_scan_service),
+        cvd=("CVD poller", cvd_service),
+    )
     try:
         server = create_dashboard_server(
             args.host,
@@ -155,20 +161,16 @@ def run_dashboard(
         )
     except OSError as exc:
         print(f"無法啟動面板: {exc}")
-        _close_after_start_failure(oi_service, "OI poller")
-        _close_after_start_failure(signal_scan_service, "signal scan poller")
-        _close_after_start_failure(cvd_service, "CVD poller")
+        _report_close_failures(services.close_all())
         _close_shared_rest_cache(shared_rest_cache)
         return 1
 
     with server:
         try:
-            oi_service.start()
+            services.start("oi")
         except Exception as exc:
             print(f"無法啟動 OI 輪詢線程: {exc}")
-            _close_after_start_failure(oi_service, "OI poller")
-            _close_after_start_failure(signal_scan_service, "signal scan poller")
-            _close_after_start_failure(cvd_service, "CVD poller")
+            _report_close_failures(services.close_all())
             _close_shared_rest_cache(shared_rest_cache)
             return 1
 
@@ -186,11 +188,12 @@ def run_dashboard(
                 print("\nDashboard stopped.")
         finally:
             _stop_shared_rest_cache(shared_rest_cache)
-            _stop_oi_service(oi_service)
+            if _stop_service(services, "oi"):
+                _save_final_oi_state(oi_service)
             if signal_scan_started:
-                _stop_signal_scan_service(signal_scan_service)
+                _stop_service(services, "signal_scan")
             if cvd_started:
-                _stop_cvd_service(cvd_service)
+                _stop_service(services, "cvd")
             _close_shared_rest_cache(shared_rest_cache)
     return 0
 
@@ -232,13 +235,17 @@ def log_startup(args):
     )
 
 
+def _report_close_failures(failures):
+    for failure in failures:
+        print(
+            f"{timestamp()} failed to close {failure.label}: "
+            f"{failure.error}"
+        )
+
+
 def _close_after_start_failure(service, label):
-    if service is None:
-        return
-    try:
-        service.close()
-    except Exception as exc:
-        print(f"{timestamp()} failed to close {label}: {exc}")
+    services = ServiceGroup(target=(label, service))
+    _report_close_failures(services.close_all())
 
 
 def _close_shared_rest_cache(cache):
@@ -259,30 +266,41 @@ def _stop_shared_rest_cache(cache):
         print(f"{timestamp()} failed to stop shared Binance REST cache: {exc}")
 
 
-def _stop_oi_service(service):
-    if not service.stop(timeout=SHUTDOWN_TIMEOUT_SECONDS):
+def _stop_service(services, key):
+    result = services.stop(key, timeout=SHUTDOWN_TIMEOUT_SECONDS)
+    if result is None:
+        return False
+    if result.error is not None:
+        print(f"{timestamp()} failed to stop {result.label}: {result.error}")
+        return False
+    if not result.stopped:
         print(
-            f"{timestamp()} OI poller did not stop within "
+            f"{timestamp()} {result.label} did not stop within "
             f"{SHUTDOWN_TIMEOUT_SECONDS} seconds"
         )
-        return
+        return False
+    return True
+
+
+def _save_final_oi_state(service):
     try:
         service.worker.save_state(force=True)
     except Exception as exc:
         print(f"{timestamp()} failed to save final OI cache: {exc}")
 
 
+def _stop_oi_service(service):
+    services = ServiceGroup(oi=("OI poller", service))
+    if _stop_service(services, "oi"):
+        _save_final_oi_state(service)
+
+
 def _stop_signal_scan_service(service):
-    if not service.stop(timeout=SHUTDOWN_TIMEOUT_SECONDS):
-        print(
-            f"{timestamp()} signal scan poller did not stop within "
-            f"{SHUTDOWN_TIMEOUT_SECONDS} seconds"
-        )
+    _stop_service(
+        ServiceGroup(signal_scan=("signal scan poller", service)),
+        "signal_scan",
+    )
 
 
 def _stop_cvd_service(service):
-    if not service.stop(timeout=SHUTDOWN_TIMEOUT_SECONDS):
-        print(
-            f"{timestamp()} CVD poller did not stop within "
-            f"{SHUTDOWN_TIMEOUT_SECONDS} seconds"
-        )
+    _stop_service(ServiceGroup(cvd=("CVD poller", service)), "cvd")

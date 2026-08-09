@@ -1,10 +1,10 @@
 import threading
 import unittest
 
-from realtime_oi_dashboard.application.signal_scan_kline_cache import (
+from realtime_oi_dashboard.application.signal_scan.kline_cache import (
     SignalScanKlineCache,
 )
-from realtime_oi_dashboard.domain.signal_scan_klines import (
+from realtime_oi_dashboard.domain.signal_scan.klines import (
     KLINE_INTERVAL_MILLISECONDS,
 )
 

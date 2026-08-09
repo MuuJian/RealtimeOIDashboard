@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from realtime_oi_dashboard.application.cvd import CvdPoller
-from realtime_oi_dashboard.domain.cvd import MINUTE_MS
+from realtime_oi_dashboard.application.cvd.poller import CvdPoller
+from realtime_oi_dashboard.domain.cvd.model import MINUTE_MS
 
 
 def exchange_info(count):

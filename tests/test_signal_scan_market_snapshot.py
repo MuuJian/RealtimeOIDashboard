@@ -1,7 +1,7 @@
 import threading
 import unittest
 
-from realtime_oi_dashboard.application.signal_scan_market_snapshot import (
+from realtime_oi_dashboard.application.signal_scan.market_snapshot import (
     EXCHANGE_INFO_TIMEOUT_SECONDS,
     EXCHANGE_INFO_URL,
     SIGNAL_SCAN_HTTP_ATTEMPTS,

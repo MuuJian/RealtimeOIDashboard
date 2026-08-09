@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createSignalScanRefreshController } from "../realtime_oi_dashboard/static/js/services/SignalScanRefreshController.js";
+import { createSignalScanRefreshController } from "../realtime_oi_dashboard/static/js/features/signal-scan/SignalScanRefreshController.js";
 
 const validPayload = {
   schema_version: 2,

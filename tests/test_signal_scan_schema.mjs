@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { isSignalScanPayload } from "../realtime_oi_dashboard/static/js/data/SignalScanPayloadSchema.js";
+import { isSignalScanPayload } from "../realtime_oi_dashboard/static/js/features/signal-scan/SignalScanPayloadSchema.js";
 
 function signalRow(overrides = {}) {
   return {

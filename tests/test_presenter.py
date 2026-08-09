@@ -1,7 +1,7 @@
 import unittest
 
-from realtime_oi_dashboard.domain.oi_state import OiStateStore, OiUpdate
-from realtime_oi_dashboard.application.presenter import DashboardPresenter
+from realtime_oi_dashboard.domain.oi.state import OiStateStore, OiUpdate
+from realtime_oi_dashboard.application.oi.presenter import DashboardPresenter
 
 
 class StubClock:

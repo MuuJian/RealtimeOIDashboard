@@ -2,10 +2,10 @@ import inspect
 import unittest
 from unittest.mock import patch
 
-from realtime_oi_dashboard.application.oi_history import OiHistoryService
-from realtime_oi_dashboard.application.poller import OIPoller
-from realtime_oi_dashboard.domain.oi_history_points import HOUR_MS
-from realtime_oi_dashboard.infrastructure.binance_client import (
+from realtime_oi_dashboard.application.oi.history import OiHistoryService
+from realtime_oi_dashboard.application.oi.poller import OIPoller
+from realtime_oi_dashboard.domain.oi.history_points import HOUR_MS
+from realtime_oi_dashboard.infrastructure.binance.futures_client import (
     BinanceFuturesClient,
 )
 
@@ -48,10 +48,10 @@ class OiHistoryServiceTests(unittest.TestCase):
 
         service = OiHistoryService(fetch_history, lambda *_args: None)
         with patch(
-            "realtime_oi_dashboard.application.oi_history.time.time",
+            "realtime_oi_dashboard.application.oi.history.time.time",
             return_value=now_seconds,
         ), patch(
-            "realtime_oi_dashboard.application.oi_history.time.monotonic",
+            "realtime_oi_dashboard.application.oi.history.time.monotonic",
             return_value=0,
         ) as monotonic:
             service.get_changes("BTCUSDT", 110, 105)
