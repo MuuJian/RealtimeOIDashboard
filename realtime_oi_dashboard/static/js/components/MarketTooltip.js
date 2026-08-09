@@ -1,6 +1,7 @@
 import {
   formatCurrency,
   formatFundingRate,
+  formatFundingTime,
   formatOiUpdateAge,
   formatOiUpdateTitle,
   formatPercent,
@@ -159,7 +160,11 @@ function renderTooltip(tooltip, row) {
   tooltip.title.textContent = row.symbol;
   const values = [
     [formatPrice(row.price)],
-    [formatFundingRate(row.fundingRatePercent), row.fundingRatePercent],
+    [
+      `${formatFundingRate(row.fundingRatePercent)}`
+        + ` / ${formatFundingTime(row.nextFundingTime)}`,
+      row.fundingRatePercent,
+    ],
     [formatPercent(row.priceChangePercent), row.priceChangePercent],
     [formatPercent(row.price7dChangePercent), row.price7dChangePercent],
     [formatPercent(row.oi24hChangePercent), row.oi24hChangePercent],

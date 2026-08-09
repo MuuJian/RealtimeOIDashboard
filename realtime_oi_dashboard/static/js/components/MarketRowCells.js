@@ -2,7 +2,6 @@ import {
   binanceFuturesUrl,
   formatCurrency,
   formatFundingRate,
-  formatFundingTitle,
   formatPercent,
   formatPrice,
   formatRatioPercent,
@@ -90,7 +89,7 @@ export function updateMarketRowCells(cells, row, heatMax = null) {
   cells.volumeCell.textContent = formatCurrency(row.volume24h);
   updateOiUpdateSignalCell(cells.oiUpdatedAtCell, row.oiUpdatedAt);
 
-  cells.fundingRateCell.title = formatFundingTitle(row.nextFundingTime);
+  cells.fundingRateCell.removeAttribute("title");
   updateSignedCell(
     cells.fundingRateCell,
     row.fundingRatePercent,
