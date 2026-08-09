@@ -1,4 +1,4 @@
-"""Binance Futures requests and bounded market-data caches for the OI dashboard."""
+"""Serve OI-specific Binance Futures requests."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import time
 from collections.abc import Callable
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
-from realtime_oi_dashboard.infrastructure.market_cache import MarketCache
+from realtime_oi_dashboard.infrastructure.storage.market_cache import MarketCache
 from realtime_oi_dashboard.domain.market_data import (
     incomplete_funding_symbols,
     incomplete_market_ticker_symbols,
@@ -16,8 +16,12 @@ from realtime_oi_dashboard.domain.market_data import (
     parse_funding_rates,
     parse_market_tickers,
 )
-from realtime_oi_dashboard.application.oi_history import OiHistoryService
+from realtime_oi_dashboard.application.oi.history import OiHistoryService
 from realtime_oi_dashboard.infrastructure.http import JsonHttpClient
+from realtime_oi_dashboard.infrastructure.binance.market_data import (
+    DirectBinanceMarketData,
+    resolve_market_data_source,
+)
 from realtime_oi_dashboard.domain.parsing import optional_float
 from realtime_oi_dashboard.domain.symbols import is_valid_binance_symbol
 
@@ -37,6 +41,8 @@ class BinanceFuturesClient:
         ticker_cache_seconds: float,
         funding_cache_seconds: float,
         http_client=None,
+        market_data=None,
+        shared_rest_cache=None,
     ) -> None:
         self.stop_event = stop_event
         self.record_error = record_error
@@ -54,6 +60,11 @@ class BinanceFuturesClient:
             )
             if http_client is None
             else http_client
+        )
+        self.market_data = resolve_market_data_source(
+            market_data=market_data,
+            legacy_shared_cache=shared_rest_cache,
+            direct_factory=lambda: DirectBinanceMarketData(self.request_json),
         )
         self.market_cache_lock = threading.Lock()
         self.ticker_cache = MarketCache(
@@ -87,7 +98,8 @@ class BinanceFuturesClient:
             raise PollingStopped
 
     def get_active_symbols(self) -> list[str]:
-        data = self.request_json(self.info_url, timeout=12)
+        data = self.market_data.get_exchange_info()
+        self._raise_if_stopped()
         if not isinstance(data, dict) or not isinstance(data.get("symbols"), list):
             raise ValueError("unexpected exchange-info response")
 
@@ -117,7 +129,8 @@ class BinanceFuturesClient:
                 return lookup.value
 
         try:
-            response = self.request_json(self.ticker_24h_url, timeout=12)
+            response = self.market_data.get_tickers()
+            self._raise_if_stopped()
             tickers = parse_market_tickers(response, active_symbols)
             response_time = time.monotonic()
             incomplete_symbols = incomplete_market_ticker_symbols(

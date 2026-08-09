@@ -1,8 +1,8 @@
 import {
   applyLivePriceToRow,
   syncOiToMarketCapRatio,
-} from "../utils/rankingRows.js";
-import { buildOiStats } from "../utils/oiStats.js";
+} from "../../utils/rankingRows.js";
+import { buildOiStats } from "../../utils/oiStats.js";
 import { isOiRow } from "./OiPayloadSchema.js";
 
 const LIVE_MARKET_FIELDS = [

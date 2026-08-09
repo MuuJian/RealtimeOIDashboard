@@ -1,4 +1,4 @@
-"""Refresh and validate the active Binance Futures symbol set."""
+"""Refresh and validate the OI symbol set."""
 
 from __future__ import annotations
 

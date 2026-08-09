@@ -1,4 +1,4 @@
-"""Stable API presentation for the realtime OI dashboard."""
+"""Present stable API payloads for the OI dashboard."""
 
 from __future__ import annotations
 

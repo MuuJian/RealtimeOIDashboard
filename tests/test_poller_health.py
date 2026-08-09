@@ -2,7 +2,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from realtime_oi_dashboard.application.poller_health import PollerClock, RecentErrorLog
+from realtime_oi_dashboard.application.oi.health import PollerClock, RecentErrorLog
 
 
 class RecentErrorLogTests(unittest.TestCase):
@@ -14,9 +14,9 @@ class RecentErrorLogTests(unittest.TestCase):
             retention_seconds=10,
         )
 
-        with patch("realtime_oi_dashboard.application.poller_health.time.monotonic", return_value=100):
+        with patch("realtime_oi_dashboard.application.oi.health.time.monotonic", return_value=100):
             self.assertTrue(errors.record("BTCUSDT", ValueError("first")))
-        with patch("realtime_oi_dashboard.application.poller_health.time.monotonic", return_value=105):
+        with patch("realtime_oi_dashboard.application.oi.health.time.monotonic", return_value=105):
             self.assertTrue(errors.record("ETHUSDT", ValueError("second")))
             self.assertEqual(
                 errors.recent(),
@@ -25,7 +25,7 @@ class RecentErrorLogTests(unittest.TestCase):
                     {"symbol": "ETHUSDT", "error": "second"},
                 ],
             )
-        with patch("realtime_oi_dashboard.application.poller_health.time.monotonic", return_value=111):
+        with patch("realtime_oi_dashboard.application.oi.health.time.monotonic", return_value=111):
             self.assertEqual(
                 errors.recent(),
                 [{"symbol": "ETHUSDT", "error": "second"}],
@@ -43,9 +43,9 @@ class RecentErrorLogTests(unittest.TestCase):
 class PollerClockTests(unittest.TestCase):
     def _clock(self):
         with (
-            patch("realtime_oi_dashboard.application.poller_health.time.time", return_value=100),
+            patch("realtime_oi_dashboard.application.oi.health.time.time", return_value=100),
             patch(
-                "realtime_oi_dashboard.application.poller_health.time.monotonic",
+                "realtime_oi_dashboard.application.oi.health.time.monotonic",
                 return_value=50,
             ),
         ):

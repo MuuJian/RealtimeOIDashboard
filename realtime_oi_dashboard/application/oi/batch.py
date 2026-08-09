@@ -1,4 +1,4 @@
-"""Build per-symbol OI updates, sequentially or with a bounded worker pool."""
+"""Build per-symbol OI updates with bounded concurrency."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from math import isfinite
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
-from realtime_oi_dashboard.domain.oi_row import OIRowBuilder
+from realtime_oi_dashboard.domain.oi.row import OIRowBuilder
 
 
 class OIBatchRunner:

@@ -1,12 +1,12 @@
 import unittest
 
-from realtime_oi_dashboard.infrastructure.oi_history_cache import (
+from realtime_oi_dashboard.infrastructure.storage.oi_history_cache import (
     OiHistoryCacheEntry,
     deserialize_history_point,
     export_history_cache,
     restore_history_cache,
 )
-from realtime_oi_dashboard.domain.oi_history_points import (
+from realtime_oi_dashboard.domain.oi.history_points import (
     HISTORY_BASELINE_TOLERANCE_MS,
     MAX_SAFE_INTEGER,
 )

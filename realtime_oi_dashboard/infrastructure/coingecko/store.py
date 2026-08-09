@@ -1,4 +1,4 @@
-"""Persistent validation and atomic writes for CoinGecko market-cap data."""
+"""Validate and persist CoinGecko market-cap data."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from realtime_oi_dashboard.infrastructure.file_io import write_text_atomic
+from realtime_oi_dashboard.infrastructure.storage.file_io import write_text_atomic
 from realtime_oi_dashboard.domain.parsing import optional_float, optional_int
 from realtime_oi_dashboard.domain.symbols import is_valid_binance_symbol
 

@@ -1,11 +1,11 @@
-"""Build one dashboard row from already-fetched market data."""
+"""Build an OI row from already-fetched market data."""
 
 from __future__ import annotations
 
 from math import isfinite
 
 from realtime_oi_dashboard.domain.market_data import future_timestamp_ms
-from realtime_oi_dashboard.domain.oi_state import OiUpdate
+from realtime_oi_dashboard.domain.oi.state import OiUpdate
 
 
 class OIRowBuilder:

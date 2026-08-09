@@ -1,4 +1,4 @@
-"""Realtime Binance Futures open-interest polling and cache state."""
+"""Coordinate realtime open-interest polling and state."""
 
 from __future__ import annotations
 
@@ -8,28 +8,28 @@ from datetime import datetime
 from math import isfinite
 from pathlib import Path
 
-from realtime_oi_dashboard.application.batch_selector import RoundRobinBatchSelector
-from realtime_oi_dashboard.infrastructure.binance_client import BinanceFuturesClient
+from realtime_oi_dashboard.application.oi.batch_selector import RoundRobinBatchSelector
+from realtime_oi_dashboard.infrastructure.binance.futures_client import BinanceFuturesClient
 from realtime_oi_dashboard.domain.errors import PollingStopped
 from realtime_oi_dashboard.infrastructure.http import JsonHttpClient
-from realtime_oi_dashboard.infrastructure.market_cap_client import (
+from realtime_oi_dashboard.infrastructure.coingecko.client import (
     DEFAULT_MARKET_CAP_REFRESH_SECONDS,
     CoinGeckoMarketCapClient,
 )
-from realtime_oi_dashboard.application.market_snapshot import MarketSnapshotProvider
-from realtime_oi_dashboard.application.oi_batch import OIBatchRunner
-from realtime_oi_dashboard.application.poller_health import PollerClock, RecentErrorLog
-from realtime_oi_dashboard.application.presenter import DashboardPresenter
-from realtime_oi_dashboard.application.runtime import DashboardRuntime
-from realtime_oi_dashboard.domain.oi_state import OiStateStore
-from realtime_oi_dashboard.infrastructure.snapshot_store import (
+from realtime_oi_dashboard.application.oi.market_snapshot import MarketSnapshotProvider
+from realtime_oi_dashboard.application.oi.batch import OIBatchRunner
+from realtime_oi_dashboard.application.oi.health import PollerClock, RecentErrorLog
+from realtime_oi_dashboard.application.oi.presenter import DashboardPresenter
+from realtime_oi_dashboard.application.oi.runtime import DashboardRuntime
+from realtime_oi_dashboard.domain.oi.state import OiStateStore
+from realtime_oi_dashboard.infrastructure.storage.oi_snapshot import (
     SnapshotRepository,
     SnapshotService,
 )
-from realtime_oi_dashboard.application.symbol_refresher import SymbolRefresher
+from realtime_oi_dashboard.application.oi.symbol_refresher import SymbolRefresher
 
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 ROW_MAX_AGE_SECONDS = 15 * 60
 CLOCK_SKEW_SECONDS = 60
 EMPTY_BATCH_ERROR = "本批次沒有成功更新任何 OI 數據"

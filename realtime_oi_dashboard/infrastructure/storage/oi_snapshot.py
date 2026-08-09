@@ -1,4 +1,4 @@
-"""Persistent symbol and OI-history cache loading and serialization."""
+"""Load and persist OI snapshots."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from realtime_oi_dashboard.infrastructure.file_io import write_text_atomic
+from realtime_oi_dashboard.infrastructure.storage.file_io import write_text_atomic
 from realtime_oi_dashboard.domain.symbols import is_valid_binance_symbol
 
 

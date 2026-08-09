@@ -1,4 +1,4 @@
-"""Thread and executor lifecycle for the dashboard polling service."""
+"""Manage the OI polling thread and executor lifecycle."""
 
 from __future__ import annotations
 

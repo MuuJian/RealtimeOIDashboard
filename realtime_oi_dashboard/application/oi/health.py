@@ -1,4 +1,4 @@
-"""Thread-safe recent errors and clock health for the OI poller."""
+"""Track recent errors and clock health for the OI poller."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Background CoinGecko refresh with persistent last-known market caps."""
+"""Refresh CoinGecko market caps in the background."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from realtime_oi_dashboard.domain.market_cap import (
     market_value_from_entry,
     normalize_ticker,
 )
-from realtime_oi_dashboard.infrastructure.market_cap_store import (
+from realtime_oi_dashboard.infrastructure.coingecko.store import (
     load_market_cap_file,
     write_market_cap_file,
 )

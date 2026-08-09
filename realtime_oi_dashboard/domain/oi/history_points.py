@@ -1,4 +1,4 @@
-"""Pure parsing and calculations for Binance open-interest history points."""
+"""Parse and calculate open-interest history points."""
 
 from __future__ import annotations
 

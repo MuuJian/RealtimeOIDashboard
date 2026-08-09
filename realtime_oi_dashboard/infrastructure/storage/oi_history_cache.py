@@ -1,11 +1,11 @@
-"""Restart-safe serialization for cached open-interest history baselines."""
+"""Serialize OI history baselines for restart-safe caching."""
 
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
 
-from realtime_oi_dashboard.domain.oi_history_points import (
+from realtime_oi_dashboard.domain.oi.history_points import (
     HISTORY_BASELINE_TOLERANCE_MS,
     MAX_SAFE_INTEGER,
     history_point_value,

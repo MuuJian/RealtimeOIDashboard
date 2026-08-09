@@ -1,4 +1,4 @@
-"""Collect the shared market data used by one OI polling batch."""
+"""Collect shared market data for one OI polling batch."""
 
 from __future__ import annotations
 

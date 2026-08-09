@@ -5,9 +5,10 @@ from __future__ import annotations
 from realtime_oi_dashboard.application.background_service import (
     BackgroundPollerService,
 )
-from realtime_oi_dashboard.application.poller import OIPoller, timestamp
+from realtime_oi_dashboard.application.oi.poller import OIPoller, timestamp
 from realtime_oi_dashboard.cli import parse_args
 from realtime_oi_dashboard.server import create_dashboard_server
+from realtime_oi_dashboard.shared.runtime.services import ServiceGroup
 
 
 SHUTDOWN_TIMEOUT_SECONDS = 15
@@ -37,6 +38,7 @@ def create_oi_service(args):
 
 
 def run_dashboard(args, oi_service):
+    services = ServiceGroup(oi=("OI poller", oi_service))
     try:
         server = create_dashboard_server(
             args.host,
@@ -45,15 +47,15 @@ def run_dashboard(args, oi_service):
         )
     except OSError as exc:
         print(f"無法啟動面板: {exc}")
-        _close_after_start_failure(oi_service, "OI poller")
+        _report_close_failures(services.close_all())
         return 1
 
     with server:
         try:
-            oi_service.start()
+            services.start("oi")
         except Exception as exc:
             print(f"無法啟動 OI 輪詢線程: {exc}")
-            _close_after_start_failure(oi_service, "OI poller")
+            _report_close_failures(services.close_all())
             return 1
 
         try:
@@ -63,7 +65,8 @@ def run_dashboard(args, oi_service):
             except KeyboardInterrupt:
                 print("\nDashboard stopped.")
         finally:
-            _stop_oi_service(oi_service)
+            if _stop_service(services, "oi"):
+                _save_final_oi_state(oi_service)
     return 0
 
 
@@ -77,22 +80,41 @@ def log_startup(args):
 
 
 def _close_after_start_failure(service, label):
-    if service is None:
-        return
-    try:
-        service.close()
-    except Exception as exc:
-        print(f"{timestamp()} failed to close {label}: {exc}")
+    _report_close_failures(
+        ServiceGroup(target=(label, service)).close_all()
+    )
 
 
-def _stop_oi_service(service):
-    if not service.stop(timeout=SHUTDOWN_TIMEOUT_SECONDS):
+def _report_close_failures(failures):
+    for failure in failures:
         print(
-            f"{timestamp()} OI poller did not stop within "
+            f"{timestamp()} failed to close {failure.label}: "
+            f"{failure.error}"
+        )
+
+
+def _stop_service(services, key):
+    result = services.stop(key, timeout=SHUTDOWN_TIMEOUT_SECONDS)
+    if result.error is not None:
+        print(f"{timestamp()} failed to stop {result.label}: {result.error}")
+        return False
+    if not result.stopped:
+        print(
+            f"{timestamp()} {result.label} did not stop within "
             f"{SHUTDOWN_TIMEOUT_SECONDS} seconds"
         )
-        return
+        return False
+    return True
+
+
+def _save_final_oi_state(service):
     try:
         service.worker.save_state(force=True)
     except Exception as exc:
         print(f"{timestamp()} failed to save final OI cache: {exc}")
+
+
+def _stop_oi_service(service):
+    services = ServiceGroup(oi=("OI poller", service))
+    if _stop_service(services, "oi"):
+        _save_final_oi_state(service)

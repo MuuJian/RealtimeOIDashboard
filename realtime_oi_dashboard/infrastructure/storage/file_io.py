@@ -1,4 +1,4 @@
-"""Safe local file writes for the dashboard snapshot cache."""
+"""Write local dashboard cache files safely."""
 
 from __future__ import annotations
 

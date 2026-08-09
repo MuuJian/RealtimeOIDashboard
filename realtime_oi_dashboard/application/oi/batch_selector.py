@@ -1,4 +1,4 @@
-"""Deterministic round-robin selection for OI polling batches."""
+"""Select deterministic round-robin OI polling batches."""
 
 from __future__ import annotations
 

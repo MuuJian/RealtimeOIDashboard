@@ -1,4 +1,4 @@
-"""Bounded in-memory cache state for dashboard market responses."""
+"""Store bounded dashboard market responses in memory."""
 
 from __future__ import annotations
 

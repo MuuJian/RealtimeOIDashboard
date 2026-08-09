@@ -3,12 +3,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from realtime_oi_dashboard.infrastructure.binance_client import BinanceFuturesClient
-from realtime_oi_dashboard.infrastructure.market_cap_client import (
+from realtime_oi_dashboard.infrastructure.binance.futures_client import BinanceFuturesClient
+from realtime_oi_dashboard.infrastructure.coingecko.client import (
     DEFAULT_MARKET_CAP_REFRESH_SECONDS,
     CoinGeckoMarketCapClient,
 )
-from realtime_oi_dashboard.application.poller import OIPoller
+from realtime_oi_dashboard.application.oi.poller import OIPoller
 
 
 class StubHttpClient:

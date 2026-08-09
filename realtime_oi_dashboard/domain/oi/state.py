@@ -1,4 +1,4 @@
-"""In-memory dashboard rows and their update times."""
+"""Store OI dashboard rows and update times in memory."""
 
 from __future__ import annotations
 
