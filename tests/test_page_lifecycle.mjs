@@ -3,17 +3,15 @@ import assert from "node:assert/strict";
 
 import { createPageLifecycle } from "../realtime_oi_dashboard/static/js/services/PageLifecycle.js";
 
-test("reports focus and visibility changes as one active state", () => {
+test("ignores window focus and pauses only when the page is hidden", () => {
   const previousWindow = globalThis.window;
   const previousDocument = globalThis.document;
   const fakeWindow = new EventTarget();
   const fakeDocument = new EventTarget();
-  let focused = true;
   const states = [];
 
   fakeDocument.hidden = false;
   fakeDocument.visibilityState = "visible";
-  fakeDocument.hasFocus = () => focused;
   globalThis.window = fakeWindow;
   globalThis.document = fakeDocument;
 
@@ -26,15 +24,18 @@ test("reports focus and visibility changes as one active state", () => {
     lifecycle.start();
     assert.deepEqual(states, [true]);
 
-    focused = false;
     fakeWindow.dispatchEvent(new Event("blur"));
-    focused = true;
     fakeWindow.dispatchEvent(new Event("focus"));
+    assert.deepEqual(states, [true]);
+
     fakeDocument.hidden = true;
     fakeDocument.visibilityState = "hidden";
     fakeDocument.dispatchEvent(new Event("visibilitychange"));
+    fakeDocument.hidden = false;
+    fakeDocument.visibilityState = "visible";
+    fakeDocument.dispatchEvent(new Event("visibilitychange"));
 
-    assert.deepEqual(states, [true, false, true, false]);
+    assert.deepEqual(states, [true, false, true]);
   } finally {
     lifecycle.dispose();
     if (previousWindow === undefined) delete globalThis.window;
@@ -54,7 +55,6 @@ test("pauses for bfcache and resumes on pageshow without disposal", () => {
 
   fakeDocument.hidden = false;
   fakeDocument.visibilityState = "visible";
-  fakeDocument.hasFocus = () => true;
   globalThis.window = fakeWindow;
   globalThis.document = fakeDocument;
 
