@@ -11,18 +11,29 @@ export function createOiRefreshController({
   maxStaleMs = DEFAULT_MAX_STALE_MS,
 }) {
   let refreshTimer = null;
-  let refreshInFlight = false;
   let requestController = null;
+  let requestPromise = null;
+  let requestGeneration = null;
+  let queuedRefresh = null;
   let lastResponseAt = null;
   let disposed = false;
+  let active = false;
+  let generation = 0;
 
   function start() {
-    if (disposed || refreshTimer !== null) return;
-    refresh();
-    refreshTimer = window.setInterval(refresh, refreshIntervalMs);
+    if (disposed || active) return;
+    active = true;
+    const currentGeneration = ++generation;
+    scheduleRefresh(currentGeneration);
+    refreshTimer = window.setInterval(
+      () => scheduleRefresh(currentGeneration),
+      refreshIntervalMs,
+    );
   }
 
   function stop() {
+    active = false;
+    generation += 1;
     if (refreshTimer !== null) {
       window.clearInterval(refreshTimer);
       refreshTimer = null;
@@ -30,21 +41,68 @@ export function createOiRefreshController({
     requestController?.abort();
   }
 
-  async function refresh() {
-    if (refreshInFlight || disposed) return;
-    refreshInFlight = true;
+  function scheduleRefresh(currentGeneration) {
+    if (
+      disposed
+      || !active
+      || currentGeneration !== generation
+    ) return;
+    if (requestPromise) {
+      if (requestGeneration === currentGeneration) return;
+      const pendingPromise = requestPromise;
+      if (
+        queuedRefresh?.promise === pendingPromise
+        && queuedRefresh.generation === currentGeneration
+      ) return;
+      queuedRefresh = { generation: currentGeneration, promise: pendingPromise };
+      const continueRefresh = () => {
+        if (
+          queuedRefresh?.promise !== pendingPromise
+          || queuedRefresh.generation !== currentGeneration
+        ) return;
+        queuedRefresh = null;
+        scheduleRefresh(currentGeneration);
+      };
+      void pendingPromise.then(continueRefresh, continueRefresh);
+      return;
+    }
+    queuedRefresh = null;
+    void refresh(currentGeneration);
+  }
+
+  async function refresh(currentGeneration = generation) {
+    if (
+      requestPromise
+      || disposed
+      || !active
+      || currentGeneration !== generation
+    ) return;
     const currentController = new AbortController();
     requestController = currentController;
+    requestGeneration = currentGeneration;
+    const currentPromise = runRefresh(currentGeneration, currentController);
+    requestPromise = currentPromise;
 
+    try {
+      return await currentPromise;
+    } finally {
+      if (requestPromise === currentPromise) {
+        requestPromise = null;
+        requestGeneration = null;
+      }
+    }
+  }
+
+  async function runRefresh(currentGeneration, currentController) {
     try {
       const payload = await loadOiSnapshot({
         signal: currentController.signal,
       });
-      if (disposed) return;
+      if (!isCurrent(currentGeneration, currentController)) return;
       lastResponseAt = responseClock();
       onPayload(payload);
     } catch (error) {
-      if (disposed) return;
+      if (!isCurrent(currentGeneration, currentController)) return;
       if (error.message === "OI 請求已取消") return;
 
       const dataExpired = Boolean(
@@ -56,9 +114,15 @@ export function createOiRefreshController({
       if (requestController === currentController) {
         requestController = null;
       }
-      refreshInFlight = false;
-      if (!disposed) onSettled();
+      if (isCurrent(currentGeneration, currentController)) onSettled();
     }
+  }
+
+  function isCurrent(currentGeneration, currentController) {
+    return !disposed
+      && active
+      && currentGeneration === generation
+      && !currentController.signal.aborted;
   }
 
   function dispose() {
@@ -70,9 +134,9 @@ export function createOiRefreshController({
   return {
     dispose,
     isRunning() {
-      return refreshTimer !== null;
+      return active && refreshTimer !== null;
     },
-    refresh,
+    refresh: () => scheduleRefresh(generation),
     start,
     stop,
   };

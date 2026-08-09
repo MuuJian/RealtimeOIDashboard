@@ -77,7 +77,10 @@ def parse_args(argv=None):
         "--ticker-cache-seconds",
         type=non_negative_float,
         default=10,
-        help="seconds to cache futures 24h ticker; 0 disables the cache",
+        help=(
+            "seconds to reuse one futures 24h ticker response for OI; "
+            "0 disables the cache"
+        ),
     )
     parser.add_argument(
         "--funding-cache-seconds",

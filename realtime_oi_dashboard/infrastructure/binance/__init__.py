@@ -1,1 +1,1 @@
-"""Binance REST integrations."""
+"""Binance REST and WebSocket integrations."""

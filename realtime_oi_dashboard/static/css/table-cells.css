@@ -234,7 +234,11 @@
   .oi-table th:nth-child(12),
   .oi-table td:nth-child(12),
   .oi-table th:nth-child(13),
-  .oi-table td:nth-child(13) {
+  .oi-table td:nth-child(13),
+  .oi-table th:nth-child(14),
+  .oi-table td:nth-child(14),
+  .oi-table th:nth-child(15),
+  .oi-table td:nth-child(15) {
     display: none;
   }
 

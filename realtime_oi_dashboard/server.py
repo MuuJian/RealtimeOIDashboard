@@ -76,8 +76,12 @@ class DashboardHandler(DashboardRequestHandler):
             print(f"{timestamp()} failed to serve OI state: {exc}")
             self.send_json({"error": "OI state unavailable"}, status=503)
 
-
-def create_dashboard_server(host, port, *, oi_state_provider):
+def create_dashboard_server(
+    host,
+    port,
+    *,
+    oi_state_provider,
+):
     return DashboardHTTPServer(
         (host, port),
         DashboardHandler,

@@ -107,11 +107,9 @@ const oiFeature = createOiFeatureController({
   scheduleUiRender,
 });
 const oiRefresh = oiFeature.refresh;
+let liveUpdatesActive = false;
 pageLifecycle = createPageLifecycle({
-  onBackgroundChange: setBackgrounded,
-  onForeground: refreshAfterForeground,
-  onStart: startLiveUpdates,
-  onStop: stopLiveUpdates,
+  onActiveChange: handlePageActiveChange,
   onDispose: disposeResources,
 });
 
@@ -164,22 +162,23 @@ function disposeResources() {
   uiScheduler.dispose();
 }
 
-function setBackgrounded(backgrounded) {
-  document.documentElement.classList.toggle("page-hidden", backgrounded);
-  motionEffects.setPaused(backgrounded);
-}
-
-function refreshAfterForeground() {
-  if (oiRefresh.isRunning()) oiRefresh.refresh();
+function handlePageActiveChange(pageActive) {
+  document.documentElement.classList.toggle("page-hidden", !pageActive);
+  motionEffects.setPaused(!pageActive);
+  if (pageActive === liveUpdatesActive) return;
+  if (pageActive) startLiveUpdates();
+  else stopLiveUpdates();
 }
 
 function startLiveUpdates() {
-  if (oiRefresh.isRunning()) return;
+  if (liveUpdatesActive) return;
+  liveUpdatesActive = true;
   priceFeed.connect();
   oiRefresh.start();
 }
 
 function stopLiveUpdates() {
+  liveUpdatesActive = false;
   oiRefresh.stop();
   priceFeed.close();
 }

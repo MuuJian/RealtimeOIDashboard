@@ -22,11 +22,11 @@ class FakeStateProvider:
 
 class DashboardServerTests(unittest.TestCase):
     def setUp(self):
-        self.provider = FakeStateProvider({"schema_version": 6, "rows": []})
+        self.oi_provider = FakeStateProvider({"schema_version": 6, "rows": []})
         self.server = create_dashboard_server(
             "127.0.0.1",
             0,
-            oi_state_provider=self.provider,
+            oi_state_provider=self.oi_provider,
         )
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -45,19 +45,25 @@ class DashboardServerTests(unittest.TestCase):
         try:
             connection.request("GET", path)
             response = connection.getresponse()
-            payload = response.read()
-            content_type = response.getheader("Content-Type", "")
-            if content_type.startswith("application/json"):
-                payload = json.loads(payload)
+            body = response.read()
+            try:
+                payload = json.loads(body)
+            except json.JSONDecodeError:
+                payload = None
             return response.status, payload
         finally:
             connection.close()
 
     def test_serves_injected_oi_state_provider(self):
-        status, payload = self.request_json("/api/oi")
+        oi_status, oi_payload = self.request_json("/api/oi")
 
-        self.assertEqual(status, 200)
-        self.assertEqual(payload, self.provider.state)
+        self.assertEqual(oi_status, 200)
+        self.assertEqual(oi_payload, self.oi_provider.state)
+
+    def test_signal_scan_route_is_not_added_to_stable(self):
+        status, _payload = self.request_json("/api/signal-scan")
+
+        self.assertEqual(status, 404)
 
     def test_stopped_provider_preserves_existing_503_response(self):
         self.server.oi_state_provider = FakeStateProvider(
@@ -69,9 +75,13 @@ class DashboardServerTests(unittest.TestCase):
         self.assertEqual(status, 503)
         self.assertEqual(payload, {"error": "OI poller stopped"})
 
-    def test_signal_scan_route_is_not_added_to_stable(self):
-        status, _ = self.request_json("/api/signal-scan")
-        self.assertEqual(status, 404)
+    def test_missing_provider_preserves_unavailable_response(self):
+        self.server.oi_state_provider = None
+
+        status, payload = self.request_json("/api/oi")
+
+        self.assertEqual(status, 503)
+        self.assertEqual(payload, {"error": "OI poller unavailable"})
 
 
 if __name__ == "__main__":

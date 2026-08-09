@@ -60,7 +60,8 @@ class DashboardPresenterTests(unittest.TestCase):
         self.assertEqual(payload["active_symbols"], ["BTCUSDT", "ETHUSDT"])
         self.assertEqual(payload["total_symbols"], 2)
         self.assertEqual(payload["market_cap_loaded_symbols"], 1)
-        self.assertEqual(payload["rows"], [{"symbol": "BTCUSDT", "price": 100.0}])
+        self.assertEqual(payload["rows"][0]["symbol"], "BTCUSDT")
+        self.assertEqual(payload["rows"][0]["price"], 100.0)
         self.assertEqual(clock.checked_at, 1_000.0)
 
     def test_stale_rows_are_hidden_without_mutating_stored_rows(self):
@@ -81,7 +82,6 @@ class DashboardPresenterTests(unittest.TestCase):
         self.assertEqual(payload["rows"], [])
         self.assertEqual(payload["error"], "stale")
         self.assertEqual(store.copy_rows(), [{"symbol": "BTCUSDT"}])
-
 
 if __name__ == "__main__":
     unittest.main()

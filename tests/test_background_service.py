@@ -64,6 +64,7 @@ class BackgroundPollerServiceTests(unittest.TestCase):
 
     def test_adapts_running_poller_to_state_provider(self):
         service, poller, thread = self.create_service()
+
         service.start()
 
         self.assertTrue(thread.started)
@@ -96,7 +97,9 @@ class BackgroundPollerServiceTests(unittest.TestCase):
 
     def test_close_releases_worker_resources(self):
         service, poller, _ = self.create_service()
+
         service.close()
+
         self.assertTrue(poller.closed)
 
 

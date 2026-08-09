@@ -88,7 +88,6 @@ export function updateMarketRowCells(cells, row, heatMax = null) {
   }
   cells.volumeCell.textContent = formatCurrency(row.volume24h);
   updateOiUpdateSignalCell(cells.oiUpdatedAtCell, row.oiUpdatedAt);
-
   cells.fundingRateCell.removeAttribute("title");
   updateSignedCell(
     cells.fundingRateCell,

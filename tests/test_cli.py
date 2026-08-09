@@ -59,6 +59,13 @@ class ParseArgsTests(unittest.TestCase):
 
         self.assertEqual(args.market_cap_cache_seconds, 7200)
 
+    def test_removed_feature_options_are_rejected(self):
+        for option in ("--signal-scan-interval", "--disable-cvd"):
+            with self.subTest(option=option), redirect_stderr(
+                io.StringIO()
+            ), self.assertRaises(SystemExit):
+                parse_args([option])
+
 
 if __name__ == "__main__":
     unittest.main()
