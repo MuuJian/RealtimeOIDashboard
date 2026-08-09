@@ -133,3 +133,26 @@ test("shows an explicit waiting state before the first scan", () => {
     else globalThis.document = previousDocument;
   }
 });
+
+test("always renders the saved time in UTC+8", () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    createElement: tagName => new FakeNode(tagName),
+  };
+
+  const statusEl = new FakeNode("div");
+  const panel = createSignalScanPanel({
+    bullsBody: new FakeNode("tbody"),
+    bearsBody: new FakeNode("tbody"),
+    spikesBody: new FakeNode("tbody"),
+    statusEl,
+  });
+
+  try {
+    panel.render(payload({ saved_at: "2026-08-08T00:00:00Z" }));
+    assert.match(statusEl.textContent, /08:00:00/);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});

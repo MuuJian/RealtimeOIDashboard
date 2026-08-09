@@ -55,7 +55,7 @@ export function isOiPayload(payload) {
 function isCvdMeta(value) {
   if (!value || typeof value !== "object") return false;
   const counts = value.healthCounts;
-  return ["live", "partial", "stale", "unavailable"].includes(
+  return ["warming", "live", "partial", "stale", "unavailable"].includes(
     value.serviceHealth,
   )
     && [

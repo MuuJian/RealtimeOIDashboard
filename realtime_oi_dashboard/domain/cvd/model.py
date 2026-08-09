@@ -12,6 +12,12 @@ MINUTE_MS = 60_000
 WINDOW_MINUTES = 15
 BUCKET_COUNT = WINDOW_MINUTES + 1
 STATUS_THRESHOLD = 0.10
+SOURCE_PRIORITY = {
+    "synthetic": 0,
+    "snapshot": 1,
+    "rest": 2,
+    "wss": 3,
+}
 
 
 class CvdDirection(str, Enum):
@@ -91,7 +97,7 @@ class SymbolCvdWindow:
             if (
                 previous is not None
                 and previous.open_time == bucket.open_time
-                and previous.updated_at > bucket.updated_at
+                and not _should_replace_bucket(previous, bucket)
             ):
                 return False
 
@@ -282,6 +288,16 @@ def _coverage_minutes(expected, buckets_by_open) -> int:
             break
         coverage += 1
     return coverage
+
+
+def _should_replace_bucket(previous: MinuteBucket, candidate: MinuteBucket) -> bool:
+    previous_priority = SOURCE_PRIORITY[previous.source]
+    candidate_priority = SOURCE_PRIORITY[candidate.source]
+    if candidate_priority != previous_priority:
+        return candidate_priority > previous_priority
+    if candidate.closed != previous.closed:
+        return candidate.closed
+    return candidate.updated_at >= previous.updated_at
 
 
 def _direction_for(ratio: float) -> CvdDirection:

@@ -88,10 +88,19 @@ def _health_counts(rows) -> dict[str, int]:
 
 
 def _service_health(health_counts, connected_shards, active_shards):
-    if health_counts.get("live", 0) and connected_shards == active_shards:
-        return "live"
-    if connected_shards:
-        return "partial"
-    if active_shards:
+    if not active_shards:
+        return "unavailable"
+    if not connected_shards:
         return "stale"
-    return "unavailable"
+    if connected_shards < active_shards:
+        return "partial"
+    if any(
+        health_counts.get(health, 0)
+        for health in ("stale", "partial", "unavailable")
+    ):
+        return "partial"
+    if health_counts.get("warming", 0):
+        return "warming"
+    if health_counts.get("live", 0):
+        return "live"
+    return "warming"

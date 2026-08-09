@@ -1,4 +1,9 @@
-import { formatPercent, formatPrice, signClass } from "../../utils/format.js";
+import {
+  formatPercent,
+  formatPrice,
+  formatUtc8Time,
+  signClass,
+} from "../../utils/format.js";
 import { syncChildren } from "../../utils/dom.js";
 
 export function createSignalScanPanel({ bullsBody, bearsBody, spikesBody, statusEl }) {
@@ -122,9 +127,7 @@ export function createSignalScanPanel({ bullsBody, bearsBody, spikesBody, status
 
   function formatSavedAt(value) {
     if (!value) return "-";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "-";
-    return date.toLocaleTimeString("zh-TW", { hour12: false });
+    return formatUtc8Time(value) || "-";
   }
 
   return { render, renderError };
