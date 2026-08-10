@@ -67,7 +67,7 @@ export function createRankingViewController({
         patchSymbols: heatChanged ? view.visibleSymbols : changedSymbols,
       });
     }).catch(error => {
-      if (!disposed) onError(error);
+      if (!disposed && requestVersion === latestRequest) onError(error);
     });
   }
 

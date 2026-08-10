@@ -58,6 +58,7 @@ export function createOiRankingStore() {
       if (changed) affectedSymbols.push(symbol);
     }
 
+    if (affectedSymbols.length) stats = buildOiStats(rows);
     return affectedSymbols;
   }
 

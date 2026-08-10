@@ -34,7 +34,7 @@ export function createRankingProcessor() {
     };
 
     if (!worker) {
-      return Promise.resolve(computeLocalView(view));
+      return Promise.resolve().then(() => computeLocalView(view));
     }
 
     return new Promise(resolve => {
