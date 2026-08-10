@@ -4,7 +4,7 @@
 
 ## 安装
 
-需要 Python 3.10 或更高版本。
+需要 Python 3.10 或更高版本。前端检查需要 Node.js 22 或更高版本和 npm 10 或更高版本，不需要安装 pnpm，也没有需要下载的前端依赖。
 
 在项目目录中运行：
 
@@ -73,10 +73,16 @@ http://192.168.xxx.xxx:8777
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-检查前端文件：
+运行全部前端测试和静态检查：
 
 ```bash
-node realtime_oi_dashboard/scripts/check-static-js.mjs
+npm test
+```
+
+只运行静态检查：
+
+```bash
+npm run lint
 ```
 
 ## 数据来源

@@ -214,6 +214,13 @@ class BinanceRestCacheTests(unittest.TestCase):
 
         self.assertEqual(client.calls, [])
 
+    def test_zero_ticker_cache_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "ticker_cache_seconds"):
+            BinanceRestCache(
+                source=FakeHttpClient(),
+                ticker_cache_seconds=0,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

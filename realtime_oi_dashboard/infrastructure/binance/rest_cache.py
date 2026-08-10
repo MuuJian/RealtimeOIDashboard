@@ -162,7 +162,7 @@ class CachedBinanceMarketData:
         if not callable(monotonic):
             raise TypeError("monotonic must be callable")
 
-        ticker_cache_seconds = _non_negative_seconds(
+        ticker_cache_seconds = _positive_seconds(
             "ticker_cache_seconds",
             ticker_cache_seconds,
         )

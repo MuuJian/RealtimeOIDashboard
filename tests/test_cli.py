@@ -54,6 +54,10 @@ class ParseArgsTests(unittest.TestCase):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             parse_args(["--oi-workers", "0"])
 
+    def test_zero_ticker_cache_is_rejected(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parse_args(["--ticker-cache-seconds", "0"])
+
     def test_legacy_market_cap_option_remains_supported(self):
         args = parse_args(["--market-cap-cache-seconds", "7200"])
 

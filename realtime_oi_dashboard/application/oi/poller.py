@@ -63,7 +63,7 @@ class OIPoller:
             "refresh_symbols_interval",
             refresh_symbols_interval,
         )
-        ticker_cache_seconds = _non_negative_seconds(
+        ticker_cache_seconds = _positive_seconds(
             "ticker_cache_seconds",
             ticker_cache_seconds,
         )
@@ -398,6 +398,13 @@ def _positive_int(name, value):
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"{name} must be a positive integer")
     return value
+
+
+def _positive_seconds(name, value):
+    parsed = _non_negative_seconds(name, value)
+    if parsed <= 0:
+        raise ValueError(f"{name} must be a finite positive number")
+    return parsed
 
 
 def _non_negative_seconds(name, value):

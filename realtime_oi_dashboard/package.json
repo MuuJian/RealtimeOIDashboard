@@ -1,8 +1,0 @@
-{
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "build": "node scripts/check-static-js.mjs",
-    "lint": "node scripts/check-static-js.mjs"
-  }
-}
