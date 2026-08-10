@@ -11,10 +11,18 @@ from realtime_oi_dashboard.application.oi.health import RecentErrorLog
 from realtime_oi_dashboard.application.signal_scan.kline_cache import (
     SignalScanKlineCache,
 )
+from realtime_oi_dashboard.application.signal_scan.kline_loader import (
+    KLINE_CACHE_MAX_SYMBOLS,
+    KLINE_INTERVAL,
+    KLINE_LIMIT,
+    KLINE_REFRESH_LIMIT,
+    KLINE_TIMEOUT_SECONDS,
+    KLINES_URL,
+    SignalScanKlineLoader,
+)
 from realtime_oi_dashboard.application.signal_scan.market_snapshot import (
     EXCHANGE_INFO_TIMEOUT_SECONDS,
     EXCHANGE_INFO_URL,
-    FAPI_BASE_URL,
     SIGNAL_SCAN_HTTP_ATTEMPTS,
     TICKER_TIMEOUT_SECONDS,
     TICKER_URL,
@@ -23,42 +31,39 @@ from realtime_oi_dashboard.application.signal_scan.market_snapshot import (
 from realtime_oi_dashboard.application.signal_scan.executor import (
     SignalScanExecutor,
 )
+from realtime_oi_dashboard.application.signal_scan.state import (
+    MAX_ERROR_TEXT_LENGTH,
+    SIGNAL_SCAN_API_SCHEMA_VERSION,
+    SignalScanStateStore,
+    error_text as _error_text,
+)
+from realtime_oi_dashboard.application.signal_scan.shutdown import (
+    SignalScanCloseSettings,
+    SignalScanShutdown,
+)
 from realtime_oi_dashboard.domain.errors import PollingStopped
 from realtime_oi_dashboard.domain.signal_scan.rules import (
-    MIN_CANDLES,
     SCAN_POOL_SIZE,
     USDT_SYMBOL_PATTERN,
     build_scan_universe,
-    classify_symbol,
     filter_signal_entries,
     select_signals,
 )
 from realtime_oi_dashboard.domain.signal_scan.klines import (
     KLINE_INTERVAL_MILLISECONDS,
     KLINE_MAX_RESPONSE_ROWS,
-    merge_kline_history as _merge_klines,
-    normalize_kline_history as _normalize_kline_history,
 )
 from realtime_oi_dashboard.infrastructure.http import JsonHttpClient
 
 
-KLINES_URL = f"{FAPI_BASE_URL}/fapi/v1/klines"
-
 SCAN_MAX_AGE_SECONDS = 90
-SIGNAL_SCAN_API_SCHEMA_VERSION = 2
 SCAN_FAILED_ERROR = "本次掃描沒有取得任何幣種資料"
-KLINE_INTERVAL = "1h"
-KLINE_LIMIT = 120
-KLINE_REFRESH_LIMIT = 2
 KLINE_WORKERS = 3
-KLINE_CACHE_MAX_SYMBOLS = SCAN_POOL_SIZE * 2
 # The next scheduled scan is the retry; keep shutdown bounded and avoid a
 # retry burst when many symbols fail together.
-KLINE_TIMEOUT_SECONDS = 10
 EVENT_WAIT_CHUNK_SECONDS = 60.0
 SYMBOL_ERROR_LOG_COOLDOWN_SECONDS = 60.0
 SYMBOL_ERROR_LOG_MAX_ENTRIES = 1024
-MAX_ERROR_TEXT_LENGTH = 512
 # A full round includes one all-market ticker request and up to two kline
 # requests per symbol. Keep an accidentally tiny interval from creating a
 # busy loop.
@@ -119,19 +124,6 @@ class SignalScanPoller:
         self.stop_event = threading.Event()
         self.lock = threading.RLock()
         self._scan_execution_lock = threading.Lock()
-        self._close_lock = threading.Lock()
-        self._client_close_state_lock = threading.Lock()
-        self._client_close_thread = None
-        self._client_close_done = None
-        self._client_close_result = None
-        self._close_retry_wakeup = threading.Event()
-        self._close_retry_thread = None
-        self._closing = False
-        self._closed = False
-        self._close_pending = False
-        self._close_retry_exhausted = False
-        self._close_last_error = None
-        self._close_last_logged_at = None
         self._owns_http_client = http_client is None
         self.http_client = (
             JsonHttpClient(
@@ -143,8 +135,12 @@ class SignalScanPoller:
         )
         self.error_log = RecentErrorLog(self.stop_event)
         self._symbol_error_log_times = {}
-        self.last_success_wall_clock = None
-        self.last_success_monotonic = None
+        self._state_store = SignalScanStateStore(
+            self.lock,
+            self.stop_event,
+            self.error_log,
+            max_age_seconds=self.max_age_seconds,
+        )
         self._market_snapshot = SignalScanMarketSnapshotLoader(
             self.request_json,
             self.stop_event,
@@ -155,6 +151,11 @@ class SignalScanPoller:
             max_symbols=KLINE_CACHE_MAX_SYMBOLS,
             history_limit=KLINE_LIMIT,
         )
+        self._kline_loader = SignalScanKlineLoader(
+            self.request_json,
+            self._raise_if_stopped,
+            self._kline_cache,
+        )
         self._scan_executor = SignalScanExecutor(
             self.stop_event,
             self.record_symbol_error,
@@ -163,7 +164,16 @@ class SignalScanPoller:
             poll_seconds=KLINE_COMPLETION_POLL_SECONDS,
             wait_for_workers_on_stop=self._owns_http_client,
         )
-        self.state = _empty_state()
+        self._shutdown = SignalScanShutdown(
+            lock=self.lock,
+            scan_execution_lock=self._scan_execution_lock,
+            http_client=self.http_client,
+            owns_http_client=lambda: self._owns_http_client,
+            stop_sources=self._stop_scan_sources,
+            settings=_close_settings,
+            error_text=_error_text,
+            timestamp=_timestamp,
+        )
 
     def _raise_if_stopped(self):
         if self.stop_event.is_set():
@@ -251,79 +261,16 @@ class SignalScanPoller:
             release_session()
 
     def _classify_ticker(self, ticker: dict) -> dict | None:
-        symbol = ticker["symbol"]
-        klines, used_incremental_cache = self._load_klines(symbol)
-        self._raise_if_stopped()
-        entry = classify_symbol(
-            symbol,
-            float(ticker["priceChangePercent"]),
-            klines,
-        )
-        if entry is None and used_incremental_cache:
-            # A missed candle or malformed incremental response can make a
-            # merge unusable. Rebuild from the full history once before
-            # reporting the symbol as failed.
-            klines = self._load_full_klines(symbol)
-            self._raise_if_stopped()
-            entry = classify_symbol(
-                symbol,
-                float(ticker["priceChangePercent"]),
-                klines,
-            )
-        if entry is None:
-            raise ValueError("invalid kline payload")
-        if not self._kline_cache.store(symbol, klines):
-            self._raise_if_stopped()
-            raise ValueError("invalid kline time series")
-        return entry
+        return self._kline_loader.classify_ticker(ticker)
 
     def _load_klines(self, symbol: str) -> tuple[list, bool]:
-        cached = self._kline_cache.get(symbol)
-        if cached is None:
-            return self._load_full_klines(symbol), False
-
-        try:
-            updates = self._request_klines(symbol, limit=KLINE_REFRESH_LIMIT)
-        except PollingStopped:
-            raise
-        except Exception:
-            # A failed small refresh must not discard a usable history. Retry
-            # once with the full window; the symbol is still marked failed if
-            # that recovery request also fails.
-            return self._load_full_klines(symbol), False
-        merged = _merge_klines(cached, updates, limit=KLINE_LIMIT)
-        if merged is None or len(merged) < MIN_CANDLES:
-            return self._load_full_klines(symbol), False
-        return merged, True
+        return self._kline_loader.load(symbol)
 
     def _load_full_klines(self, symbol: str) -> list:
-        try:
-            klines = self._request_klines(symbol, limit=KLINE_LIMIT)
-            normalized = _normalize_kline_history(klines, limit=KLINE_LIMIT)
-            if normalized is None:
-                raise ValueError("invalid kline time series")
-            return normalized
-        except PollingStopped:
-            raise
-        except Exception:
-            # A failed full rebuild cannot produce a trustworthy signal. Drop
-            # the old snapshot so the next round does one full retry instead
-            # of repeating an incremental request followed by another full
-            # request against the same broken symbol.
-            self._kline_cache.discard(symbol)
-            raise
+        return self._kline_loader.load_full(symbol)
 
     def _request_klines(self, symbol: str, *, limit: int) -> list:
-        return self.request_json(
-            KLINES_URL,
-            params={
-                "symbol": symbol,
-                "interval": KLINE_INTERVAL,
-                "limit": limit,
-            },
-            timeout=KLINE_TIMEOUT_SECONDS,
-            attempts=SIGNAL_SCAN_HTTP_ATTEMPTS,
-        )
+        return self._kline_loader.request(symbol, limit=limit)
 
     def _publish_success(
         self,
@@ -332,24 +279,11 @@ class SignalScanPoller:
         scan_total: int,
         scan_succeeded: int,
     ) -> None:
-        saved_at = time.time()
-        saved_at_monotonic = time.monotonic()
-        with self.lock:
-            self._raise_if_stopped()
-            self.last_success_wall_clock = saved_at
-            self.last_success_monotonic = saved_at_monotonic
-            self.state = _empty_state()
-            self.state.update(
-                {
-                    "bulls": _copy_rows(signals["bulls"]),
-                    "bears": _copy_rows(signals["bears"]),
-                    "spikes": _copy_rows(signals["spikes"]),
-                    "saved_at": _iso_now(saved_at),
-                    "scan_total": scan_total,
-                    "scan_succeeded": scan_succeeded,
-                    "partial": scan_succeeded < scan_total,
-                }
-            )
+        self._state_store.publish_success(
+            signals,
+            scan_total=scan_total,
+            scan_succeeded=scan_succeeded,
+        )
 
     def _mark_scan_failed(
         self,
@@ -358,21 +292,11 @@ class SignalScanPoller:
         scan_total: int = 0,
         scan_succeeded: int = 0,
     ) -> None:
-        error_text = _error_text(error)
-        with self.lock:
-            if self.stop_event.is_set():
-                return
-            saved_at = self.state["saved_at"]
-            self.state = _empty_state()
-            self.state.update(
-                {
-                    "saved_at": saved_at,
-                    "error": error_text,
-                    "scan_total": scan_total,
-                    "scan_succeeded": scan_succeeded,
-                    "partial": scan_total > scan_succeeded,
-                }
-            )
+        self._state_store.mark_failed(
+            error,
+            scan_total=scan_total,
+            scan_succeeded=scan_succeeded,
+        )
 
     def record_symbol_error(self, symbol, exc):
         symbol = _valid_symbol(symbol)
@@ -416,174 +340,32 @@ class SignalScanPoller:
 
     def stop(self):
         with self.lock:
-            self._market_snapshot.stop()
-            self._kline_cache.stop()
+            self._stop_scan_sources()
+
+    def _stop_scan_sources(self):
+        self._market_snapshot.stop()
+        self._kline_cache.stop()
 
     def close(self):
-        # An owned client must not be closed while a scan can still use it. An
-        # injected client belongs to its caller, so shutdown need not wait for
-        # that caller's in-flight request.
-        deferred_cleanup_needed = False
-        close_error = None
-        with self._close_lock:
-            with self.lock:
-                if self._closed:
-                    return
-                self._closing = True
-                self._market_snapshot.stop()
-                self._kline_cache.stop()
-
-            if self._owns_http_client:
-                acquired = self._scan_execution_lock.acquire(
-                    timeout=SIGNAL_SCAN_CLOSE_SCAN_WAIT_SECONDS
-                )
-                if not acquired:
-                    with self.lock:
-                        self._close_pending = True
-                        self._close_retry_exhausted = False
-                        self._close_last_error = "signal scan is still running"
-                    deferred_cleanup_needed = True
-                else:
-                    try:
-                        self._close_owned_http_client()
-                    except Exception as exc:
-                        # Shutdown has started even if the underlying client
-                        # needs a retry. Keep the poller closed to new scans
-                        # while allowing a later close() call to finish
-                        # resource cleanup.
-                        with self.lock:
-                            self._close_pending = True
-                            self._close_retry_exhausted = False
-                            self._close_last_error = _error_text(exc)
-                        close_error = exc
-                        # Any close failure can leave resources open, including
-                        # immediate non-timeout failures from the client. Route
-                        # all failures through the bounded retry worker so a
-                        # direct close() call has the same cleanup guarantee as
-                        # run_forever() shutdown.
-                        deferred_cleanup_needed = True
-                    finally:
-                        self._scan_execution_lock.release()
-
-            if not deferred_cleanup_needed and close_error is None:
-                with self.lock:
-                    self._closed = True
-                    self._close_pending = False
-                    self._close_retry_exhausted = False
-                    self._close_last_error = None
-                self._close_retry_wakeup.set()
-
-        if deferred_cleanup_needed:
-            self._schedule_deferred_close()
-            if close_error is None:
-                raise TimeoutError("signal scan is still running")
-        if close_error is not None:
-            raise close_error
+        self._shutdown.close()
 
     def _close_owned_http_client(self):
-        """Run an owned client's close once and bound the caller's wait."""
-        with self._client_close_state_lock:
-            done = self._client_close_done
-            result = self._client_close_result
-            if (
-                done is None
-                or (
-                    done.is_set()
-                    and result.get("error") is not None
-                    and (
-                        self._client_close_thread is None
-                        or not self._client_close_thread.is_alive()
-                    )
-                )
-            ):
-                done = threading.Event()
-                result = {}
-                self._client_close_done = done
-                self._client_close_result = result
-                self._client_close_thread = threading.Thread(
-                    target=_run_client_close,
-                    args=(self.http_client, done, result),
-                    name="signal-scan-http-cleanup",
-                    daemon=True,
-                )
-                self._client_close_thread.start()
-
-        if not done.wait(SIGNAL_SCAN_CLOSE_CLIENT_WAIT_SECONDS):
-            raise TimeoutError("signal scan HTTP client close is still running")
-        error = result.get("error")
-        if error is not None:
-            raise error
+        self._shutdown.close_owned_http_client()
 
     def _close_after_polling(self):
-        last_error = None
-        for _ in range(SIGNAL_SCAN_CLOSE_ATTEMPTS):
-            try:
-                self.close()
-                return
-            except Exception as exc:
-                last_error = exc
-        self._log_close_failure(last_error)
-        self._schedule_deferred_close()
+        self._shutdown.close_after_polling()
 
     def _schedule_deferred_close(self):
-        with self._close_lock:
-            with self.lock:
-                if (
-                    self._closed
-                    or not self._close_pending
-                    or self._close_retry_exhausted
-                ):
-                    return
-            if (
-                self._close_retry_thread is not None
-                and self._close_retry_thread.is_alive()
-            ):
-                return
-            self._close_retry_thread = threading.Thread(
-                target=self._retry_close_until_success,
-                name="signal-scan-cleanup",
-                daemon=True,
-            )
-            self._close_retry_thread.start()
+        self._shutdown.schedule_deferred_close()
 
     def _retry_close_until_success(self):
-        delay = SIGNAL_SCAN_CLOSE_RETRY_INITIAL_DELAY_SECONDS
-        last_error = None
-        for _ in range(SIGNAL_SCAN_CLOSE_RETRY_MAX_ATTEMPTS):
-            if self._close_retry_wakeup.wait(delay):
-                return
-            try:
-                self.close()
-                return
-            except Exception as exc:
-                last_error = exc
-                self._log_close_failure(exc, deferred=True)
-                delay = min(
-                    delay * 2,
-                    SIGNAL_SCAN_CLOSE_RETRY_MAX_DELAY_SECONDS,
-                )
-        with self.lock:
-            self._close_pending = True
-            self._close_last_error = _error_text(last_error)
-            self._close_retry_exhausted = True
-        self._log_close_failure(last_error, deferred=True, force=True)
+        self._shutdown.retry_close_until_success()
 
     def _log_close_failure(self, error, *, deferred=False, force=False):
-        now = time.monotonic()
-        with self.lock:
-            previous = self._close_last_logged_at
-            if (
-                not force
-                and previous is not None
-                and now >= previous
-                and now - previous < SIGNAL_SCAN_CLOSE_LOG_COOLDOWN_SECONDS
-            ):
-                return
-            self._close_last_logged_at = now
-            message = self._close_last_error or _error_text(error)
-        prefix = "deferred " if deferred else ""
-        print(
-            f"{_timestamp()} {prefix}signal scan cleanup failed: {message}"
+        self._shutdown.log_close_failure(
+            error,
+            deferred=deferred,
+            force=force,
         )
 
     def _prune_symbol_error_log_times(self, now, *, protected_symbol=None):
@@ -607,32 +389,62 @@ class SignalScanPoller:
             self._symbol_error_log_times.pop(oldest_symbol, None)
 
     def get_state(self):
-        with self.lock:
-            state = _copy_state(self.state)
-            state["schema_version"] = SIGNAL_SCAN_API_SCHEMA_VERSION
-            state["recent_errors"] = self.error_log.recent()
-            if (
-                state["saved_at"] is not None
-                and state["error"] is None
-                and self._is_stale()
-            ):
-                state["bulls"] = []
-                state["bears"] = []
-                state["spikes"] = []
-                state["error"] = (
-                    f"訊號資料已超過 {int(self.max_age_seconds)} 秒，等待重新掃描"
-                )
-            return state
+        return self._state_store.snapshot()
 
     def _is_stale(self):
-        if self.last_success_monotonic is None:
-            return True
-        age = time.monotonic() - self.last_success_monotonic
-        return (
-            not isfinite(age)
-            or age < 0
-            or age > self.max_age_seconds
-        )
+        return self._state_store.is_stale()
+
+    @property
+    def state(self):
+        return self._state_store.state
+
+    @state.setter
+    def state(self, value):
+        self._state_store.state = value
+
+    @property
+    def last_success_wall_clock(self):
+        return self._state_store.last_success_wall_clock
+
+    @last_success_wall_clock.setter
+    def last_success_wall_clock(self, value):
+        self._state_store.last_success_wall_clock = value
+
+    @property
+    def last_success_monotonic(self):
+        return self._state_store.last_success_monotonic
+
+    @last_success_monotonic.setter
+    def last_success_monotonic(self, value):
+        self._state_store.last_success_monotonic = value
+
+    @property
+    def _closing(self):
+        return self._shutdown.closing
+
+    @property
+    def _closed(self):
+        return self._shutdown.closed
+
+    @property
+    def _close_pending(self):
+        return self._shutdown.close_pending
+
+    @property
+    def _close_retry_exhausted(self):
+        return self._shutdown.close_retry_exhausted
+
+    @property
+    def _close_last_error(self):
+        return self._shutdown.close_last_error
+
+    @property
+    def _close_retry_thread(self):
+        return self._shutdown.close_retry_thread
+
+    @property
+    def _close_retry_wakeup(self):
+        return self._shutdown.close_retry_wakeup
 
 
 def _positive_seconds(name, value):
@@ -661,64 +473,16 @@ def _timestamp():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _error_text(error: object) -> str:
-    message = str(error).strip()
-    if message:
-        if len(message) <= MAX_ERROR_TEXT_LENGTH:
-            return message
-        return f"{message[:MAX_ERROR_TEXT_LENGTH - 3]}..."
-    if isinstance(error, BaseException):
-        return error.__class__.__name__
-    return "signal scan failed"
-
-
-def _run_client_close(client, done, result):
-    try:
-        client.close()
-    except BaseException as error:
-        result["error"] = (
-            error
-            if isinstance(error, Exception)
-            else RuntimeError(_error_text(error))
-        )
-    finally:
-        done.set()
-
-
-def _iso_now(wall_time):
-    return datetime.fromtimestamp(wall_time).astimezone().isoformat(
-        timespec="seconds"
+def _close_settings():
+    return SignalScanCloseSettings(
+        attempts=SIGNAL_SCAN_CLOSE_ATTEMPTS,
+        scan_wait_seconds=SIGNAL_SCAN_CLOSE_SCAN_WAIT_SECONDS,
+        client_wait_seconds=SIGNAL_SCAN_CLOSE_CLIENT_WAIT_SECONDS,
+        retry_initial_delay_seconds=SIGNAL_SCAN_CLOSE_RETRY_INITIAL_DELAY_SECONDS,
+        retry_max_delay_seconds=SIGNAL_SCAN_CLOSE_RETRY_MAX_DELAY_SECONDS,
+        retry_max_attempts=SIGNAL_SCAN_CLOSE_RETRY_MAX_ATTEMPTS,
+        log_cooldown_seconds=SIGNAL_SCAN_CLOSE_LOG_COOLDOWN_SECONDS,
     )
-
-
-def _copy_rows(rows: list[dict]) -> list[dict]:
-    return [dict(row) for row in rows]
-
-
-def _empty_state() -> dict:
-    return {
-        "bulls": [],
-        "bears": [],
-        "spikes": [],
-        "saved_at": None,
-        "error": None,
-        "scan_total": 0,
-        "scan_succeeded": 0,
-        "partial": False,
-    }
-
-
-def _copy_state(state: dict) -> dict:
-    return {
-        "bulls": _copy_rows(state["bulls"]),
-        "bears": _copy_rows(state["bears"]),
-        "spikes": _copy_rows(state["spikes"]),
-        "saved_at": state["saved_at"],
-        "error": state["error"],
-        "scan_total": state["scan_total"],
-        "scan_succeeded": state["scan_succeeded"],
-        "partial": state["partial"],
-    }
 
 
 def _valid_symbol(value: object) -> str | None:
