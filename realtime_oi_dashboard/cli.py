@@ -75,11 +75,11 @@ def parse_args(argv=None):
     )
     parser.add_argument(
         "--ticker-cache-seconds",
-        type=non_negative_float,
+        type=positive_float,
         default=10,
         help=(
             "seconds to share one futures 24h ticker response across "
-            "OI and signal scan; 0 disables the cache"
+            "OI and signal scan; must be greater than 0"
         ),
     )
     parser.add_argument(

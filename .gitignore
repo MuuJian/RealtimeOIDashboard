@@ -16,10 +16,9 @@ realtime_oi_dashboard/application/data/
 __pycache__/
 *.py[cod]
 
-# Frontend dependencies and local package-manager files
+# Frontend dependencies and npm logs
 node_modules/
-.pnpm-store/
-pnpm-lock.yaml
+npm-debug.log*
 
 # Local tool state
 .codex/
