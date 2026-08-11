@@ -17,12 +17,14 @@ const icon = readFileSync(
 test("dashboard exposes a compact branded SVG favicon", () => {
   assert.match(
     index,
-    /<link rel="icon" type="image\/svg\+xml" href="\/static\/favicon\.svg\?v=2">/,
+    /<link rel="icon" type="image\/svg\+xml" href="\/static\/favicon\.svg\?v=3">/,
   );
   assert.match(index, /<meta name="theme-color" content="#090c13">/);
   assert.match(icon, /<svg[^>]*viewBox="0 0 32 32"/);
   assert.match(icon, /stroke="#2bdc8a"/);
   assert.match(icon, /fill="#2bdc8a"/);
+  assert.match(icon, /<path d="M16 5v22"/);
+  assert.equal((icon.match(/<path\b/g) ?? []).length, 1);
   assert.doesNotMatch(icon, /#56e7ff/);
   assert.doesNotMatch(icon, /<(?:script|foreignObject)\b/i);
 });
