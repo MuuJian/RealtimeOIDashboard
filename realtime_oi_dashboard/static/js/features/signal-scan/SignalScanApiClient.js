@@ -18,7 +18,7 @@ export async function loadSignalScanSnapshot({ signal } = {}) {
   try {
     throwIfAborted(controller.signal, abortReason);
     const response = await fetch("/api/signal-scan", {
-      cache: "no-store",
+      cache: "no-cache",
       signal: controller.signal,
     });
     throwIfAborted(controller.signal, abortReason);

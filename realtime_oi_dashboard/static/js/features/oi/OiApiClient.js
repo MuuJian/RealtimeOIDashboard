@@ -18,7 +18,7 @@ export async function loadOiSnapshot({ signal } = {}) {
   try {
     throwIfAborted(controller.signal, abortReason);
     const response = await fetch("/api/oi", {
-      cache: "no-store",
+      cache: "no-cache",
       signal: controller.signal,
     });
     throwIfAborted(controller.signal, abortReason);
