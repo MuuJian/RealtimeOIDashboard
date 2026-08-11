@@ -191,6 +191,43 @@
 .oi-table th:nth-child(15),
 .oi-table td:nth-child(15) { width: 120px; }
 
+@media (min-width: 1792px) {
+  .oi-table {
+    min-width: 100%;
+  }
+
+  .oi-table th:nth-child(1),
+  .oi-table td:nth-child(1) { width: 2.6%; }
+  .oi-table th:nth-child(2),
+  .oi-table td:nth-child(2) { width: 9%; }
+  .oi-table th:nth-child(3),
+  .oi-table td:nth-child(3) { width: 7.3%; }
+  .oi-table th:nth-child(4),
+  .oi-table td:nth-child(4) { width: 6.7%; }
+  .oi-table th:nth-child(5),
+  .oi-table td:nth-child(5) { width: 7.3%; }
+  .oi-table th:nth-child(6),
+  .oi-table td:nth-child(6) { width: 7.3%; }
+  .oi-table th:nth-child(7),
+  .oi-table td:nth-child(7) { width: 7.3%; }
+  .oi-table th:nth-child(8),
+  .oi-table td:nth-child(8) { width: 7.3%; }
+  .oi-table th:nth-child(9),
+  .oi-table td:nth-child(9) { width: 6.7%; }
+  .oi-table th:nth-child(10),
+  .oi-table td:nth-child(10) { width: 6.7%; }
+  .oi-table th:nth-child(11),
+  .oi-table td:nth-child(11) { width: 6.7%; }
+  .oi-table th:nth-child(12),
+  .oi-table td:nth-child(12) { width: 6.7%; }
+  .oi-table th:nth-child(13),
+  .oi-table td:nth-child(13) { width: 7.3%; }
+  .oi-table th:nth-child(14),
+  .oi-table td:nth-child(14) { width: 4.5%; }
+  .oi-table th:nth-child(15),
+  .oi-table td:nth-child(15) { width: 6.7%; }
+}
+
 .cvd-value {
   overflow: visible;
   font-variant-numeric: tabular-nums;

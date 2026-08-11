@@ -9,15 +9,22 @@ const css = readFileSync(
   ),
   "utf8",
 );
+const cellCss = readFileSync(
+  new URL(
+    "../realtime_oi_dashboard/static/css/table-cells.css",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
 test("OI ranking exposes a desktop scrollbar and hides it on mobile", () => {
   assert.match(
     css,
-    /\.ranking-wrap\s*\{[^}]*scrollbar-width:\s*auto;/s,
+    /\.ranking-wrap\s*\{[^}]*scrollbar-width:\s*none;/s,
   );
   assert.match(
     css,
-    /\.ranking-wrap::\-webkit-scrollbar\s*\{[^}]*height:\s*12px;/s,
+    /\.ranking-wrap::\-webkit-scrollbar\s*\{[^}]*display:\s*none;/s,
   );
   assert.match(
     css,
@@ -25,10 +32,22 @@ test("OI ranking exposes a desktop scrollbar and hides it on mobile", () => {
   );
   assert.match(
     css,
-    /@media \(max-width:\s*640px\)[\s\S]*?\.ranking-wrap\s*\{[^}]*scrollbar-width:\s*none;[\s\S]*?\.oi-table\s*\{[^}]*min-width:\s*100%;/,
+    /\.ranking-horizontal-scroll\s*\{[^}]*display:\s*flex;/s,
   );
-  assert.doesNotMatch(
+  assert.match(
     css,
-    /\.ranking-wrap::\-webkit-scrollbar\s*,\s*\.signal-wrap::\-webkit-scrollbar/,
+    /\.ranking-horizontal-scroll\[hidden\]\s*\{[^}]*display:\s*none;/s,
+  );
+  assert.match(
+    css,
+    /\.ranking-horizontal-thumb\s*\{[^}]*background:\s*var\(--green-ink\);/s,
+  );
+  assert.match(
+    cellCss,
+    /@media \(min-width:\s*1792px\)[\s\S]*?\.oi-table\s*\{[^}]*min-width:\s*100%;/,
+  );
+  assert.match(
+    css,
+    /@media \(max-width:\s*640px\)[\s\S]*?\.oi-table\s*\{[^}]*min-width:\s*100%;[\s\S]*?\.ranking-horizontal-scroll\s*\{[^}]*display:\s*none;/,
   );
 });

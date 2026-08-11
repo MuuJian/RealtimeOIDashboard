@@ -191,29 +191,44 @@
         </div>
       </div>
 
-      <div class="table-wrap ranking-wrap">
-        <table class="oi-table" aria-label="OI 變化排行">
-          <thead>
-            <tr>
-              <th class="favorite-cell" scope="col" aria-label="收藏"></th>
-              <th scope="col" data-sort="symbol"><span class="sort-label">幣種<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="price"><span class="sort-label">價格<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="fundingRatePercent"><span class="sort-label">資金費率<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="priceChangePercent"><span class="sort-label"><span class="desktop-column-label">價格(24h)</span><span class="mobile-column-label">價格 24h</span><span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="price7dChangePercent"><span class="sort-label">價格(7d)<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="oi24hChangePercent"><span class="sort-label"><span class="desktop-column-label">持倉(24h)</span><span class="mobile-column-label">OI 24h</span><span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="oi7dChangePercent"><span class="sort-label"><span class="desktop-column-label">持倉(7d)</span><span class="mobile-column-label">OI 7d</span><span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="currentOiValue"><span class="sort-label">持倉價值<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="marketCap"><span class="sort-label">市值<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="oiToMarketCapRatio"><span class="sort-label">持倉/市值<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="volume24h"><span class="sort-label">成交額(24h)<span class="sort-arrows"></span></span></th>
-              <th scope="col" data-sort="cvd15mRatio" title="15 分鐘主動買賣成交額差；點擊按CVD比例排序"><span class="sort-label">CVD (15m)<span class="sort-arrows"></span></span></th>
-              <th scope="col" title="CVD 只提供成交主動方判讀，不保證價格方向">判讀</th>
-              <th scope="col" title="20 秒內：1 格綠色；約 40 秒：3 格黃色；滿 1 分鐘：5 格紅色">OI 更新狀態</th>
-            </tr>
-          </thead>
-          <tbody id="rankBody"></tbody>
-        </table>
+      <div id="rankingScrollShell" class="ranking-scroll-shell">
+        <div id="rankingViewport" class="table-wrap ranking-wrap">
+          <table class="oi-table" aria-label="OI 變化排行">
+            <thead>
+              <tr>
+                <th class="favorite-cell" scope="col" aria-label="收藏"></th>
+                <th scope="col" data-sort="symbol"><span class="sort-label">幣種<span class="sort-arrows"></span></span></th>
+                <th scope="col" data-sort="price"><span class="sort-label">價格<span class="sort-arrows"></span></span></th>
+                <th scope="col" data-sort="fundingRatePercent"><span class="sort-label">資金費率<span class="sort-arrows"></span></span></th>
+                <th scope="col" data-sort="priceChangePercent"><span class="sort-label"><span class="desktop-column-label">價格(24h)</span><span class="mobile-column-label">價格 24h</span><span class="sort-arrows"></span></span></th>
+                <th scope="col" data-sort="price7dChangePercent"><span class="sort-label">價格(7d)<span class="sort-arrows"></span></span></th>
+                <th scope="col" data-sort="oi24hChangePercent"><span class="sort-label"><span class="desktop-column-label">持倉(24h)</span><span class="mobile-column-label">OI 24h</span><span class="sort-arrows"></span></span></th>
+                <th scope="col" data-sort="oi7dChangePercent"><span class="sort-label"><span class="desktop-column-label">持倉(7d)</span><span class="mobile-column-label">OI 7d</span><span class="sort-arrows"></span></span></th>
+                <th scope="col" data-sort="currentOiValue"><span class="sort-label">持倉價值<span class="sort-arrows"></span></span></th>
+                <th scope="col" data-sort="marketCap"><span class="sort-label">市值<span class="sort-arrows"></span></span></th>
+                <th scope="col" data-sort="oiToMarketCapRatio"><span class="sort-label">持倉/市值<span class="sort-arrows"></span></span></th>
+                <th scope="col" data-sort="volume24h"><span class="sort-label">成交額(24h)<span class="sort-arrows"></span></span></th>
+                <th scope="col" data-sort="cvd15mRatio" title="15 分鐘主動買賣成交額差；點擊按CVD比例排序"><span class="sort-label">CVD (15m)<span class="sort-arrows"></span></span></th>
+                <th scope="col" title="CVD 只提供成交主動方判讀，不保證價格方向">判讀</th>
+                <th scope="col" title="20 秒內：1 格綠色；約 40 秒：3 格黃色；滿 1 分鐘：5 格紅色">OI 更新狀態</th>
+              </tr>
+            </thead>
+            <tbody id="rankBody"></tbody>
+          </table>
+        </div>
+        <div id="rankingHorizontalScroll" class="ranking-horizontal-scroll" hidden>
+          <div
+            id="rankingHorizontalTrack"
+            class="ranking-horizontal-track"
+            role="scrollbar"
+            tabindex="0"
+            aria-controls="rankingViewport"
+            aria-orientation="horizontal"
+            aria-label="左右捲動 OI 變化排行"
+          >
+            <div id="rankingHorizontalThumb" class="ranking-horizontal-thumb"></div>
+          </div>
+        </div>
       </div>
     </section>
     </div>
