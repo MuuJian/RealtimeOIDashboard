@@ -91,6 +91,8 @@ const oiAlertsPanel = createOiAlertsPanel({
     testButton: elements.oiAlertsTestMessage,
     activeBody: elements.oiAlertsActiveBody,
     eventsBody: elements.oiAlertsEventsBody,
+    activeSortButtons: elements.oiAlertsActiveSortButtons,
+    eventsSortButtons: elements.oiAlertsEventsSortButtons,
   },
 });
 

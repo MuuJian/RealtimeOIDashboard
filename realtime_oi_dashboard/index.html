@@ -39,7 +39,7 @@
     <div class="tab-bar" role="tablist">
       <button type="button" class="tab-btn active" id="tabOi" role="tab" aria-selected="true" aria-controls="oiPage">OI 面板</button>
       <button type="button" class="tab-btn" id="tabSignalScan" role="tab" aria-selected="false" aria-controls="signalScanPage">訊號掃描</button>
-      <button id="tabOiAlerts" class="tab-btn" type="button" role="tab" aria-selected="false" aria-controls="oiAlertsPage">OI Alerts</button>
+      <button id="tabOiAlerts" class="tab-btn" type="button" role="tab" aria-selected="false" aria-controls="oiAlertsPage">OI 警報</button>
     </div>
 
     <div id="oiPage" class="tab-page" role="tabpanel" aria-labelledby="tabOi">
@@ -315,67 +315,67 @@
         <div class="toolbar">
           <div class="panel-title">
             <span class="panel-kicker">OI ALERTS</span>
-            <strong>Open interest threshold notifications</strong>
-            <div id="oiAlertsSignalLabels" class="sub oi-alerts-signal-labels">Threshold signals load with alert configuration.</div>
+            <strong>未平倉量門檻通知</strong>
+            <div id="oiAlertsSignalLabels" class="sub oi-alerts-signal-labels">訊號門檻會隨警報設定載入。</div>
           </div>
           <div class="oi-alerts-controls">
             <label class="oi-alerts-toggle">
               <input id="oiAlertsEnabled" type="checkbox">
-              <span>Enable notifications</span>
+              <span>啟用通知</span>
             </label>
             <label class="oi-alert-threshold" for="oiAlertThreshold75">
-              <span>Long entry (USD M)</span>
+              <span>建立多單（百萬 USD）</span>
               <input id="oiAlertThreshold75" type="number" min="0.01" step="0.01" inputmode="decimal">
             </label>
             <label class="oi-alert-threshold" for="oiAlertThreshold100">
-              <span>Add position (USD M)</span>
+              <span>加倉（百萬 USD）</span>
               <input id="oiAlertThreshold100" type="number" min="0.01" step="0.01" inputmode="decimal">
             </label>
             <label class="oi-alert-threshold" for="oiAlertThreshold150">
-              <span>High OI (USD M)</span>
+              <span>高 OI 警示（百萬 USD）</span>
               <input id="oiAlertThreshold150" type="number" min="0.01" step="0.01" inputmode="decimal">
             </label>
             <div class="oi-alerts-actions">
-              <button id="oiAlertsSave" class="oi-alerts-save" type="button">Save thresholds</button>
-              <button id="oiAlertsTestMessage" class="oi-alerts-test" type="button">Send test message</button>
+              <button id="oiAlertsSave" class="oi-alerts-save" type="button">儲存門檻</button>
+              <button id="oiAlertsTestMessage" class="oi-alerts-test" type="button">發送測試訊息</button>
             </div>
           </div>
         </div>
 
-        <div id="oiAlertsStatus" class="oi-alerts-status" role="status" aria-live="polite">Loading OI alert configuration…</div>
+        <div id="oiAlertsStatus" class="oi-alerts-status" role="status" aria-live="polite">正在載入 OI 警報設定…</div>
 
-        <h2 class="oi-alerts-section-title">Active alerts</h2>
+        <h2 class="oi-alerts-section-title">目前警報</h2>
         <div class="table-wrap oi-alerts-wrap">
-          <table class="oi-alerts-table" aria-label="Active OI alerts">
+          <table class="oi-alerts-table" aria-label="目前 OI 警報">
             <thead>
               <tr>
-                <th scope="col">Symbol</th>
-                <th scope="col">OI value</th>
-                <th scope="col">Threshold</th>
-                <th scope="col">Signal</th>
-                <th scope="col">Last trigger</th>
+                <th scope="col"><button class="oi-alert-sort" type="button" data-oi-alert-sort="active" data-sort-key="symbol" aria-pressed="false">交易對</button></th>
+                <th scope="col"><button class="oi-alert-sort" type="button" data-oi-alert-sort="active" data-sort-key="oi_value" aria-pressed="false">OI 數值</button></th>
+                <th scope="col"><button class="oi-alert-sort" type="button" data-oi-alert-sort="active" data-sort-key="threshold" aria-pressed="false">門檻</button></th>
+                <th scope="col"><button class="oi-alert-sort" type="button" data-oi-alert-sort="active" data-sort-key="signal" aria-pressed="false">訊號</button></th>
+                <th scope="col"><button class="oi-alert-sort" type="button" data-oi-alert-sort="active" data-sort-key="last_triggered_at" aria-pressed="false">最近觸發</button></th>
               </tr>
             </thead>
-            <tbody id="oiAlertsActiveBody"><tr><td colspan="5" class="empty">No alerts available</td></tr></tbody>
+            <tbody id="oiAlertsActiveBody"><tr><td colspan="5" class="empty">目前沒有警報資料</td></tr></tbody>
           </table>
         </div>
 
-        <h2 class="oi-alerts-section-title">Recent delivery events (latest 50)</h2>
+        <h2 class="oi-alerts-section-title">近期通知紀錄（最新 50 筆）</h2>
         <div class="table-wrap oi-alerts-events-wrap">
-          <table class="oi-alerts-events-table" aria-label="OI alert delivery history">
+          <table class="oi-alerts-events-table" aria-label="OI 警報通知紀錄">
             <thead>
               <tr>
-                <th scope="col">Symbol</th>
-                <th scope="col">OI value</th>
-                <th scope="col">Threshold</th>
-                <th scope="col">Signal</th>
-                <th scope="col">Triggered</th>
-                <th scope="col">Delivery</th>
-                <th scope="col">Failure reason</th>
-                <th scope="col">Last attempt</th>
+                <th scope="col"><button class="oi-alert-sort" type="button" data-oi-alert-sort="events" data-sort-key="symbol" aria-pressed="false">交易對</button></th>
+                <th scope="col"><button class="oi-alert-sort" type="button" data-oi-alert-sort="events" data-sort-key="oi_value" aria-pressed="false">OI 數值</button></th>
+                <th scope="col"><button class="oi-alert-sort" type="button" data-oi-alert-sort="events" data-sort-key="threshold" aria-pressed="false">門檻</button></th>
+                <th scope="col"><button class="oi-alert-sort" type="button" data-oi-alert-sort="events" data-sort-key="signal" aria-pressed="false">訊號</button></th>
+                <th scope="col"><button class="oi-alert-sort" type="button" data-oi-alert-sort="events" data-sort-key="triggered_at" aria-pressed="false">觸發時間</button></th>
+                <th scope="col"><button class="oi-alert-sort" type="button" data-oi-alert-sort="events" data-sort-key="delivery_status" aria-pressed="false">發送狀態</button></th>
+                <th scope="col"><button class="oi-alert-sort" type="button" data-oi-alert-sort="events" data-sort-key="failure_reason" aria-pressed="false">失敗原因</button></th>
+                <th scope="col"><button class="oi-alert-sort" type="button" data-oi-alert-sort="events" data-sort-key="last_attempt_at" aria-pressed="false">最近嘗試</button></th>
               </tr>
             </thead>
-            <tbody id="oiAlertsEventsBody"><tr><td colspan="8" class="empty">No alert events available</td></tr></tbody>
+            <tbody id="oiAlertsEventsBody"><tr><td colspan="8" class="empty">目前沒有通知紀錄</td></tr></tbody>
           </table>
         </div>
       </section>

@@ -51,5 +51,7 @@ export function getDashboardElements(root = document) {
     oiAlertsTestMessage: root.getElementById("oiAlertsTestMessage"),
     oiAlertsActiveBody: root.getElementById("oiAlertsActiveBody"),
     oiAlertsEventsBody: root.getElementById("oiAlertsEventsBody"),
+    oiAlertsActiveSortButtons: root.querySelectorAll("[data-oi-alert-sort='active']"),
+    oiAlertsEventsSortButtons: root.querySelectorAll("[data-oi-alert-sort='events']"),
   };
 }

@@ -78,6 +78,15 @@ function createElements() {
     testButton: new FakeNode("button"),
     activeBody: new FakeNode("tbody"),
     eventsBody: new FakeNode("tbody"),
+    activeSortButtons: [
+      Object.assign(new FakeNode("button"), { dataset: { sortKey: "symbol" } }),
+      Object.assign(new FakeNode("button"), { dataset: { sortKey: "oi_value" } }),
+      Object.assign(new FakeNode("button"), { dataset: { sortKey: "last_triggered_at" } }),
+    ],
+    eventsSortButtons: [
+      Object.assign(new FakeNode("button"), { dataset: { sortKey: "symbol" } }),
+      Object.assign(new FakeNode("button"), { dataset: { sortKey: "triggered_at" } }),
+    ],
   };
 }
 
@@ -91,17 +100,17 @@ test("renders fixed signal labels, active rows, and failed delivery events as te
   try {
     panel.render(payload());
 
-    assert.equal(elements.signalLabelsElement.textContent, "75M: Long entry | 100M: Add position | 150M: High OI alert");
-    assert.equal(elements.statusElement.textContent.includes("Telegram: unavailable"), true);
-    assert.equal(elements.statusElement.textContent.includes("Saved alert state was invalid"), true);
-    assert.equal(elements.statusElement.textContent.includes("last attempt unavailable"), true);
+    assert.equal(elements.signalLabelsElement.textContent, "75M：建立多單 | 100M：加倉 | 150M：高 OI 警示");
+    assert.equal(elements.statusElement.textContent.includes("Telegram：無法使用"), true);
+    assert.equal(elements.statusElement.textContent.includes("讀取失敗"), true);
+    assert.equal(elements.statusElement.textContent.includes("最近嘗試：無法使用"), true);
     assert.equal(elements.threshold75Input.value, "75");
     assert.equal(elements.threshold100Input.value, "100");
     assert.equal(elements.threshold150Input.value, "150");
     assert.equal(elements.activeBody.children[0].children[0].textContent, "BTCUSDT");
     assert.equal(elements.activeBody.children[0].children[4].textContent, "2026-08-17T09:00:00Z");
-    assert.equal(elements.eventsBody.children[0].children[5].textContent, "failed");
-    assert.equal(elements.eventsBody.children[0].children[6].textContent, "Telegram delivery failed");
+    assert.equal(elements.eventsBody.children[0].children[5].textContent, "發送失敗");
+    assert.equal(elements.eventsBody.children[0].children[6].textContent, "Telegram 發送失敗");
     assert.equal(elements.eventsBody.children[0].children[7].textContent, "2026-08-17T10:00:03Z");
   } finally {
     if (previousDocument === undefined) delete globalThis.document;
@@ -129,7 +138,7 @@ test("keeps unsaved threshold edits visible through refresh and save errors", ()
 
     assert.equal(elements.threshold75Input.value, "100");
     assert.equal(elements.threshold100Input.value, "75");
-    assert.equal(elements.statusElement.textContent, "Invalid alert configuration");
+    assert.equal(elements.statusElement.textContent, "無法更新 OI 警報。請稍後再試。");
   } finally {
     if (previousDocument === undefined) delete globalThis.document;
     else globalThis.document = previousDocument;
@@ -203,7 +212,68 @@ test("keeps fixed signal names paired with the saved threshold values", () => {
       config: { enabled: true, thresholds: [90e6, 120e6, 180e6] },
     }));
 
-    assert.equal(elements.signalLabelsElement.textContent, "90M: Long entry | 120M: Add position | 180M: High OI alert");
+    assert.equal(elements.signalLabelsElement.textContent, "90M：建立多單 | 120M：加倉 | 180M：高 OI 警示");
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test("sorts OI alert tables by numeric, time, and text columns across refreshes", () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement: tagName => new FakeNode(tagName) };
+  const elements = createElements();
+  const panel = createOiAlertsPanel({ elements });
+  panel.bind(new AbortController().signal);
+
+  try {
+    panel.render(payload({
+      active: [
+        { symbol: "ETHUSDT", oi_value: 80e6, threshold: 75e6, signal: "Long entry", last_triggered_at: "2026-08-17T08:00:00Z" },
+        { symbol: "BTCUSDT", oi_value: 160e6, threshold: 150e6, signal: "High OI alert", last_triggered_at: "2026-08-17T09:00:00Z" },
+      ],
+      events: [
+        { symbol: "BTCUSDT", oi_value: 160e6, threshold: 150e6, signal: "High OI alert", triggered_at: "2026-08-17T09:00:00Z", delivery_status: "sent", failure_reason: null, last_attempt_at: "2026-08-17T09:00:01Z" },
+        { symbol: "ETHUSDT", oi_value: 80e6, threshold: 75e6, signal: "Long entry", triggered_at: "2026-08-17T10:00:00Z", delivery_status: "sent", failure_reason: null, last_attempt_at: "2026-08-17T10:00:01Z" },
+      ],
+    }));
+
+    elements.activeSortButtons[1].dispatch("click");
+    assert.equal(elements.activeBody.children[0].children[0].textContent, "BTCUSDT");
+
+    elements.eventsSortButtons[1].dispatch("click");
+    assert.equal(elements.eventsBody.children[0].children[0].textContent, "ETHUSDT");
+
+    elements.activeSortButtons[0].dispatch("click");
+    assert.equal(elements.activeBody.children[0].children[0].textContent, "BTCUSDT");
+
+    panel.render(payload({
+      active: [
+        { symbol: "BTCUSDT", oi_value: 161e6, threshold: 150e6, signal: "High OI alert", last_triggered_at: "2026-08-17T09:00:00Z" },
+        { symbol: "ETHUSDT", oi_value: 81e6, threshold: 75e6, signal: "Long entry", last_triggered_at: "2026-08-17T08:00:00Z" },
+      ],
+    }));
+    assert.equal(elements.activeBody.children[0].children[0].textContent, "BTCUSDT");
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test("renders OI Alerts labels, statuses, and signals in Traditional Chinese", () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement: tagName => new FakeNode(tagName) };
+  const elements = createElements();
+  const panel = createOiAlertsPanel({ elements });
+
+  try {
+    panel.render(payload());
+
+    assert.equal(elements.signalLabelsElement.textContent, "75M：建立多單 | 100M：加倉 | 150M：高 OI 警示");
+    assert.equal(elements.statusElement.textContent.includes("Telegram：無法使用"), true);
+    assert.equal(elements.activeBody.children[0].children[3].textContent, "高 OI 警示");
+    assert.equal(elements.eventsBody.children[0].children[3].textContent, "建立多單");
+    assert.equal(elements.eventsBody.children[0].children[5].textContent, "發送失敗");
   } finally {
     if (previousDocument === undefined) delete globalThis.document;
     else globalThis.document = previousDocument;
