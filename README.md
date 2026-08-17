@@ -1,5 +1,15 @@
 # Realtime OI Dashboard
 
+## OI Alerts Telegram
+
+1. Open @BotFather in Telegram and create a bot with /newbot.
+2. Start a private chat with the new bot using /start, or add it to the destination group.
+3. Determine the destination chat ID and set TELEGRAM_CHAT_ID.
+4. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in the environment that starts main.py.
+5. Open OI Alerts and select Send test message before enabling live delivery.
+
+The dashboard stores neither secret in configuration files nor API responses. OI alert signals are notification-only and never place exchange orders.
+
 一个用于查看 **Binance USDT 永续合约** 行情、持仓量（OI）变化和市场信号的网页面板。
 
 ## 安装
