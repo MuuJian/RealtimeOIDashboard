@@ -241,8 +241,8 @@ test("sorts OI alert tables by numeric, time, and text columns across refreshes"
         { symbol: "BTCUSDT", oi_value: 160e6, threshold: 150e6, signal: "High OI alert", last_triggered_at: "2026-08-17T09:00:00Z" },
       ],
       events: [
-        { symbol: "BTCUSDT", oi_value: 160e6, threshold: 150e6, signal: "High OI alert", triggered_at: "2026-08-17T09:00:00Z", delivery_status: "sent", failure_reason: null, last_attempt_at: "2026-08-17T09:00:01Z" },
-        { symbol: "ETHUSDT", oi_value: 80e6, threshold: 75e6, signal: "Long entry", triggered_at: "2026-08-17T10:00:00Z", delivery_status: "sent", failure_reason: null, last_attempt_at: "2026-08-17T10:00:01Z" },
+        { symbol: "ETHUSDT", oi_value: 80e6, threshold: 75e6, signal: "Long entry", triggered_at: "2026-08-17T09:00:00Z", delivery_status: "sent", failure_reason: null, last_attempt_at: "2026-08-17T09:00:01Z" },
+        { symbol: "BTCUSDT", oi_value: 160e6, threshold: 150e6, signal: "High OI alert", triggered_at: "2026-08-17T10:00:00Z", delivery_status: "sent", failure_reason: null, last_attempt_at: "2026-08-17T10:00:01Z" },
       ],
     }));
 
@@ -255,21 +255,28 @@ test("sorts OI alert tables by numeric, time, and text columns across refreshes"
     assert.equal(elements.activeSortButtons[1].parentNode.getAttribute("aria-sort"), "ascending");
 
     elements.eventsSortButtons[4].dispatch("click");
-    assert.equal(elements.eventsBody.children[0].children[0].textContent, "ETHUSDT");
+    assert.equal(elements.eventsBody.children[0].children[0].textContent, "BTCUSDT");
 
     elements.eventsSortButtons[4].dispatch("click");
-    assert.equal(elements.eventsBody.children[0].children[0].textContent, "BTCUSDT");
+    assert.equal(elements.eventsBody.children[0].children[0].textContent, "ETHUSDT");
 
     elements.activeSortButtons[0].dispatch("click");
     assert.equal(elements.activeBody.children[0].children[0].textContent, "BTCUSDT");
 
     panel.render(payload({
+      active: [
+        { symbol: "ETHUSDT", oi_value: 81e6, threshold: 75e6, signal: "Long entry", last_triggered_at: "2026-08-17T08:00:00Z" },
+        { symbol: "BTCUSDT", oi_value: 161e6, threshold: 150e6, signal: "High OI alert", last_triggered_at: "2026-08-17T09:00:00Z" },
+      ],
       events: [
-        { symbol: "ETHUSDT", oi_value: 80e6, threshold: 75e6, signal: "Long entry", triggered_at: "2026-08-17T10:00:00Z", delivery_status: "sent", failure_reason: null, last_attempt_at: "2026-08-17T10:00:01Z" },
-        { symbol: "BTCUSDT", oi_value: 160e6, threshold: 150e6, signal: "High OI alert", triggered_at: "2026-08-17T09:00:00Z", delivery_status: "sent", failure_reason: null, last_attempt_at: "2026-08-17T09:00:01Z" },
+        { symbol: "BTCUSDT", oi_value: 160e6, threshold: 150e6, signal: "High OI alert", triggered_at: "2026-08-17T10:00:00Z", delivery_status: "sent", failure_reason: null, last_attempt_at: "2026-08-17T10:00:01Z" },
+        { symbol: "ETHUSDT", oi_value: 80e6, threshold: 75e6, signal: "Long entry", triggered_at: "2026-08-17T09:00:00Z", delivery_status: "sent", failure_reason: null, last_attempt_at: "2026-08-17T09:00:01Z" },
       ],
     }));
-    assert.equal(elements.eventsBody.children[0].children[0].textContent, "BTCUSDT");
+    assert.equal(elements.activeBody.children[0].children[0].textContent, "BTCUSDT");
+    assert.equal(elements.eventsBody.children[0].children[0].textContent, "ETHUSDT");
+    assert.equal(elements.activeSortButtons[0].parentNode.getAttribute("aria-sort"), "ascending");
+    assert.equal(elements.eventsSortButtons[4].parentNode.getAttribute("aria-sort"), "ascending");
 
     panel.render(payload({
       active: [
