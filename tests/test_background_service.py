@@ -11,12 +11,25 @@ class FakePoller:
         self.stopped = False
         self.closed = False
         self.state = {"value": 1}
+        self.alert_state = {"config": {"enabled": True}}
+        self.updated_alert_config = None
+        self.test_message_result = {"queued": True}
 
     def run_forever(self):
         pass
 
     def get_state(self):
         return self.state
+
+    def get_alert_state(self):
+        return self.alert_state
+
+    def update_alert_config(self, payload):
+        self.updated_alert_config = payload
+        return self.alert_state
+
+    def send_alert_test_message(self):
+        return self.test_message_result
 
     def stop(self):
         self.stopped = True
@@ -78,6 +91,34 @@ class BackgroundPollerServiceTests(unittest.TestCase):
 
         with self.assertRaisesRegex(BackgroundServiceStopped, "example stopped"):
             service.get_state()
+
+    def test_alert_operations_share_the_state_provider_liveness_check(self):
+        service, poller, thread = self.create_service()
+
+        for operation in (
+            service.get_alert_state,
+            lambda: service.update_alert_config({"enabled": False}),
+            service.send_alert_test_message,
+        ):
+            with self.assertRaisesRegex(BackgroundServiceStopped, "example stopped"):
+                operation()
+
+        service.start()
+        self.assertEqual(service.get_alert_state(), poller.alert_state)
+        self.assertEqual(
+            service.update_alert_config({"enabled": False}), poller.alert_state
+        )
+        self.assertEqual(poller.updated_alert_config, {"enabled": False})
+        self.assertEqual(service.send_alert_test_message(), {"queued": True})
+
+        thread.alive = False
+        for operation in (
+            service.get_alert_state,
+            lambda: service.update_alert_config({"enabled": False}),
+            service.send_alert_test_message,
+        ):
+            with self.assertRaisesRegex(BackgroundServiceStopped, "example stopped"):
+                operation()
 
         service.start()
         thread.alive = False

@@ -166,7 +166,7 @@ def run_dashboard(
             args.port,
             oi_state_provider=oi_service,
             signal_scan_state_provider=signal_scan_service,
-            oi_alert_provider=oi_service.worker,
+            oi_alert_provider=oi_service,
         )
     except OSError as exc:
         print(f"無法啟動面板: {exc}")

@@ -72,6 +72,21 @@ class FakeSharedCache:
 
 
 class RunDashboardTests(unittest.TestCase):
+    def test_run_dashboard_injects_checked_oi_service_as_alert_provider(self):
+        oi_service = FakeService()
+        signal_service = FakeService()
+        server = FakeServer()
+
+        with patch.object(
+            bootstrap, "create_dashboard_server", return_value=server
+        ) as create_dashboard_server, redirect_stdout(io.StringIO()):
+            result = bootstrap.run_dashboard(FakeArgs(), oi_service, signal_service)
+
+        self.assertEqual(result, 0)
+        self.assertIs(
+            create_dashboard_server.call_args.kwargs["oi_alert_provider"], oi_service
+        )
+
     def test_oi_start_failure_closes_both_services_without_serving(self):
         oi_service = FakeService(should_fail_start=True)
         signal_service = FakeService()

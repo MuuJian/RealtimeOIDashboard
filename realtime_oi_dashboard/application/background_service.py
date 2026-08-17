@@ -35,9 +35,21 @@ class BackgroundPollerService:
         self.started = True
 
     def get_state(self):
+        return self._call_running_worker("get_state")
+
+    def get_alert_state(self):
+        return self._call_running_worker("get_alert_state")
+
+    def update_alert_config(self, payload):
+        return self._call_running_worker("update_alert_config", payload)
+
+    def send_alert_test_message(self):
+        return self._call_running_worker("send_alert_test_message")
+
+    def _call_running_worker(self, method_name, *args):
         if not self.started or not self.thread.is_alive():
             raise BackgroundServiceStopped(self.stopped_message)
-        return self.worker.get_state()
+        return getattr(self.worker, method_name)(*args)
 
     def stop(self, *, timeout: float) -> bool:
         if not self.started:

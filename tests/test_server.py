@@ -4,6 +4,7 @@ import unittest
 from http.client import HTTPConnection
 
 from realtime_oi_dashboard.application.background_service import (
+    BackgroundPollerService,
     BackgroundServiceStopped,
 )
 from realtime_oi_dashboard.server import create_dashboard_server
@@ -37,6 +38,15 @@ class FakeAlertProvider:
         self.error = error
         self.updated_payloads = []
         self.test_message_calls = 0
+
+    def run_forever(self):
+        pass
+
+    def stop(self):
+        pass
+
+    def close(self):
+        pass
 
     def get_alert_state(self):
         if self.error is not None:
@@ -231,6 +241,49 @@ class DashboardServerTests(unittest.TestCase):
 
         self.assertEqual(status, 503)
         self.assertEqual(payload, {"error": "OI alert provider unavailable"})
+
+    def test_alert_routes_use_the_background_service_liveness_boundary(self):
+        self.server.oi_alert_provider = BackgroundPollerService(
+            self.alert_provider,
+            thread_name="oi-poller",
+            stopped_message="OI poller stopped",
+        )
+
+        requests = (
+            ("/api/oi-alerts", "GET", None),
+            (
+                "/api/oi-alerts/config",
+                "PUT",
+                {"enabled": True, "thresholds": [75e6, 100e6, 150e6]},
+            ),
+            ("/api/oi-alerts/test-message", "POST", {}),
+        )
+        for path, method, body in requests:
+            with self.subTest(path=path):
+                status, payload = self.request_json(path, method=method, body=body)
+                self.assertEqual(status, 503)
+                self.assertEqual(payload, {"error": "OI alert provider unavailable"})
+
+        self.assertEqual(self.alert_provider.updated_payloads, [])
+        self.assertEqual(self.alert_provider.test_message_calls, 0)
+
+    def test_alert_config_rejects_non_standard_json_constants(self):
+        for constant in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(constant=constant):
+                status, payload = self.request_json(
+                    "/api/oi-alerts/config",
+                    method="PUT",
+                    body=(
+                        '{"enabled": true, "thresholds": [75000000, 100000000, '
+                        '150000000], "ignored": '
+                        + constant
+                        + "}"
+                    ).encode("utf-8"),
+                )
+                self.assertEqual(status, 400)
+                self.assertIn("error", payload)
+
+        self.assertEqual(self.alert_provider.updated_payloads, [])
 
     def test_alert_test_message_reports_unconfigured_without_calling_telegram(self):
         status, payload = self.request_json(

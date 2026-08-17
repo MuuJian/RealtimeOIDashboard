@@ -131,8 +131,10 @@ class DashboardHandler(DashboardRequestHandler):
         if len(body) != content_length:
             raise ValueError("Incomplete JSON request body")
         try:
-            payload = json.loads(body.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            payload = json.loads(
+                body.decode("utf-8"), parse_constant=_reject_json_constant
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
             raise ValueError("Malformed JSON request body") from None
         if not isinstance(payload, dict):
             raise ValueError("JSON request body must be an object")
@@ -388,6 +390,10 @@ def _public_alert_records(records: object, fields: tuple[str, ...]) -> list[dict
             raise ValueError("alert record is invalid")
         public_records.append({field: record[field] for field in fields})
     return public_records
+
+
+def _reject_json_constant(value: str):
+    raise ValueError(f"Invalid JSON constant: {value}")
 
 
 def create_dashboard_server(
