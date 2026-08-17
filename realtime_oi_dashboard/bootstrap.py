@@ -5,12 +5,14 @@ from __future__ import annotations
 from realtime_oi_dashboard.application.background_service import (
     BackgroundPollerService,
 )
-from realtime_oi_dashboard.application.oi.poller import OIPoller, timestamp
+from realtime_oi_dashboard.application.oi.poller import DATA_DIR, OIPoller, timestamp
+from realtime_oi_dashboard.application.oi_alerts.service import OiAlertService
 from realtime_oi_dashboard.application.signal_scan.poller import SignalScanPoller
 from realtime_oi_dashboard.cli import parse_args
 from realtime_oi_dashboard.infrastructure.binance.rest_cache import (
     BinanceRestCache,
 )
+from realtime_oi_dashboard.infrastructure.storage.oi_alerts import AlertStateRepository
 from realtime_oi_dashboard.server import create_dashboard_server
 from realtime_oi_dashboard.shared.runtime.services import ServiceGroup
 
@@ -81,12 +83,18 @@ def create_oi_service(
         snapshot_save_interval=args.snapshot_save_interval,
         cvd_state_provider=cvd_state_provider,
         shared_rest_cache=shared_rest_cache,
+        alert_service=create_oi_alert_service(),
     )
     return BackgroundPollerService(
         poller,
         thread_name="oi-poller",
         stopped_message="OI poller stopped",
     )
+
+
+def create_oi_alert_service():
+    """Build alert delivery from server-side environment configuration only."""
+    return OiAlertService(AlertStateRepository(DATA_DIR / "oi-alerts.json"))
 
 
 def create_cvd_service(args, *, shared_rest_cache=None):

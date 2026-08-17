@@ -27,6 +27,8 @@ from realtime_oi_dashboard.infrastructure.storage.oi_snapshot import (
     SnapshotService,
 )
 from realtime_oi_dashboard.application.oi.symbol_refresher import SymbolRefresher
+from realtime_oi_dashboard.application.oi_alerts.service import OiAlertService
+from realtime_oi_dashboard.infrastructure.storage.oi_alerts import AlertStateRepository
 
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
@@ -56,6 +58,7 @@ class OIPoller:
         http_client=None,
         cvd_state_provider=None,
         shared_rest_cache=None,
+        alert_service=None,
     ):
         self.batch_size = _positive_int("batch_size", batch_size)
         self.batch_delay = _non_negative_seconds("batch_delay", batch_delay)
@@ -150,6 +153,10 @@ class OIPoller:
         self.oi_state = OiStateStore(
             max_age_seconds=ROW_MAX_AGE_SECONDS,
         )
+        self.alert_service = alert_service or OiAlertService(
+            AlertStateRepository(DATA_DIR / "oi-alerts.json"),
+        )
+        self.alert_service.start()
         self.state = {
             "saved_at": None,
             "error": None,
@@ -342,6 +349,11 @@ class OIPoller:
                 self.state["error"] = EMPTY_BATCH_ERROR
                 return
 
+            self.alert_service.observe_updates(
+                results,
+                triggered_at=iso_now(),
+            )
+
             saved_at_wall_clock = time.time()
             self.clock.mark_success(saved_at_wall_clock)
             self.state = {
@@ -389,12 +401,26 @@ class OIPoller:
         try:
             self.binance.close()
         finally:
-            if self._owns_http_client:
-                self.http_client.close()
+            try:
+                self.alert_service.close()
+            finally:
+                if self._owns_http_client:
+                    self.http_client.close()
 
     def get_state(self):
         with self.lock:
             return self.presenter.build(self.state, self.symbols)
+
+    def get_alert_state(self):
+        with self.lock:
+            return self.alert_service.get_state(self.oi_state.rows)
+
+    def update_alert_config(self, payload):
+        with self.lock:
+            return self.alert_service.update_config(payload, self.oi_state.rows)
+
+    def send_alert_test_message(self):
+        return self.alert_service.send_test_message()
 
 def _positive_int(name, value):
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:

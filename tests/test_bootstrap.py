@@ -162,6 +162,33 @@ class MainTests(unittest.TestCase):
 
         self.assertIsInstance(service, BackgroundPollerService)
 
+    def test_create_oi_service_wires_the_alert_service_into_the_oi_worker(self):
+        args = FakeArgs()
+        args.oi_history_cache_seconds = 300
+        args.ticker_cache_seconds = 10
+        args.funding_cache_seconds = 3600
+        args.market_cap_cache_seconds = 3600
+        args.snapshot_save_interval = 10
+        captured = {}
+        alert_service = object()
+
+        class CapturingPoller:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+            def run_forever(self):
+                pass
+
+        with patch.object(
+            bootstrap,
+            "create_oi_alert_service",
+            return_value=alert_service,
+        ), patch.object(bootstrap, "OIPoller", CapturingPoller):
+            service = bootstrap.create_oi_service(args)
+
+        self.assertIsInstance(service, BackgroundPollerService)
+        self.assertIs(captured["alert_service"], alert_service)
+
     def test_main_passes_optional_cvd_service_to_oi_service(self):
         args = FakeArgs()
         cvd_service = FakeService()
