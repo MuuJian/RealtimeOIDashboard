@@ -219,6 +219,48 @@ class OiAlertServiceTests(unittest.TestCase):
 
             self.assertEqual(active[0]["last_triggered_at"], "t2")
 
+    def test_active_alert_keeps_trigger_time_after_event_eviction_and_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = AlertStateRepository(Path(directory) / "oi-alerts.json")
+            service = OiAlertService(
+                repository,
+                notifier_factory=RecordingNotifier,
+            )
+            service.observe_updates(
+                [OiUpdate("BTCUSDT", {"currentOiValue": 70_000_000}, 1)],
+                triggered_at="btc-baseline",
+            )
+            service.observe_updates(
+                [OiUpdate("BTCUSDT", {"currentOiValue": 80_000_000}, 2)],
+                triggered_at="btc-trigger",
+            )
+            for index in range(51):
+                symbol = f"TOKEN{index}USDT"
+                service.observe_updates(
+                    [OiUpdate(symbol, {"currentOiValue": 70_000_000}, index * 2 + 3)],
+                    triggered_at=f"baseline-{index}",
+                )
+                service.observe_updates(
+                    [OiUpdate(symbol, {"currentOiValue": 80_000_000}, index * 2 + 4)],
+                    triggered_at=f"trigger-{index}",
+                )
+
+            self.assertEqual(len(service.get_state({})["events"]), 50)
+            self.assertNotIn(
+                "BTCUSDT",
+                {event["symbol"] for event in service.get_state({})["events"]},
+            )
+
+            restarted = OiAlertService(
+                repository,
+                notifier_factory=RecordingNotifier,
+            )
+            active = restarted.get_state(
+                {"BTCUSDT": {"currentOiValue": 80_000_000}}
+            )["active"]
+
+            self.assertEqual(active[0]["last_triggered_at"], "btc-trigger")
+
     def test_corrupt_repository_state_is_exposed_as_a_safe_storage_status(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "oi-alerts.json"

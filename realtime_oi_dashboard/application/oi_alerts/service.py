@@ -39,6 +39,10 @@ class OiAlertService:
         snapshot = repository.load()
         self._engine = AlertEngine(snapshot.config)
         self._events = list(snapshot.events[-MAX_RECENT_EVENTS:])
+        self._last_triggered_at = {
+            symbol: dict(trigger_times)
+            for symbol, trigger_times in snapshot.last_triggered_at.items()
+        }
         self._storage_load_error = repository.load_error
         self._notifier = notifier_factory(mark_delivery=self._mark_delivery)
 
@@ -67,6 +71,10 @@ class OiAlertService:
                     self._engine.observe(update.symbol, oi_value, triggered_at)
                 )
             if events:
+                for event in events:
+                    self._last_triggered_at.setdefault(event.symbol, {})[
+                        event.threshold
+                    ] = event.triggered_at
                 self._events.extend(events)
                 self._bound_events_unlocked()
             self._save_unlocked()
@@ -90,7 +98,7 @@ class OiAlertService:
             payload["active"] = _active_alert_rows(
                 rows,
                 self._engine.config,
-                self._events,
+                self._last_triggered_at,
             )
             return payload
 
@@ -107,6 +115,19 @@ class OiAlertService:
         )
         with self._lock:
             self._engine.set_config(config, _row_oi_values(rows))
+            configured_thresholds = set(config.thresholds)
+            self._last_triggered_at = {
+                symbol: {
+                    threshold: triggered_at
+                    for threshold, triggered_at in trigger_times.items()
+                    if threshold in configured_thresholds
+                }
+                for symbol, trigger_times in self._last_triggered_at.items()
+                if any(
+                    threshold in configured_thresholds
+                    for threshold in trigger_times
+                )
+            }
             self._save_unlocked()
         return self.get_state(rows)
 
@@ -149,6 +170,10 @@ class OiAlertService:
                 for symbol, thresholds in self._engine.crossed_thresholds.items()
             },
             events=tuple(self._events),
+            last_triggered_at={
+                symbol: dict(trigger_times)
+                for symbol, trigger_times in self._last_triggered_at.items()
+            },
         )
 
     def _save_unlocked(self) -> None:
@@ -178,12 +203,8 @@ def _row_oi_values(rows: Mapping[str, Mapping[str, object]]) -> dict[str, float]
 def _active_alert_rows(
     rows: Mapping[str, Mapping[str, object]],
     config: AlertConfig,
-    events: Sequence[AlertEvent],
+    last_triggered_at: Mapping[str, Mapping[float, str]],
 ) -> list[dict]:
-    last_trigger_by_symbol = {
-        event.symbol: event.triggered_at
-        for event in events
-    }
     active = []
     for symbol, row in rows.items():
         oi_value = _oi_value(row)
@@ -202,7 +223,9 @@ def _active_alert_rows(
                     "oi_value": oi_value,
                     "threshold": threshold,
                     "signal": signal,
-                    "last_triggered_at": last_trigger_by_symbol.get(symbol),
+                    "last_triggered_at": last_triggered_at.get(symbol, {}).get(
+                        threshold
+                    ),
                 }
             )
     return active

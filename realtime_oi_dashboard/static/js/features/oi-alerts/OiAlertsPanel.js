@@ -27,21 +27,16 @@ export function createOiAlertsPanel({ elements }) {
   const configInputs = [enabledInput, ...thresholdInputs];
   let savePending = false;
   let testPending = false;
-  let configInitialized = false;
-  let configDirty = false;
+  const dirtyConfigInputs = new Set();
   const focusedConfigInputs = new Set();
 
   function render(payload, { configSaved = false } = {}) {
-    if (!configInitialized || configSaved) {
-      renderConfig(payload.config);
-      configInitialized = true;
-      configDirty = false;
-      focusedConfigInputs.clear();
-    }
+    if (configSaved) dirtyConfigInputs.clear();
+    renderConfig(payload.config, { force: configSaved });
     signalLabelsElement.textContent = signalLabelsText(
       thresholdInputs.map(input => Number(input.value) * MILLION),
     );
-    const editStatus = configDirty || focusedConfigInputs.size > 0
+    const editStatus = dirtyConfigInputs.size > 0 || focusedConfigInputs.size > 0
       ? "Unsaved alert configuration. "
       : "";
     statusElement.textContent = `${editStatus}${storageStatusText(payload.storage)} ${telegramStatusText(payload.telegram)}`;
@@ -56,10 +51,10 @@ export function createOiAlertsPanel({ elements }) {
   function bind(signal) {
     for (const input of configInputs) {
       input?.addEventListener("input", () => {
-        configDirty = true;
+        dirtyConfigInputs.add(input);
       }, { signal });
       input?.addEventListener("change", () => {
-        configDirty = true;
+        dirtyConfigInputs.add(input);
       }, { signal });
       input?.addEventListener("focus", () => {
         focusedConfigInputs.add(input);
@@ -114,13 +109,21 @@ export function createOiAlertsPanel({ elements }) {
     }
   }
 
-  function renderConfig(config) {
-    enabledInput.checked = Boolean(config?.enabled);
+  function renderConfig(config, { force = false } = {}) {
+    if (canRenderConfigInput(enabledInput, force)) {
+      enabledInput.checked = Boolean(config?.enabled);
+    }
     const thresholds = Array.isArray(config?.thresholds) ? config.thresholds : [];
     thresholdInputs.forEach((input, index) => {
+      if (!canRenderConfigInput(input, force)) return;
       const value = thresholds[index];
       input.value = Number.isFinite(value) ? String(value / MILLION) : "";
     });
+  }
+
+  function canRenderConfigInput(input, force) {
+    return force
+      || (!dirtyConfigInputs.has(input) && !focusedConfigInputs.has(input));
   }
 
   function setSaveControlsDisabled(disabled) {

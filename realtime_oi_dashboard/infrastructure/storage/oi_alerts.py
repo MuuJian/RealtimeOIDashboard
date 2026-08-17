@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from math import isfinite
 from pathlib import Path
 
 from realtime_oi_dashboard.domain.oi_alerts.model import (
@@ -27,6 +28,7 @@ class AlertSnapshot:
     config: AlertConfig = field(default_factory=AlertConfig.default)
     crossed_thresholds: dict[str, set[float]] = field(default_factory=dict)
     events: tuple[AlertEvent, ...] = ()
+    last_triggered_at: dict[str, dict[float, str]] = field(default_factory=dict)
 
     @classmethod
     def default(cls) -> "AlertSnapshot":
@@ -34,6 +36,7 @@ class AlertSnapshot:
 
     def to_payload(self) -> dict:
         events = self.events[-MAX_RECENT_EVENTS:]
+        configured_thresholds = set(self.config.thresholds)
         return {
             "config": {
                 "enabled": self.config.enabled,
@@ -42,6 +45,18 @@ class AlertSnapshot:
             "crossed_thresholds": {
                 symbol: sorted(thresholds)
                 for symbol, thresholds in self.crossed_thresholds.items()
+            },
+            "last_triggered_at": {
+                symbol: {
+                    str(threshold): triggered_at
+                    for threshold, triggered_at in trigger_times.items()
+                    if threshold in configured_thresholds
+                }
+                for symbol, trigger_times in self.last_triggered_at.items()
+                if any(
+                    threshold in configured_thresholds
+                    for threshold in trigger_times
+                )
             },
             "events": [
                 {
@@ -70,7 +85,17 @@ class AlertSnapshot:
         )
         crossed_thresholds = _crossed_thresholds(payload.get("crossed_thresholds"))
         events = _events(payload.get("events"))
-        return cls(config, crossed_thresholds, events[-MAX_RECENT_EVENTS:])
+        last_triggered_at = _last_triggered_at(
+            payload.get("last_triggered_at"),
+            config,
+            events,
+        )
+        return cls(
+            config,
+            crossed_thresholds,
+            events[-MAX_RECENT_EVENTS:],
+            last_triggered_at,
+        )
 
 
 class AlertStateRepository:
@@ -118,6 +143,45 @@ def _events(value: object) -> tuple[AlertEvent, ...]:
         return tuple(_event(event) for event in value)
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError("event is invalid") from exc
+
+
+def _last_triggered_at(
+    value: object,
+    config: AlertConfig,
+    events: tuple[AlertEvent, ...],
+) -> dict[str, dict[float, str]]:
+    configured_thresholds = set(config.thresholds)
+    if value is None:
+        result: dict[str, dict[float, str]] = {}
+        for event in events:
+            if event.threshold in configured_thresholds:
+                result.setdefault(event.symbol, {})[event.threshold] = event.triggered_at
+        return result
+    if not isinstance(value, dict):
+        raise ValueError("last trigger times must be an object")
+
+    result = {}
+    for symbol, trigger_times in value.items():
+        if not isinstance(symbol, str) or not isinstance(trigger_times, dict):
+            raise ValueError("last trigger time entry is invalid")
+        parsed_times = {}
+        for threshold_text, triggered_at in trigger_times.items():
+            try:
+                threshold = float(threshold_text)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("last trigger threshold is invalid") from exc
+            if (
+                not isfinite(threshold)
+                or threshold <= 0
+                or not isinstance(triggered_at, str)
+                or not triggered_at.strip()
+            ):
+                raise ValueError("last trigger time entry is invalid")
+            if threshold in configured_thresholds:
+                parsed_times[threshold] = triggered_at
+        if parsed_times:
+            result[symbol] = parsed_times
+    return result
 
 
 def _event(event: dict) -> AlertEvent:

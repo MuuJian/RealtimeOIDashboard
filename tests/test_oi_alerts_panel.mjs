@@ -121,6 +121,7 @@ test("keeps unsaved threshold edits visible through refresh and save errors", ()
     elements.threshold75Input.value = "100";
     elements.threshold100Input.value = "75";
     elements.threshold75Input.dispatch("input");
+    elements.threshold100Input.dispatch("input");
     panel.render(payload({
       config: { enabled: false, thresholds: [90e6, 120e6, 180e6] },
     }));
@@ -132,6 +133,62 @@ test("keeps unsaved threshold edits visible through refresh and save errors", ()
   } finally {
     if (previousDocument === undefined) delete globalThis.document;
     else globalThis.document = previousDocument;
+  }
+});
+
+test("refreshes only clean unfocused fields and clears edits after a confirmed save", async () => {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const previousFetch = globalThis.fetch;
+  globalThis.document = { createElement: tagName => new FakeNode(tagName) };
+  globalThis.window = { setTimeout, clearTimeout };
+  const elements = createElements();
+  const panel = createOiAlertsPanel({ elements });
+  panel.bind(new AbortController().signal);
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => payload({
+      config: { enabled: false, thresholds: [95e6, 125e6, 185e6] },
+    }),
+  });
+
+  try {
+    panel.render(payload());
+    elements.threshold75Input.value = "81";
+    elements.threshold75Input.dispatch("input");
+    elements.threshold100Input.dispatch("focus");
+
+    panel.render(payload({
+      config: { enabled: false, thresholds: [90e6, 120e6, 180e6] },
+    }));
+
+    assert.equal(elements.enabledInput.checked, false);
+    assert.equal(elements.threshold75Input.value, "81");
+    assert.equal(elements.threshold100Input.value, "100");
+    assert.equal(elements.threshold150Input.value, "180");
+
+    elements.threshold100Input.dispatch("blur");
+    elements.saveButton.dispatch("click");
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(elements.threshold75Input.value, "95");
+    assert.equal(elements.threshold100Input.value, "125");
+    assert.equal(elements.threshold150Input.value, "185");
+
+    panel.render(payload({
+      config: { enabled: true, thresholds: [96e6, 126e6, 186e6] },
+    }));
+    assert.equal(elements.enabledInput.checked, true);
+    assert.equal(elements.threshold75Input.value, "96");
+    assert.equal(elements.threshold100Input.value, "126");
+    assert.equal(elements.threshold150Input.value, "186");
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
   }
 });
 
