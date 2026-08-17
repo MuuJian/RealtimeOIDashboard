@@ -21,6 +21,8 @@ import { createRankingViewController } from "./services/RankingViewController.js
 import { createUiRenderScheduler } from "./services/UiRenderScheduler.js";
 import { createSignalScanPanel } from "./features/signal-scan/SignalScanPanel.js";
 import { createSignalScanRefreshController } from "./features/signal-scan/SignalScanRefreshController.js";
+import { createOiAlertsPanel } from "./features/oi-alerts/OiAlertsPanel.js";
+import { createOiAlertsRefreshController } from "./features/oi-alerts/OiAlertsRefreshController.js";
 
 const lifecycleController = new AbortController();
 const elements = getDashboardElements();
@@ -76,6 +78,27 @@ const signalScanRefresh = createSignalScanRefreshController({
   onPayload: payload => signalScanPanel.render(payload),
   onError: error => signalScanPanel.renderError(error),
 });
+
+const oiAlertsPanel = createOiAlertsPanel({
+  elements: {
+    statusElement: elements.oiAlertsStatus,
+    signalLabelsElement: elements.oiAlertsSignalLabels,
+    enabledInput: elements.oiAlertsEnabled,
+    threshold75Input: elements.oiAlertThreshold75,
+    threshold100Input: elements.oiAlertThreshold100,
+    threshold150Input: elements.oiAlertThreshold150,
+    saveButton: elements.oiAlertsSave,
+    testButton: elements.oiAlertsTestMessage,
+    activeBody: elements.oiAlertsActiveBody,
+    eventsBody: elements.oiAlertsEventsBody,
+  },
+});
+
+const oiAlertsRefresh = createOiAlertsRefreshController({
+  onPayload: payload => oiAlertsPanel.render(payload),
+  onError: error => oiAlertsPanel.renderError(error),
+});
+oiAlertsPanel.bind(lifecycleController.signal);
 
 const filterBar = createFilterBar({
   elements,
@@ -133,6 +156,7 @@ const oiRefresh = oiFeature.refresh;
 const liveUpdates = createLiveUpdateCoordinator({
   oiRefresh,
   signalScanRefresh,
+  oiAlertsRefresh,
   priceFeed,
 });
 pageLifecycle = createPageLifecycle({
@@ -172,6 +196,9 @@ elements.tabOi.addEventListener("click", () => activateTab("oi"), {
   signal: lifecycleController.signal,
 });
 elements.tabSignalScan.addEventListener("click", () => activateTab("signalScan"), {
+  signal: lifecycleController.signal,
+});
+elements.tabOiAlerts.addEventListener("click", () => activateTab("oiAlerts"), {
   signal: lifecycleController.signal,
 });
 
@@ -229,12 +256,16 @@ function handleRankingError(error) {
 }
 
 function activateTab(name) {
-  const isSignalScan = name === "signalScan";
-  elements.oiPage.hidden = isSignalScan;
-  elements.signalScanPage.hidden = !isSignalScan;
-  elements.tabOi.classList.toggle("active", !isSignalScan);
-  elements.tabOi.setAttribute("aria-selected", String(!isSignalScan));
-  elements.tabSignalScan.classList.toggle("active", isSignalScan);
-  elements.tabSignalScan.setAttribute("aria-selected", String(isSignalScan));
-  liveUpdates.setSelectedPage(isSignalScan ? "signalScan" : "oi");
+  const tabs = {
+    oi: { button: elements.tabOi, page: elements.oiPage },
+    signalScan: { button: elements.tabSignalScan, page: elements.signalScanPage },
+    oiAlerts: { button: elements.tabOiAlerts, page: elements.oiAlertsPage },
+  };
+  for (const [tabName, tab] of Object.entries(tabs)) {
+    const selected = tabName === name;
+    tab.page.hidden = !selected;
+    tab.button.classList.toggle("active", selected);
+    tab.button.setAttribute("aria-selected", String(selected));
+  }
+  liveUpdates.setSelectedPage(name);
 }

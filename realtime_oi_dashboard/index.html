@@ -39,6 +39,7 @@
     <div class="tab-bar" role="tablist">
       <button type="button" class="tab-btn active" id="tabOi" role="tab" aria-selected="true" aria-controls="oiPage">OI 面板</button>
       <button type="button" class="tab-btn" id="tabSignalScan" role="tab" aria-selected="false" aria-controls="signalScanPage">訊號掃描</button>
+      <button id="tabOiAlerts" class="tab-btn" type="button" role="tab" aria-selected="false" aria-controls="oiAlertsPage">OI Alerts</button>
     </div>
 
     <div id="oiPage" class="tab-page" role="tabpanel" aria-labelledby="tabOi">
@@ -308,6 +309,74 @@
         </div>
       </section>
     </div>
+
+    <section id="oiAlertsPage" class="tab-page" role="tabpanel" aria-labelledby="tabOiAlerts" hidden>
+      <section class="panel oi-alerts-panel" data-motion="panel">
+        <div class="toolbar">
+          <div class="panel-title">
+            <span class="panel-kicker">OI ALERTS</span>
+            <strong>Open interest threshold notifications</strong>
+            <div id="oiAlertsSignalLabels" class="sub oi-alerts-signal-labels">Threshold signals load with alert configuration.</div>
+          </div>
+          <div class="oi-alerts-controls">
+            <label class="oi-alerts-toggle">
+              <input id="oiAlertsEnabled" type="checkbox">
+              <span>Enable notifications</span>
+            </label>
+            <label class="oi-alert-threshold" for="oiAlertThreshold75">
+              <span>Long entry (USD M)</span>
+              <input id="oiAlertThreshold75" type="number" min="0.01" step="0.01" inputmode="decimal">
+            </label>
+            <label class="oi-alert-threshold" for="oiAlertThreshold100">
+              <span>Add position (USD M)</span>
+              <input id="oiAlertThreshold100" type="number" min="0.01" step="0.01" inputmode="decimal">
+            </label>
+            <label class="oi-alert-threshold" for="oiAlertThreshold150">
+              <span>High OI (USD M)</span>
+              <input id="oiAlertThreshold150" type="number" min="0.01" step="0.01" inputmode="decimal">
+            </label>
+            <div class="oi-alerts-actions">
+              <button id="oiAlertsSave" class="oi-alerts-save" type="button">Save thresholds</button>
+              <button id="oiAlertsTestMessage" class="oi-alerts-test" type="button">Send test message</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="oiAlertsStatus" class="oi-alerts-status" role="status" aria-live="polite">Loading OI alert configuration…</div>
+
+        <h2 class="oi-alerts-section-title">Active alerts</h2>
+        <div class="table-wrap oi-alerts-wrap">
+          <table class="oi-alerts-table" aria-label="Active OI alerts">
+            <thead>
+              <tr>
+                <th scope="col">Symbol</th>
+                <th scope="col">OI value</th>
+                <th scope="col">Threshold</th>
+                <th scope="col">Signal</th>
+              </tr>
+            </thead>
+            <tbody id="oiAlertsActiveBody"><tr><td colspan="4" class="empty">No alerts available</td></tr></tbody>
+          </table>
+        </div>
+
+        <h2 class="oi-alerts-section-title">Recent delivery events (latest 50)</h2>
+        <div class="table-wrap oi-alerts-events-wrap">
+          <table class="oi-alerts-events-table" aria-label="OI alert delivery history">
+            <thead>
+              <tr>
+                <th scope="col">Symbol</th>
+                <th scope="col">OI value</th>
+                <th scope="col">Threshold</th>
+                <th scope="col">Signal</th>
+                <th scope="col">Triggered</th>
+                <th scope="col">Delivery</th>
+              </tr>
+            </thead>
+            <tbody id="oiAlertsEventsBody"><tr><td colspan="6" class="empty">No alert events available</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
   </div>
 
   <script type="module" src="/static/js/dashboard.js"></script>

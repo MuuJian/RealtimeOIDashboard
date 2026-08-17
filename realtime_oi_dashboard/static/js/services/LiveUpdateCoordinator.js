@@ -1,10 +1,12 @@
 const PAGE_OI = "oi";
 const PAGE_SIGNAL_SCAN = "signalScan";
+const PAGE_OI_ALERTS = "oiAlerts";
 const MODE_PAUSED = "paused";
 
 export function createLiveUpdateCoordinator({
   oiRefresh,
   signalScanRefresh,
+  oiAlertsRefresh,
   priceFeed,
   selectedPage = PAGE_OI,
   pageActive = false,
@@ -39,15 +41,23 @@ export function createLiveUpdateCoordinator({
     if (nextMode === MODE_PAUSED) {
       oiRefresh.stop();
       signalScanRefresh.stop();
+      oiAlertsRefresh.stop();
       priceFeed.close();
     } else if (nextMode === PAGE_OI) {
       signalScanRefresh.stop();
+      oiAlertsRefresh.stop();
       priceFeed.connect();
       oiRefresh.start();
-    } else {
+    } else if (nextMode === PAGE_SIGNAL_SCAN) {
       oiRefresh.stop();
+      oiAlertsRefresh.stop();
       priceFeed.close();
       signalScanRefresh.start();
+    } else {
+      oiRefresh.stop();
+      signalScanRefresh.stop();
+      priceFeed.close();
+      oiAlertsRefresh.start();
     }
 
     appliedMode = nextMode;
@@ -59,6 +69,7 @@ export function createLiveUpdateCoordinator({
     appliedMode = MODE_PAUSED;
     oiRefresh.dispose();
     signalScanRefresh.dispose();
+    oiAlertsRefresh.dispose();
     priceFeed.close();
   }
 
@@ -75,7 +86,11 @@ export function createLiveUpdateCoordinator({
 }
 
 function assertPage(page) {
-  if (page !== PAGE_OI && page !== PAGE_SIGNAL_SCAN) {
+  if (
+    page !== PAGE_OI
+    && page !== PAGE_SIGNAL_SCAN
+    && page !== PAGE_OI_ALERTS
+  ) {
     throw new TypeError(`Unknown live-update page: ${page}`);
   }
 }
