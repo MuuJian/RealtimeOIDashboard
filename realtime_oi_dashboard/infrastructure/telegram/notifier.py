@@ -16,6 +16,8 @@ from realtime_oi_dashboard.domain.oi_alerts.model import AlertEvent
 _UNSET = object()
 _STOP_WAIT_SECONDS = 0.1
 _RETRY_DELAYS = (1, 2, 4)
+_DELIVERY_FAILED = "Telegram delivery failed"
+_QUEUE_FULL = "delivery queue is full"
 
 
 class TelegramNotifier:
@@ -71,7 +73,10 @@ class TelegramNotifier:
         try:
             self._queue.put_nowait((event, _event_message(event)))
         except queue.Full:
-            self._report(event, "failed", "delivery queue is full")
+            with self._lock:
+                self._status = "failed"
+                self._last_error = _QUEUE_FULL
+            self._report(event, "failed", _QUEUE_FULL)
 
     def send_test_message(self) -> bool:
         if not self.is_configured:
@@ -82,7 +87,7 @@ class TelegramNotifier:
         except queue.Full:
             with self._lock:
                 self._status = "failed"
-                self._last_error = "delivery queue is full"
+                self._last_error = _QUEUE_FULL
             return False
         return True
 
@@ -114,8 +119,8 @@ class TelegramNotifier:
             try:
                 self._record_attempt()
                 self._post_json(self._endpoint(), {"chat_id": self._chat_id, "text": text})
-            except Exception as exc:
-                error = str(exc)
+            except Exception:
+                error = _DELIVERY_FAILED
                 if attempt < 2:
                     self._sleep(_RETRY_DELAYS[attempt])
                 continue

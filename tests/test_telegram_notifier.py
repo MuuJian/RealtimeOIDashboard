@@ -1,4 +1,5 @@
 import unittest
+import queue
 
 from realtime_oi_dashboard.domain.oi_alerts.model import AlertEvent
 from realtime_oi_dashboard.infrastructure.telegram.notifier import TelegramNotifier
@@ -63,3 +64,50 @@ class TelegramNotifierTests(unittest.TestCase):
         self.assertEqual(len(attempts), 3)
         self.assertEqual(outcomes, [(event, "sent", None)])
         self.assertEqual(event.delivery_status, "pending")
+
+    def test_transport_error_does_not_expose_credentials_in_status_or_callback(self):
+        outcomes = []
+
+        def post_json(url, body):
+            raise OSError("failed request https://api.telegram.org/botsecret/sendMessage for chat 123")
+
+        notifier = TelegramNotifier(
+            "secret",
+            "123",
+            post_json=post_json,
+            mark_delivery=lambda event, status, error: outcomes.append((status, error)),
+            sleep=lambda _: None,
+        )
+        self.notifiers = [notifier]
+
+        notifier.enqueue(alert_event())
+        notifier.drain_for_test()
+
+        self.assertEqual(outcomes[0][0], "failed")
+        self.assertNotIn("secret", str(notifier.get_status()))
+        self.assertNotIn("123", str(notifier.get_status()))
+        self.assertNotIn("secret", outcomes[0][1])
+        self.assertNotIn("123", outcomes[0][1])
+
+    def test_saturated_alert_queue_marks_event_and_public_status_failed(self):
+        outcomes = []
+        notifier = TelegramNotifier(
+            "secret",
+            "123",
+            post_json=lambda *_: self.fail("must not post"),
+            mark_delivery=lambda event, status, error: outcomes.append((event, status, error)),
+        )
+        self.notifiers = [notifier]
+        notifier.start = lambda: None
+        notifier._queue = queue.Queue(maxsize=100)
+        for _ in range(100):
+            notifier._queue.put_nowait((None, "queued"))
+
+        event = alert_event()
+        notifier.enqueue(event)
+
+        self.assertEqual(outcomes, [(event, "failed", "delivery queue is full")])
+        self.assertEqual(
+            notifier.get_status(),
+            {"status": "failed", "last_error": "delivery queue is full", "last_attempt_at": None},
+        )
