@@ -140,8 +140,8 @@ export function createOiAlertsPanel({ elements }) {
         const currentSort = table === "active" ? activeSort : eventsSort;
         const key = button.dataset?.sortKey;
         if (!key) return;
-        const direction = currentSort?.key === key && currentSort.direction === "asc"
-          ? "desc"
+        const direction = currentSort?.key === key
+          ? (currentSort.direction === "asc" ? "desc" : "asc")
           : defaultSortDirection(key);
         const nextSort = { key, direction };
         if (table === "active") activeSort = nextSort;
@@ -207,6 +207,10 @@ function updateSortButtons(buttons, sort) {
     const selected = button?.dataset?.sortKey === sort.key;
     if (button?.dataset) button.dataset.sortDirection = selected ? sort.direction : "";
     button?.setAttribute?.("aria-pressed", selected ? "true" : "false");
+    const header = button?.parentElement || button?.parentNode;
+    header?.setAttribute?.("aria-sort", selected
+      ? (sort.direction === "asc" ? "ascending" : "descending")
+      : "none");
   }
 }
 
@@ -315,6 +319,7 @@ function telegramStatusLabel(value) {
   return new Map([
     ["configured", "已設定"],
     ["not_configured", "尚未設定"],
+    ["sending", "傳送中"],
     ["queued", "已加入佇列"],
     ["sent", "已發送"],
     ["failed", "發送失敗"],
@@ -323,7 +328,7 @@ function telegramStatusLabel(value) {
 
 function storageStatusLabel(value) {
   return new Map([
-    ["ready", "正常"],
+    ["ok", "正常"],
     ["load_error", "讀取失敗"],
   ]).get(value) || "無法使用";
 }

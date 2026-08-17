@@ -13,6 +13,7 @@ class FakeNode {
     this.disabled = false;
     this.parentNode = null;
     this.listeners = new Map();
+    this.attributes = new Map();
   }
 
   append(...nodes) {
@@ -34,6 +35,20 @@ class FakeNode {
   dispatch(type) {
     this.listeners.get(type)?.({ preventDefault() {} });
   }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, value);
+  }
+
+  getAttribute(name) {
+    return this.attributes.get(name) || null;
+  }
+}
+
+function sortButton(key) {
+  const button = Object.assign(new FakeNode("button"), { dataset: { sortKey: key } });
+  button.parentNode = new FakeNode("th");
+  return button;
 }
 
 function payload(overrides = {}) {
@@ -78,15 +93,8 @@ function createElements() {
     testButton: new FakeNode("button"),
     activeBody: new FakeNode("tbody"),
     eventsBody: new FakeNode("tbody"),
-    activeSortButtons: [
-      Object.assign(new FakeNode("button"), { dataset: { sortKey: "symbol" } }),
-      Object.assign(new FakeNode("button"), { dataset: { sortKey: "oi_value" } }),
-      Object.assign(new FakeNode("button"), { dataset: { sortKey: "last_triggered_at" } }),
-    ],
-    eventsSortButtons: [
-      Object.assign(new FakeNode("button"), { dataset: { sortKey: "symbol" } }),
-      Object.assign(new FakeNode("button"), { dataset: { sortKey: "triggered_at" } }),
-    ],
+    activeSortButtons: ["symbol", "oi_value", "threshold", "signal", "last_triggered_at"].map(sortButton),
+    eventsSortButtons: ["symbol", "oi_value", "threshold", "signal", "triggered_at", "delivery_status", "failure_reason", "last_attempt_at"].map(sortButton),
   };
 }
 
@@ -240,12 +248,28 @@ test("sorts OI alert tables by numeric, time, and text columns across refreshes"
 
     elements.activeSortButtons[1].dispatch("click");
     assert.equal(elements.activeBody.children[0].children[0].textContent, "BTCUSDT");
+    assert.equal(elements.activeSortButtons[1].parentNode.getAttribute("aria-sort"), "descending");
 
-    elements.eventsSortButtons[1].dispatch("click");
+    elements.activeSortButtons[1].dispatch("click");
+    assert.equal(elements.activeBody.children[0].children[0].textContent, "ETHUSDT");
+    assert.equal(elements.activeSortButtons[1].parentNode.getAttribute("aria-sort"), "ascending");
+
+    elements.eventsSortButtons[4].dispatch("click");
     assert.equal(elements.eventsBody.children[0].children[0].textContent, "ETHUSDT");
+
+    elements.eventsSortButtons[4].dispatch("click");
+    assert.equal(elements.eventsBody.children[0].children[0].textContent, "BTCUSDT");
 
     elements.activeSortButtons[0].dispatch("click");
     assert.equal(elements.activeBody.children[0].children[0].textContent, "BTCUSDT");
+
+    panel.render(payload({
+      events: [
+        { symbol: "ETHUSDT", oi_value: 80e6, threshold: 75e6, signal: "Long entry", triggered_at: "2026-08-17T10:00:00Z", delivery_status: "sent", failure_reason: null, last_attempt_at: "2026-08-17T10:00:01Z" },
+        { symbol: "BTCUSDT", oi_value: 160e6, threshold: 150e6, signal: "High OI alert", triggered_at: "2026-08-17T09:00:00Z", delivery_status: "sent", failure_reason: null, last_attempt_at: "2026-08-17T09:00:01Z" },
+      ],
+    }));
+    assert.equal(elements.eventsBody.children[0].children[0].textContent, "BTCUSDT");
 
     panel.render(payload({
       active: [
@@ -274,6 +298,13 @@ test("renders OI Alerts labels, statuses, and signals in Traditional Chinese", (
     assert.equal(elements.activeBody.children[0].children[3].textContent, "高 OI 警示");
     assert.equal(elements.eventsBody.children[0].children[3].textContent, "建立多單");
     assert.equal(elements.eventsBody.children[0].children[5].textContent, "發送失敗");
+
+    panel.render(payload({
+      storage: { status: "ok", last_error: null },
+      telegram: { status: "sending", last_error: null, last_attempt_at: "2026-08-17T11:00:00Z" },
+    }));
+    assert.equal(elements.statusElement.textContent.includes("警報狀態：正常"), true);
+    assert.equal(elements.statusElement.textContent.includes("Telegram：傳送中"), true);
   } finally {
     if (previousDocument === undefined) delete globalThis.document;
     else globalThis.document = previousDocument;
