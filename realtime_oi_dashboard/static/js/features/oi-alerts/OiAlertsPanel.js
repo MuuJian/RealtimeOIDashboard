@@ -24,25 +24,50 @@ export function createOiAlertsPanel({ elements }) {
     threshold100Input,
     threshold150Input,
   ];
-  let lastPayload = null;
+  const configInputs = [enabledInput, ...thresholdInputs];
   let savePending = false;
   let testPending = false;
+  let configInitialized = false;
+  let configDirty = false;
+  const focusedConfigInputs = new Set();
 
-  function render(payload) {
-    lastPayload = payload;
-    renderConfig(payload.config);
-    signalLabelsElement.textContent = signalLabelsText(payload.config?.thresholds);
-    statusElement.textContent = telegramStatusText(payload.telegram);
-    activeBody.replaceChildren(...rowsOrEmpty(payload.active, createActiveRow, 4));
-    eventsBody.replaceChildren(...rowsOrEmpty(payload.events, createEventRow, 6));
+  function render(payload, { configSaved = false } = {}) {
+    if (!configInitialized || configSaved) {
+      renderConfig(payload.config);
+      configInitialized = true;
+      configDirty = false;
+      focusedConfigInputs.clear();
+    }
+    signalLabelsElement.textContent = signalLabelsText(
+      thresholdInputs.map(input => Number(input.value) * MILLION),
+    );
+    const editStatus = configDirty || focusedConfigInputs.size > 0
+      ? "Unsaved alert configuration. "
+      : "";
+    statusElement.textContent = `${editStatus}${storageStatusText(payload.storage)} ${telegramStatusText(payload.telegram)}`;
+    activeBody.replaceChildren(...rowsOrEmpty(payload.active, createActiveRow, 5));
+    eventsBody.replaceChildren(...rowsOrEmpty(payload.events, createEventRow, 8));
   }
 
   function renderError(error) {
-    if (lastPayload?.config) renderConfig(lastPayload.config);
     statusElement.textContent = error?.message || String(error);
   }
 
   function bind(signal) {
+    for (const input of configInputs) {
+      input?.addEventListener("input", () => {
+        configDirty = true;
+      }, { signal });
+      input?.addEventListener("change", () => {
+        configDirty = true;
+      }, { signal });
+      input?.addEventListener("focus", () => {
+        focusedConfigInputs.add(input);
+      }, { signal });
+      input?.addEventListener("blur", () => {
+        focusedConfigInputs.delete(input);
+      }, { signal });
+    }
     saveButton?.addEventListener("click", event => {
       event?.preventDefault?.();
       void saveConfig();
@@ -62,7 +87,7 @@ export function createOiAlertsPanel({ elements }) {
         enabled: Boolean(enabledInput.checked),
         thresholds: thresholdInputs.map(input => Number(input.value) * MILLION),
       });
-      render(payload);
+      render(payload, { configSaved: true });
       statusElement.textContent = "OI alert configuration saved";
     } catch (error) {
       renderError(error);
@@ -125,6 +150,7 @@ function createActiveRow(row) {
     formatUsd(row?.oi_value),
     formatUsd(row?.threshold),
     safeText(row?.signal),
+    dateText(row?.last_triggered_at),
   ]);
 }
 
@@ -136,6 +162,8 @@ function createEventRow(row) {
     safeText(row?.signal),
     dateText(row?.triggered_at),
     safeText(row?.delivery_status),
+    safeText(row?.failure_reason, "none"),
+    dateText(row?.last_attempt_at),
   ]);
 }
 
@@ -155,6 +183,14 @@ function telegramStatusText(telegram) {
     ? `; last error: ${telegram.last_error}`
     : "";
   return `Telegram: ${status}${lastError}; last attempt ${dateText(telegram?.last_attempt_at)}`;
+}
+
+function storageStatusText(storage) {
+  const status = safeText(storage?.status, "unavailable");
+  const lastError = typeof storage?.last_error === "string" && storage.last_error
+    ? `; error: ${storage.last_error}`
+    : "";
+  return `Alert state: ${status}${lastError}.`;
 }
 
 function formatUsd(value) {

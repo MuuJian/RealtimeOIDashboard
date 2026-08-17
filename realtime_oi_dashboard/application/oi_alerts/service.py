@@ -18,6 +18,7 @@ from realtime_oi_dashboard.domain.oi_alerts.model import (
 from realtime_oi_dashboard.infrastructure.storage.oi_alerts import (
     AlertSnapshot,
     AlertStateRepository,
+    MAX_RECENT_EVENTS,
 )
 from realtime_oi_dashboard.infrastructure.telegram.notifier import TelegramNotifier
 
@@ -37,11 +38,8 @@ class OiAlertService:
         self._notifier_stop_timeout = notifier_stop_timeout
         snapshot = repository.load()
         self._engine = AlertEngine(snapshot.config)
-        self._engine.crossed_thresholds = {
-            symbol: set(thresholds)
-            for symbol, thresholds in snapshot.crossed_thresholds.items()
-        }
-        self._events = list(snapshot.events)
+        self._events = list(snapshot.events[-MAX_RECENT_EVENTS:])
+        self._storage_load_error = repository.load_error
         self._notifier = notifier_factory(mark_delivery=self._mark_delivery)
 
     def start(self) -> None:
@@ -70,6 +68,7 @@ class OiAlertService:
                 )
             if events:
                 self._events.extend(events)
+                self._bound_events_unlocked()
             self._save_unlocked()
 
         for event in events:
@@ -84,7 +83,15 @@ class OiAlertService:
         with self._lock:
             payload = self._snapshot_unlocked().to_payload()
             payload["notifier"] = self._notifier.get_status()
-            payload["active"] = _active_alert_rows(rows, self._engine.config)
+            payload["storage"] = {
+                "status": "load_error" if self._storage_load_error else "ok",
+                "last_error": self._storage_load_error,
+            }
+            payload["active"] = _active_alert_rows(
+                rows,
+                self._engine.config,
+                self._events,
+            )
             return payload
 
     def update_config(
@@ -111,14 +118,28 @@ class OiAlertService:
         self,
         event: AlertEvent,
         status: str,
-        _error: str | None,
+        error: str | None,
+        attempted_at: str | None,
     ) -> None:
         with self._lock:
             for index, candidate in enumerate(self._events):
                 if candidate is event:
-                    self._events[index] = replace(candidate, delivery_status=status)
+                    failure_reason = _safe_failure_reason(error) if status == "failed" else None
+                    if status == "failed" and not attempted_at:
+                        attempted_at = candidate.triggered_at
+                    self._events[index] = replace(
+                        candidate,
+                        delivery_status=status,
+                        failure_reason=failure_reason,
+                        last_attempt_at=attempted_at,
+                    )
+                    self._bound_events_unlocked()
                     self._save_unlocked()
                     break
+
+    def _bound_events_unlocked(self) -> None:
+        if len(self._events) > MAX_RECENT_EVENTS:
+            self._events = self._events[-MAX_RECENT_EVENTS:]
 
     def _snapshot_unlocked(self) -> AlertSnapshot:
         return AlertSnapshot(
@@ -157,7 +178,12 @@ def _row_oi_values(rows: Mapping[str, Mapping[str, object]]) -> dict[str, float]
 def _active_alert_rows(
     rows: Mapping[str, Mapping[str, object]],
     config: AlertConfig,
+    events: Sequence[AlertEvent],
 ) -> list[dict]:
+    last_trigger_by_symbol = {
+        event.symbol: event.triggered_at
+        for event in events
+    }
     active = []
     for symbol, row in rows.items():
         oi_value = _oi_value(row)
@@ -176,6 +202,13 @@ def _active_alert_rows(
                     "oi_value": oi_value,
                     "threshold": threshold,
                     "signal": signal,
+                    "last_triggered_at": last_trigger_by_symbol.get(symbol),
                 }
             )
     return active
+
+
+def _safe_failure_reason(error: str | None) -> str:
+    if error == "delivery queue is full":
+        return error
+    return "Telegram delivery failed"

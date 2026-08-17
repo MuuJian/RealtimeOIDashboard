@@ -345,12 +345,18 @@ class OIPoller:
             updated_count = self.oi_state.apply_updates(results)
 
             self.prune_stale_data()
-            if updated_count == 0:
+            accepted_updates = [
+                update
+                for update in results
+                if update is not None
+                and self.oi_state.update_times.get(update.symbol) == update.measured_at
+            ]
+            if updated_count == 0 or not accepted_updates:
                 self.state["error"] = EMPTY_BATCH_ERROR
                 return
 
             self.alert_service.observe_updates(
-                results,
+                accepted_updates,
                 triggered_at=iso_now(),
             )
 

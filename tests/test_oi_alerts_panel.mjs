@@ -30,6 +30,10 @@ class FakeNode {
   addEventListener(type, callback) {
     this.listeners.set(type, callback);
   }
+
+  dispatch(type) {
+    this.listeners.get(type)?.({ preventDefault() {} });
+  }
 }
 
 function payload(overrides = {}) {
@@ -40,11 +44,13 @@ function payload(overrides = {}) {
       last_error: "connection refused",
       last_attempt_at: null,
     },
+    storage: { status: "load_error", last_error: "Saved alert state was invalid" },
     active: [{
       symbol: "BTCUSDT",
       oi_value: 160e6,
       threshold: 150e6,
       signal: "High OI alert",
+      last_triggered_at: "2026-08-17T09:00:00Z",
     }],
     events: [{
       symbol: "ETHUSDT",
@@ -53,6 +59,8 @@ function payload(overrides = {}) {
       signal: "Long entry",
       triggered_at: "2026-08-17T10:00:00Z",
       delivery_status: "failed",
+      failure_reason: "Telegram delivery failed",
+      last_attempt_at: "2026-08-17T10:00:03Z",
     }],
     ...overrides,
   };
@@ -78,38 +86,48 @@ test("renders fixed signal labels, active rows, and failed delivery events as te
   globalThis.document = { createElement: tagName => new FakeNode(tagName) };
   const elements = createElements();
   const panel = createOiAlertsPanel({ elements });
+  panel.bind(new AbortController().signal);
 
   try {
     panel.render(payload());
 
     assert.equal(elements.signalLabelsElement.textContent, "75M: Long entry | 100M: Add position | 150M: High OI alert");
     assert.equal(elements.statusElement.textContent.includes("Telegram: unavailable"), true);
+    assert.equal(elements.statusElement.textContent.includes("Saved alert state was invalid"), true);
     assert.equal(elements.statusElement.textContent.includes("last attempt unavailable"), true);
     assert.equal(elements.threshold75Input.value, "75");
     assert.equal(elements.threshold100Input.value, "100");
     assert.equal(elements.threshold150Input.value, "150");
     assert.equal(elements.activeBody.children[0].children[0].textContent, "BTCUSDT");
+    assert.equal(elements.activeBody.children[0].children[4].textContent, "2026-08-17T09:00:00Z");
     assert.equal(elements.eventsBody.children[0].children[5].textContent, "failed");
+    assert.equal(elements.eventsBody.children[0].children[6].textContent, "Telegram delivery failed");
+    assert.equal(elements.eventsBody.children[0].children[7].textContent, "2026-08-17T10:00:03Z");
   } finally {
     if (previousDocument === undefined) delete globalThis.document;
     else globalThis.document = previousDocument;
   }
 });
 
-test("keeps the last confirmed configuration visible when a save error renders", () => {
+test("keeps unsaved threshold edits visible through refresh and save errors", () => {
   const previousDocument = globalThis.document;
   globalThis.document = { createElement: tagName => new FakeNode(tagName) };
   const elements = createElements();
   const panel = createOiAlertsPanel({ elements });
+  panel.bind(new AbortController().signal);
 
   try {
     panel.render(payload());
     elements.threshold75Input.value = "100";
     elements.threshold100Input.value = "75";
+    elements.threshold75Input.dispatch("input");
+    panel.render(payload({
+      config: { enabled: false, thresholds: [90e6, 120e6, 180e6] },
+    }));
     panel.renderError(new Error("Invalid alert configuration"));
 
-    assert.equal(elements.threshold75Input.value, "75");
-    assert.equal(elements.threshold100Input.value, "100");
+    assert.equal(elements.threshold75Input.value, "100");
+    assert.equal(elements.threshold100Input.value, "75");
     assert.equal(elements.statusElement.textContent, "Invalid alert configuration");
   } finally {
     if (previousDocument === undefined) delete globalThis.document;

@@ -30,6 +30,7 @@ class FakeAlertProvider:
                 "last_error": None,
                 "last_attempt_at": None,
             },
+            "storage": {"status": "ok", "last_error": None},
             "active": [],
             "events": [],
         }
@@ -159,6 +160,46 @@ class DashboardServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["telegram"]["status"], "not_configured")
         self.assertEqual(payload["config"]["thresholds"], [75e6, 100e6, 150e6])
+        self.assertNotIn("token", json.dumps(payload).lower())
+        self.assertNotIn("chat_id", json.dumps(payload).lower())
+
+    def test_alert_state_whitelists_storage_and_per_event_delivery_diagnostics(self):
+        self.alert_provider.state["storage"] = {
+            "status": "load_error",
+            "last_error": "Saved OI alert state could not be loaded; defaults are active",
+            "path": "C:/private/oi-alerts.json",
+        }
+        self.alert_provider.state["active"] = [{
+            "symbol": "BTCUSDT",
+            "oi_value": 80e6,
+            "threshold": 75e6,
+            "signal": "Long entry",
+            "last_triggered_at": "2026-08-17T10:00:00Z",
+            "token": "must-not-leak",
+        }]
+        self.alert_provider.state["events"] = [{
+            "symbol": "BTCUSDT",
+            "oi_value": 80e6,
+            "threshold": 75e6,
+            "signal": "Long entry",
+            "triggered_at": "2026-08-17T10:00:00Z",
+            "delivery_status": "failed",
+            "failure_reason": "Telegram delivery failed",
+            "last_attempt_at": "2026-08-17T10:00:03Z",
+            "chat_id": "must-not-leak",
+        }]
+
+        status, payload = self.request_json("/api/oi-alerts")
+
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["storage"]["status"], "load_error")
+        self.assertEqual(
+            payload["active"][0]["last_triggered_at"],
+            "2026-08-17T10:00:00Z",
+        )
+        self.assertEqual(payload["events"][0]["failure_reason"], "Telegram delivery failed")
+        self.assertEqual(payload["events"][0]["last_attempt_at"], "2026-08-17T10:00:03Z")
+        self.assertNotIn("private", json.dumps(payload).lower())
         self.assertNotIn("token", json.dumps(payload).lower())
         self.assertNotIn("chat_id", json.dumps(payload).lower())
 

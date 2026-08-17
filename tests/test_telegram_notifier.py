@@ -52,7 +52,9 @@ class TelegramNotifierTests(unittest.TestCase):
             "secret",
             "123",
             post_json=post_json,
-            mark_delivery=lambda event, status, error: outcomes.append((event, status, error)),
+            mark_delivery=lambda event, status, error, attempted_at: outcomes.append(
+                (event, status, error, attempted_at)
+            ),
             sleep=lambda _: None,
         )
         self.notifiers = [notifier]
@@ -62,7 +64,8 @@ class TelegramNotifierTests(unittest.TestCase):
         notifier.drain_for_test()
 
         self.assertEqual(len(attempts), 3)
-        self.assertEqual(outcomes, [(event, "sent", None)])
+        self.assertEqual(outcomes[0][:3], (event, "sent", None))
+        self.assertIsInstance(outcomes[0][3], str)
         self.assertEqual(event.delivery_status, "pending")
 
     def test_transport_error_does_not_expose_credentials_in_status_or_callback(self):
@@ -75,7 +78,9 @@ class TelegramNotifierTests(unittest.TestCase):
             "secret",
             "123",
             post_json=post_json,
-            mark_delivery=lambda event, status, error: outcomes.append((status, error)),
+            mark_delivery=lambda event, status, error, attempted_at: outcomes.append(
+                (status, error, attempted_at)
+            ),
             sleep=lambda _: None,
         )
         self.notifiers = [notifier]
@@ -88,6 +93,7 @@ class TelegramNotifierTests(unittest.TestCase):
         self.assertNotIn("123", str(notifier.get_status()))
         self.assertNotIn("secret", outcomes[0][1])
         self.assertNotIn("123", outcomes[0][1])
+        self.assertIsInstance(outcomes[0][2], str)
 
     def test_saturated_alert_queue_marks_event_and_public_status_failed(self):
         outcomes = []
@@ -95,7 +101,9 @@ class TelegramNotifierTests(unittest.TestCase):
             "secret",
             "123",
             post_json=lambda *_: self.fail("must not post"),
-            mark_delivery=lambda event, status, error: outcomes.append((event, status, error)),
+            mark_delivery=lambda event, status, error, attempted_at: outcomes.append(
+                (event, status, error, attempted_at)
+            ),
         )
         self.notifiers = [notifier]
         notifier.start = lambda: None
@@ -106,8 +114,13 @@ class TelegramNotifierTests(unittest.TestCase):
         event = alert_event()
         notifier.enqueue(event)
 
-        self.assertEqual(outcomes, [(event, "failed", "delivery queue is full")])
+        self.assertEqual(outcomes[0][:3], (event, "failed", "delivery queue is full"))
+        self.assertIsInstance(outcomes[0][3], str)
         self.assertEqual(
             notifier.get_status(),
-            {"status": "failed", "last_error": "delivery queue is full", "last_attempt_at": None},
+            {
+                "status": "failed",
+                "last_error": "delivery queue is full",
+                "last_attempt_at": outcomes[0][3],
+            },
         )

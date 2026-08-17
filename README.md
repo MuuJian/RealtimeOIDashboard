@@ -4,7 +4,12 @@
 
 1. Open @BotFather in Telegram and create a bot with /newbot.
 2. Start a private chat with the new bot using /start, or add it to the destination group.
-3. Determine the destination chat ID and set TELEGRAM_CHAT_ID.
+3. After sending the bot (or destination group) a message, retrieve the chat ID with PowerShell:
+   ```powershell
+   $updates = Invoke-RestMethod "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/getUpdates"
+   $updates.result[-1].message.chat.id
+   ```
+   Use the returned value as `TELEGRAM_CHAT_ID` (group IDs are commonly negative).
 4. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in the environment that starts main.py.
 5. Open OI Alerts and select Send test message before enabling live delivery.
 

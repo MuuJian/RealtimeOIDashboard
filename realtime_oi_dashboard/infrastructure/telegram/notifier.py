@@ -35,7 +35,9 @@ class TelegramNotifier:
         self._bot_token = os.environ.get("TELEGRAM_BOT_TOKEN") if bot_token is _UNSET else bot_token
         self._chat_id = os.environ.get("TELEGRAM_CHAT_ID") if chat_id is _UNSET else chat_id
         self._post_json = post_json or _post_json
-        self._mark_delivery = mark_delivery or (lambda event, status, error: None)
+        self._mark_delivery = mark_delivery or (
+            lambda event, status, error, attempted_at: None
+        )
         self._sleep = sleep
         self._queue = queue.Queue(maxsize=100)
         self._stop_event = threading.Event()
@@ -67,16 +69,18 @@ class TelegramNotifier:
 
     def enqueue(self, event: AlertEvent) -> None:
         if not self.is_configured:
-            self._report(event, "not_configured", None)
+            self._report(event, "not_configured", None, None)
             return
         self.start()
         try:
             self._queue.put_nowait((event, _event_message(event)))
         except queue.Full:
+            attempted_at = self._now()
             with self._lock:
                 self._status = "failed"
                 self._last_error = _QUEUE_FULL
-            self._report(event, "failed", _QUEUE_FULL)
+                self._last_attempt_at = attempted_at
+            self._report(event, "failed", _QUEUE_FULL, attempted_at)
 
     def send_test_message(self) -> bool:
         if not self.is_configured:
@@ -115,44 +119,61 @@ class TelegramNotifier:
 
     def _deliver(self, event: AlertEvent | None, text: str) -> None:
         error = None
+        attempted_at = None
         for attempt in range(3):
             try:
-                self._record_attempt()
+                attempted_at = self._record_attempt()
                 self._post_json(self._endpoint(), {"chat_id": self._chat_id, "text": text})
             except Exception:
                 error = _DELIVERY_FAILED
                 if attempt < 2:
                     self._sleep(_RETRY_DELAYS[attempt])
                 continue
-            self._mark_success(event)
+            self._mark_success(event, attempted_at)
             return
-        self._mark_failure(event, error)
+        self._mark_failure(event, error, attempted_at)
 
     def _endpoint(self) -> str:
         return f"https://api.telegram.org/bot{self._bot_token}/sendMessage"
 
-    def _record_attempt(self) -> None:
+    def _now(self) -> str:
+        return datetime.now(timezone.utc).isoformat()
+
+    def _record_attempt(self) -> str:
+        attempted_at = self._now()
         with self._lock:
             self._status = "sending"
-            self._last_attempt_at = datetime.now(timezone.utc).isoformat()
+            self._last_attempt_at = attempted_at
+        return attempted_at
 
-    def _mark_success(self, event: AlertEvent | None) -> None:
+    def _mark_success(self, event: AlertEvent | None, attempted_at: str | None) -> None:
         with self._lock:
             self._status = "configured"
             self._last_error = None
         if event is not None:
-            self._report(event, "sent", None)
+            self._report(event, "sent", None, attempted_at)
 
-    def _mark_failure(self, event: AlertEvent | None, error: str | None) -> None:
+    def _mark_failure(
+        self,
+        event: AlertEvent | None,
+        error: str | None,
+        attempted_at: str | None,
+    ) -> None:
         with self._lock:
             self._status = "failed"
             self._last_error = error
         if event is not None:
-            self._report(event, "failed", error)
+            self._report(event, "failed", error, attempted_at)
 
-    def _report(self, event: AlertEvent, status: str, error: str | None) -> None:
+    def _report(
+        self,
+        event: AlertEvent,
+        status: str,
+        error: str | None,
+        attempted_at: str | None,
+    ) -> None:
         try:
-            self._mark_delivery(event, status, error)
+            self._mark_delivery(event, status, error, attempted_at)
         except Exception:
             pass
 

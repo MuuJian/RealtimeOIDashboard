@@ -23,6 +23,8 @@ class AlertEvent:
     signal: str
     triggered_at: str
     delivery_status: str = "pending"
+    failure_reason: str | None = None
+    last_attempt_at: str | None = None
 
 
 def validate_alert_config(enabled: object, thresholds: object) -> AlertConfig:

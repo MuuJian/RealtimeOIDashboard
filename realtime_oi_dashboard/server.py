@@ -24,6 +24,7 @@ ROOT_DIR = Path(__file__).resolve().parent
 INDEX_FILE = ROOT_DIR / "index.html"
 STATIC_DIR = ROOT_DIR / "static"
 MAX_JSON_BODY_BYTES = 64 * 1024
+SAFE_ALERT_LOAD_ERROR = "Saved OI alert state could not be loaded; defaults are active"
 
 
 class DashboardHTTPServer(ThreadingHTTPServer):
@@ -336,21 +337,12 @@ def _public_alert_state(state: object) -> dict:
             "thresholds": list(validated_config.thresholds),
         },
         "telegram": _public_telegram_status(state.get("notifier")),
+        "storage": _public_alert_storage_status(state.get("storage")),
         "active": _public_alert_records(
             state.get("active"),
-            ("symbol", "oi_value", "threshold", "signal"),
+            ("symbol", "oi_value", "threshold", "signal", "last_triggered_at"),
         ),
-        "events": _public_alert_records(
-            state.get("events"),
-            (
-                "symbol",
-                "oi_value",
-                "threshold",
-                "signal",
-                "triggered_at",
-                "delivery_status",
-            ),
-        ),
+        "events": _public_alert_events(state.get("events")),
     }
 
 
@@ -377,6 +369,53 @@ def _public_telegram_status(status: object) -> dict:
         "last_error": last_error,
         "last_attempt_at": last_attempt_at,
     }
+
+
+def _public_alert_storage_status(status: object) -> dict:
+    if not isinstance(status, Mapping) or status.get("status") not in {
+        "ok",
+        "load_error",
+    }:
+        raise ValueError("alert storage status is invalid")
+    last_error = status.get("last_error")
+    if last_error is not None and not isinstance(last_error, str):
+        raise ValueError("alert storage status is invalid")
+    if status["status"] == "load_error" and not last_error:
+        raise ValueError("alert storage status is invalid")
+    return {
+        "status": status["status"],
+        "last_error": SAFE_ALERT_LOAD_ERROR if status["status"] == "load_error" else None,
+    }
+
+
+def _public_alert_events(records: object) -> list[dict]:
+    public_records = _public_alert_records(
+        records,
+        (
+            "symbol",
+            "oi_value",
+            "threshold",
+            "signal",
+            "triggered_at",
+            "delivery_status",
+            "failure_reason",
+            "last_attempt_at",
+        ),
+    )
+    for record in public_records:
+        if record["delivery_status"] != "failed":
+            record["failure_reason"] = None
+            continue
+        if record["failure_reason"] not in {
+            "Telegram delivery failed",
+            "delivery queue is full",
+        }:
+            record["failure_reason"] = "Telegram delivery failed"
+        if not isinstance(record["last_attempt_at"], str) or not record[
+            "last_attempt_at"
+        ].strip():
+            raise ValueError("failed alert event diagnostics are invalid")
+    return public_records
 
 
 def _public_alert_records(records: object, fields: tuple[str, ...]) -> list[dict]:
