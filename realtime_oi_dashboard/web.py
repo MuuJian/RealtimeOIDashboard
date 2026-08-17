@@ -98,7 +98,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             response_body = gzip.compress(body, compresslevel=6, mtime=0)
             content_encoding = "gzip"
 
-        cacheable = status == 200
+        cacheable = status == 200 and self.command in {"GET", "HEAD"}
         self._send_body(
             response_body,
             content_type="application/json; charset=utf-8",

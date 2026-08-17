@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import sys
+from collections.abc import Mapping
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -14,12 +16,14 @@ from realtime_oi_dashboard.application.background_service import (
     BackgroundServiceStopped,
 )
 from realtime_oi_dashboard.application.oi.poller import timestamp
+from realtime_oi_dashboard.domain.oi_alerts.model import validate_alert_config
 from realtime_oi_dashboard.web import DashboardRequestHandler
 
 
 ROOT_DIR = Path(__file__).resolve().parent
 INDEX_FILE = ROOT_DIR / "index.html"
 STATIC_DIR = ROOT_DIR / "static"
+MAX_JSON_BODY_BYTES = 64 * 1024
 
 
 class DashboardHTTPServer(ThreadingHTTPServer):
@@ -30,10 +34,12 @@ class DashboardHTTPServer(ThreadingHTTPServer):
         *,
         oi_state_provider,
         signal_scan_state_provider=None,
+        oi_alert_provider=None,
     ) -> None:
         super().__init__(server_address, request_handler_class)
         self.oi_state_provider = oi_state_provider
         self.signal_scan_state_provider = signal_scan_state_provider
+        self.oi_alert_provider = oi_alert_provider
 
     def handle_error(self, request, client_address) -> None:
         _, error, _ = sys.exc_info()
@@ -51,6 +57,12 @@ class DashboardHandler(DashboardRequestHandler):
 
     def do_HEAD(self) -> None:
         self.serve_request()
+
+    def do_POST(self) -> None:
+        self.serve_mutation()
+
+    def do_PUT(self) -> None:
+        self.serve_mutation()
 
     def serve_request(self) -> None:
         try:
@@ -72,7 +84,59 @@ class DashboardHandler(DashboardRequestHandler):
         if parsed.path == "/api/signal-scan":
             self.send_signal_scan_state()
             return
+        if parsed.path == "/api/oi-alerts":
+            self.send_oi_alert_state()
+            return
         self.send_error(404)
+
+    def serve_mutation(self) -> None:
+        try:
+            parsed = urlparse(self.path)
+        except ValueError:
+            self.send_json({"error": "Invalid request target"}, status=400)
+            return
+        if parsed.path not in {
+            "/api/oi-alerts/config",
+            "/api/oi-alerts/test-message",
+        }:
+            self.send_error(404)
+            return
+        try:
+            payload = self.read_json_body()
+        except ValueError as exc:
+            self.send_json({"error": str(exc)}, status=400)
+            return
+
+        if parsed.path == "/api/oi-alerts/config" and self.command == "PUT":
+            self.update_oi_alert_config(payload)
+            return
+        if parsed.path == "/api/oi-alerts/test-message" and self.command == "POST":
+            self.send_oi_alert_test_message()
+            return
+        self.send_error(404)
+
+    def read_json_body(self) -> dict:
+        content_type = self.headers.get("Content-Type", "")
+        media_type = content_type.split(";", 1)[0].strip().lower()
+        if media_type != "application/json":
+            raise ValueError("Content-Type must be application/json")
+        raw_length = self.headers.get("Content-Length")
+        try:
+            content_length = int(raw_length)
+        except (TypeError, ValueError):
+            raise ValueError("Content-Length is required") from None
+        if content_length < 0 or content_length > MAX_JSON_BODY_BYTES:
+            raise ValueError("JSON request body exceeds 64 KiB")
+        body = self.rfile.read(content_length)
+        if len(body) != content_length:
+            raise ValueError("Incomplete JSON request body")
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise ValueError("Malformed JSON request body") from None
+        if not isinstance(payload, dict):
+            raise ValueError("JSON request body must be an object")
+        return payload
 
     def send_oi_state(self):
         provider = getattr(self.server, "oi_state_provider", None)
@@ -99,6 +163,68 @@ class DashboardHandler(DashboardRequestHandler):
         except Exception as exc:
             print(f"{timestamp()} failed to serve signal scan state: {exc}")
             self.send_json({"error": "Signal scan state unavailable"}, status=503)
+
+    def send_oi_alert_state(self) -> None:
+        provider = self.oi_alert_provider()
+        if provider is None:
+            return
+        try:
+            self.send_json(_public_alert_state(provider.get_alert_state()))
+        except BackgroundServiceStopped:
+            self.send_json({"error": "OI alert provider unavailable"}, status=503)
+        except Exception as exc:
+            print(f"{timestamp()} failed to serve OI alert state: {exc}")
+            self.send_json({"error": "OI alert state unavailable"}, status=503)
+
+    def update_oi_alert_config(self, payload: dict) -> None:
+        try:
+            config = validate_alert_config(
+                payload.get("enabled"), payload.get("thresholds")
+            )
+            if not isinstance(payload.get("enabled"), bool):
+                raise ValueError("enabled must be a boolean")
+            sanitized_payload = {
+                "enabled": config.enabled,
+                "thresholds": list(config.thresholds),
+            }
+        except (TypeError, ValueError, OverflowError):
+            self.send_json({"error": "Invalid alert configuration"}, status=400)
+            return
+
+        provider = self.oi_alert_provider()
+        if provider is None:
+            return
+        try:
+            self.send_json(
+                _public_alert_state(provider.update_alert_config(sanitized_payload))
+            )
+        except BackgroundServiceStopped:
+            self.send_json({"error": "OI alert provider unavailable"}, status=503)
+        except (TypeError, ValueError, OverflowError):
+            self.send_json({"error": "Invalid alert configuration"}, status=400)
+        except Exception as exc:
+            print(f"{timestamp()} failed to update OI alert configuration: {exc}")
+            self.send_json({"error": "OI alert configuration unavailable"}, status=503)
+
+    def send_oi_alert_test_message(self) -> None:
+        provider = self.oi_alert_provider()
+        if provider is None:
+            return
+        try:
+            result = provider.send_alert_test_message()
+            self.send_json(_public_alert_test_result(result))
+        except BackgroundServiceStopped:
+            self.send_json({"error": "OI alert provider unavailable"}, status=503)
+        except Exception as exc:
+            print(f"{timestamp()} failed to queue OI alert test message: {exc}")
+            self.send_json({"error": "OI alert test message unavailable"}, status=503)
+
+    def oi_alert_provider(self):
+        provider = getattr(self.server, "oi_alert_provider", None)
+        if provider is None:
+            self.send_json({"error": "OI alert provider unavailable"}, status=503)
+            return None
+        return provider
 
     def send_readiness(self) -> None:
         oi_state, oi_summary = _oi_readiness(
@@ -193,16 +319,89 @@ def _cvd_readiness(oi_state) -> dict:
     return {"status": status, "health": health}
 
 
+def _public_alert_state(state: object) -> dict:
+    if not isinstance(state, Mapping):
+        raise ValueError("alert state is invalid")
+    config = state.get("config")
+    if not isinstance(config, Mapping):
+        raise ValueError("alert configuration is invalid")
+    validated_config = validate_alert_config(
+        config.get("enabled"), config.get("thresholds")
+    )
+    return {
+        "config": {
+            "enabled": validated_config.enabled,
+            "thresholds": list(validated_config.thresholds),
+        },
+        "telegram": _public_telegram_status(state.get("notifier")),
+        "active": _public_alert_records(
+            state.get("active"),
+            ("symbol", "oi_value", "threshold", "signal"),
+        ),
+        "events": _public_alert_records(
+            state.get("events"),
+            (
+                "symbol",
+                "oi_value",
+                "threshold",
+                "signal",
+                "triggered_at",
+                "delivery_status",
+            ),
+        ),
+    }
+
+
+def _public_alert_test_result(result: object) -> dict:
+    if not isinstance(result, Mapping) or not isinstance(result.get("queued"), bool):
+        raise ValueError("alert test result is invalid")
+    return {
+        "queued": result["queued"],
+        "telegram": _public_telegram_status(result.get("notifier")),
+    }
+
+
+def _public_telegram_status(status: object) -> dict:
+    if not isinstance(status, Mapping) or not isinstance(status.get("status"), str):
+        raise ValueError("Telegram status is invalid")
+    last_error = status.get("last_error")
+    last_attempt_at = status.get("last_attempt_at")
+    if last_error is not None and not isinstance(last_error, str):
+        raise ValueError("Telegram status is invalid")
+    if last_attempt_at is not None and not isinstance(last_attempt_at, str):
+        raise ValueError("Telegram status is invalid")
+    return {
+        "status": status["status"],
+        "last_error": last_error,
+        "last_attempt_at": last_attempt_at,
+    }
+
+
+def _public_alert_records(records: object, fields: tuple[str, ...]) -> list[dict]:
+    if not isinstance(records, list):
+        raise ValueError("alert records are invalid")
+    public_records = []
+    for record in records:
+        if not isinstance(record, Mapping) or any(
+            field not in record for field in fields
+        ):
+            raise ValueError("alert record is invalid")
+        public_records.append({field: record[field] for field in fields})
+    return public_records
+
+
 def create_dashboard_server(
     host,
     port,
     *,
     oi_state_provider,
     signal_scan_state_provider=None,
+    oi_alert_provider=None,
 ):
     return DashboardHTTPServer(
         (host, port),
         DashboardHandler,
         oi_state_provider=oi_state_provider,
         signal_scan_state_provider=signal_scan_state_provider,
+        oi_alert_provider=oi_alert_provider,
     )
