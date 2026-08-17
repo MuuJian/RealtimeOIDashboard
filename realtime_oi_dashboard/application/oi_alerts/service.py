@@ -61,12 +61,14 @@ class OiAlertService:
         """Evaluate valid applied updates, persist state, then queue delivery."""
         with self._lock:
             events = []
+            observed_symbols = set()
             for update in updates:
                 if update is None:
                     continue
                 oi_value = _oi_value(update.row)
                 if oi_value is None:
                     continue
+                observed_symbols.add(update.symbol)
                 events.extend(
                     self._engine.observe(update.symbol, oi_value, triggered_at)
                 )
@@ -77,6 +79,17 @@ class OiAlertService:
                     ] = event.triggered_at
                 self._events.extend(events)
                 self._bound_events_unlocked()
+            for symbol in observed_symbols:
+                trigger_times = self._last_triggered_at.get(symbol)
+                if trigger_times is None:
+                    continue
+                crossed_thresholds = self._engine.crossed_thresholds.get(
+                    symbol, set()
+                )
+                for threshold in set(trigger_times) - crossed_thresholds:
+                    del trigger_times[threshold]
+                if not trigger_times:
+                    del self._last_triggered_at[symbol]
             self._save_unlocked()
 
         for event in events:

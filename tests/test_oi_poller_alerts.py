@@ -1,3 +1,4 @@
+import json
 import tempfile
 import time
 import unittest
@@ -197,6 +198,46 @@ class OiAlertServiceTests(unittest.TestCase):
             self.assertEqual(len(snapshot.events), 50)
             self.assertEqual(snapshot.events[0].symbol, "TOKEN5USDT")
             self.assertEqual(snapshot.events[-1].symbol, "TOKEN54USDT")
+
+    def test_rearmed_symbol_churn_does_not_retain_trigger_timestamps(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "oi-alerts.json"
+            repository = AlertStateRepository(path)
+            service = OiAlertService(
+                repository,
+                notifier_factory=RecordingNotifier,
+            )
+            symbols = [f"TOKEN{index}USDT" for index in range(200)]
+
+            service.observe_updates(
+                [
+                    OiUpdate(symbol, {"currentOiValue": 70_000_000}, 1)
+                    for symbol in symbols
+                ],
+                triggered_at="baseline",
+            )
+            service.observe_updates(
+                [
+                    OiUpdate(symbol, {"currentOiValue": 80_000_000}, 2)
+                    for symbol in symbols
+                ],
+                triggered_at="trigger",
+            )
+            service.observe_updates(
+                [
+                    OiUpdate(symbol, {"currentOiValue": 70_000_000}, 3)
+                    for symbol in symbols
+                ],
+                triggered_at="rearm",
+            )
+
+            snapshot = service._snapshot_unlocked()
+            persisted_payload = json.loads(path.read_text(encoding="utf-8"))
+
+            self.assertEqual(len(snapshot.events), 50)
+            self.assertEqual(snapshot.last_triggered_at, {})
+            self.assertEqual(len(repository.load().events), 50)
+            self.assertEqual(persisted_payload["last_triggered_at"], {})
 
     def test_active_alerts_include_the_latest_trigger_time_from_events(self):
         with tempfile.TemporaryDirectory() as directory:
