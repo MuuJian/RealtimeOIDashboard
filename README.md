@@ -1,22 +1,5 @@
 # Realtime OI Dashboard
 
-## OI Alerts Telegram
-
-1. Open @BotFather in Telegram and create a bot with /newbot.
-2. Start a private chat with the new bot using /start, or add it to the destination group.
-3. After sending the bot (or destination group) a message, retrieve the chat ID with PowerShell:
-   ```powershell
-   $updates = Invoke-RestMethod "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/getUpdates"
-   $updates.result[-1].message.chat.id
-   ```
-   Use the returned value as `TELEGRAM_CHAT_ID` (group IDs are commonly negative).
-4. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in the environment that starts main.py.
-5. Open OI Alerts and select Send test message before enabling live delivery.
-
-The dashboard stores neither secret in configuration files nor API responses. OI alert signals are notification-only and never place exchange orders.
-
-一个用于查看 **Binance USDT 永续合约** 行情、持仓量（OI）变化和市场信号的网页面板。
-
 ## 安装
 
 需要 Python 3.10 或更高版本。前端检查需要 Node.js 22 或更高版本和 npm 10 或更高版本。
@@ -134,14 +117,20 @@ npm run lint
 | CVD | Binance Futures WebSocket `<symbol>@kline_1m` | 使用1分钟成交数据实时累计；缺失分钟通过 REST `/fapi/v1/klines` 补齐。CVD 自己的快照参数与 OI 无关。 |
 | 市值与 FDV | CoinGecko `/api/v3/coins/markets` | 默认每小时刷新，由 `--market-cap-refresh-seconds` 控制。 |
 
-### 三个容易混淆的时间
 
-```text
-前端实时价格       = Binance WebSocket 持续推送
-后端 ticker 缓存   = 固定10秒，只减少 REST 重复请求
-历史 OI 基准缓存   = 约1小时，只存在运行内存
-```
+## OI Alerts Telegram
 
-项目不再保存 OI 历史基准 JSON 快照。重新部署或重启后，后端会按批次重新获取历史 OI；这不会改变计算公式，只会让刚启动时的24h/7d数据逐步恢复。
+1. Open @BotFather in Telegram and create a bot with /newbot.
+2. Start a private chat with the new bot using /start, or add it to the destination group.
+3. After sending the bot (or destination group) a message, retrieve the chat ID with PowerShell:
+   ```powershell
+   $updates = Invoke-RestMethod "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/getUpdates"
+   $updates.result[-1].message.chat.id
+   ```
+   Use the returned value as `TELEGRAM_CHAT_ID` (group IDs are commonly negative).
+4. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in the environment that starts main.py.
+5. Open OI Alerts and select Send test message before enabling live delivery.
 
-TradingView 只用于打开外部图表页面，不参与面板数值计算。
+The dashboard stores neither secret in configuration files nor API responses. OI alert signals are notification-only and never place exchange orders.
+
+一个用于查看 **Binance USDT 永续合约** 行情、持仓量（OI）变化和市场信号的网页面板。
