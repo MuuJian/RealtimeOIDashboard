@@ -11,9 +11,7 @@ from realtime_oi_dashboard.domain.errors import PollingStopped
 from realtime_oi_dashboard.infrastructure.storage.oi_history_cache import (
     HistoryPoint,
     OiHistoryCacheEntry,
-    export_history_cache,
     remaining_valid_seconds,
-    restore_history_cache,
 )
 from realtime_oi_dashboard.domain.oi.history_points import (
     HOUR_MS,
@@ -47,8 +45,9 @@ class OiHistoryService:
         symbol: str,
         current_oi: float,
         current_price: float,
+        measured_wall_time: float,
     ) -> dict[str, float | None]:
-        baselines = self._get_baselines(symbol)
+        baselines = self._get_baselines(symbol, measured_wall_time)
         price_7d_baseline = history_point_price(
             baselines.past_7d_point,
             baselines.target_7d_ms,
@@ -79,13 +78,16 @@ class OiHistoryService:
     def _get_baselines(
         self,
         symbol: str,
+        measured_wall_time: float,
     ) -> _Baselines:
         cached = self._get_cached(symbol)
         if (
             cached is not None
             and cached.is_fresh(time.monotonic())
         ):
-            target_24h_ms, target_7d_ms = _target_timestamps()
+            target_24h_ms, target_7d_ms = _target_timestamps(
+                measured_wall_time
+            )
             return _Baselines(
                 target_24h_ms=target_24h_ms,
                 target_7d_ms=target_7d_ms,
@@ -117,7 +119,7 @@ class OiHistoryService:
                 OI_HISTORY_RETRY_SECONDS,
             )
 
-        target_24h_ms, target_7d_ms = _target_timestamps()
+        target_24h_ms, target_7d_ms = _target_timestamps(measured_wall_time)
         if history_points is not None:
             past_24h_point = self._find_point(
                 symbol,
@@ -210,39 +212,6 @@ class OiHistoryService:
                 if symbol in active_symbols
             }
 
-    def export_cache(self) -> dict[str, dict[str, object]]:
-        """Return restart-safe history baselines with their real expiry time."""
-        monotonic_now = time.monotonic()
-        wall_now = time.time()
-        with self._lock:
-            cache = dict(self._cache)
-        return export_history_cache(
-            cache,
-            monotonic_now=monotonic_now,
-            wall_now=wall_now,
-        )
-
-    def restore_cache(self, records: object) -> int:
-        """Restore still-fresh baselines without extending their cache life."""
-        if not isinstance(records, dict):
-            return 0
-
-        wall_now = time.time()
-        monotonic_now = time.monotonic()
-        target_24h_ms, target_7d_ms = _target_timestamps()
-        restored = restore_history_cache(
-            records,
-            cache_seconds=OI_HISTORY_CACHE_SECONDS,
-            target_24h_ms=target_24h_ms,
-            target_7d_ms=target_7d_ms,
-            wall_now=wall_now,
-            monotonic_now=monotonic_now,
-        )
-
-        with self._lock:
-            self._cache.update(restored)
-        return len(restored)
-
     def clear(self) -> None:
         with self._lock:
             self._cache.clear()
@@ -256,6 +225,6 @@ class _Baselines:
     past_7d_point: HistoryPoint | None
 
 
-def _target_timestamps() -> tuple[int, int]:
-    now_ms = int(time.time() * 1000)
+def _target_timestamps(measured_wall_time: float) -> tuple[int, int]:
+    now_ms = int(measured_wall_time * 1000)
     return now_ms - 24 * HOUR_MS, now_ms - 7 * 24 * HOUR_MS

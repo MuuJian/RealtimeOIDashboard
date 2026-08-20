@@ -36,7 +36,7 @@ http://192.168.xxx.xxx:8777
 
 ## 可选设置
 
-正常使用不需要修改这些参数。需要调整访问方式、更新速度或缓存时间时，可以在启动命令后面添加：
+正常使用不需要修改这些参数。需要调整访问方式或后台更新速度时，可以在启动命令后面添加：
 
 | 参数 | 默认值 | 作用 |
 |---|---:|---|
@@ -45,10 +45,8 @@ http://192.168.xxx.xxx:8777
 | `--oi-batch-size` | `25` | 每批更新的合约数量。调小会降低单批请求量，但完成全部更新需要更久。 |
 | `--oi-batch-delay` | `1` 秒 | 两批 OI 请求之间的等待时间。网络不稳定或请求过快时可以调大。 |
 | `--oi-workers` | `3` | 同时发送的 OI 请求数量。调小可以降低请求压力。 |
-| `--ticker-cache-seconds` | `10` 秒 | OI 使用的 24 小时行情缓存时间。调大可以减少请求次数。 |
 | `--funding-cache-seconds` | `3600` 秒 | 资金费率备用数据的缓存时间。 |
 | `--market-cap-refresh-seconds` | `3600` 秒 | 市值和 FDV 的刷新间隔，默认每小时更新一次。 |
-| `--snapshot-save-interval` | `10` 秒 | 当前 OI 状态保存到本地文件的间隔。 |
 
 例如，网络不稳定或请求过快时，可以降低 OI 更新速度：
 
@@ -87,6 +85,26 @@ npm run lint
 
 ## 数据来源
 
-- Binance Futures：合约价格、OI、成交额、资金费率和历史行情。
-- CoinGecko：币种市值和完全稀释估值（FDV）。
-- TradingView：图表页面。
+下面这张表用来区分“页面更新频率”“后端请求频率”和“缓存时间”。它们不是一回事。
+
+| 页面数据 | 数据接口 | 更新与缓存方式 |
+|---|---|---|
+| 浏览器实时价格、价格(24h)、成交额(24h) | Binance Futures WebSocket `!ticker@arr` | 浏览器直接接收实时推送，不经过后端10秒缓存。断线时自动重连。 |
+| 后端计算使用的价格、价格(24h)、成交额(24h) | Binance REST `/fapi/v1/ticker/24hr` | OI 使用唯一一层内存缓存，固定10秒；不提供启动参数。 |
+| 当前 OI | Binance REST `/fapi/v1/openInterest` | 每个币进入 OI 更新批次时请求一次。 |
+| 持仓(24h)、持仓(7d) | Binance REST `/futures/data/openInterestHist?period=1h&limit=169` | 每个币约一小时请求一次；同一次响应同时计算24h和7d，不是两个请求。只缓存在内存，服务重启后重新获取。 |
+| 价格(7d) | 同一个 `/futures/data/openInterestHist` 响应 | 使用7天前的 `sumOpenInterestValue ÷ sumOpenInterest` 推算历史价格，再与当前价格比较；不是K线收盘价。 |
+| 资金费率 | Binance REST `/fapi/v1/premiumIndex` | 按资金费率时间刷新；`--funding-cache-seconds` 只控制备用缓存。 |
+| 市值与 FDV | CoinGecko `/api/v3/coins/markets` | 默认每小时刷新，由 `--market-cap-refresh-seconds` 控制。 |
+
+### 三个容易混淆的时间
+
+```text
+前端实时价格       = Binance WebSocket 持续推送
+后端 ticker 缓存   = 固定10秒，只减少 REST 重复请求
+历史 OI 基准缓存   = 约1小时，只存在运行内存
+```
+
+项目不再保存 OI 历史基准 JSON 快照。重新部署或重启后，后端会按批次重新获取历史 OI；这不会改变计算公式，只会让刚启动时的24h/7d数据逐步恢复。
+
+TradingView 只用于打开外部图表页面，不参与面板数值计算。

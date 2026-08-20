@@ -24,6 +24,14 @@ class OiHistoryServiceTests(unittest.TestCase):
             "oi_history_cache_seconds",
             inspect.signature(OIPoller).parameters,
         )
+        self.assertNotIn(
+            "ticker_cache_seconds",
+            inspect.signature(BinanceFuturesClient).parameters,
+        )
+        self.assertNotIn(
+            "ticker_cache_seconds",
+            inspect.signature(OIPoller).parameters,
+        )
 
     def test_successful_history_is_cached_for_one_hour(self):
         now_seconds = 2_000_000_000
@@ -48,17 +56,14 @@ class OiHistoryServiceTests(unittest.TestCase):
 
         service = OiHistoryService(fetch_history, lambda *_args: None)
         with patch(
-            "realtime_oi_dashboard.application.oi.history.time.time",
-            return_value=now_seconds,
-        ), patch(
             "realtime_oi_dashboard.application.oi.history.time.monotonic",
             return_value=0,
         ) as monotonic:
-            service.get_changes("BTCUSDT", 110, 105)
+            service.get_changes("BTCUSDT", 110, 105, now_seconds)
             monotonic.return_value = 3_599
-            service.get_changes("BTCUSDT", 110, 105)
+            service.get_changes("BTCUSDT", 110, 105, now_seconds)
             monotonic.return_value = 3_600
-            service.get_changes("BTCUSDT", 110, 105)
+            service.get_changes("BTCUSDT", 110, 105, now_seconds)
 
         self.assertEqual(responses, 2)
 

@@ -10,9 +10,7 @@ from realtime_oi_dashboard.domain.errors import PollingStopped
 from realtime_oi_dashboard.infrastructure.storage.market_cache import MarketCache
 from realtime_oi_dashboard.domain.market_data import (
     incomplete_funding_symbols,
-    incomplete_market_ticker_symbols,
     merge_funding_cache,
-    merge_market_ticker_cache,
     parse_funding_rates,
     parse_market_tickers,
 )
@@ -38,7 +36,6 @@ class BinanceFuturesClient:
         stop_event: threading.Event,
         record_error: Callable[[str, Exception], None],
         *,
-        ticker_cache_seconds: float,
         funding_cache_seconds: float,
         http_client=None,
         market_data=None,
@@ -66,11 +63,7 @@ class BinanceFuturesClient:
             legacy_shared_cache=shared_rest_cache,
             direct_factory=lambda: DirectBinanceMarketData(self.request_json),
         )
-        self.market_cache_lock = threading.Lock()
-        self.ticker_cache = MarketCache(
-            ticker_cache_seconds,
-            MARKET_CACHE_STALE_GRACE_SECONDS,
-        )
+        self.funding_cache_lock = threading.Lock()
         self.funding_cache = MarketCache(
             funding_cache_seconds,
             MARKET_CACHE_STALE_GRACE_SECONDS,
@@ -122,80 +115,16 @@ class BinanceFuturesClient:
         self,
         active_symbols: set[str],
     ) -> dict[str, dict[str, float | None]]:
-        now = time.monotonic()
-        with self.market_cache_lock:
-            lookup = self.ticker_cache.get_fresh(now)
-            if lookup.hit:
-                return lookup.value
-
-        try:
-            response = self.market_data.get_tickers()
-            self._raise_if_stopped()
-            tickers = parse_market_tickers(response, active_symbols)
-            response_time = time.monotonic()
-            incomplete_symbols = incomplete_market_ticker_symbols(
-                tickers, active_symbols
-            )
-            cached_values = {}
-            if incomplete_symbols:
-                with self.market_cache_lock:
-                    cached_values = self.ticker_cache.copy_for_merge(
-                        response_time,
-                        incomplete_symbols,
-                    )
-                merge_market_ticker_cache(
-                    tickers,
-                    cached_values,
-                )
-            if incomplete_symbols:
-                self.record_error(
-                    "ticker24h",
-                    ValueError(
-                        "ticker response incomplete for "
-                        f"{len(incomplete_symbols)} active symbols"
-                    ),
-                )
-        except PollingStopped:
-            raise
-        except Exception as exc:
-            failure_time = time.monotonic()
-            with self.market_cache_lock:
-                fallback = self.ticker_cache.fallback_after_failure(
-                    failure_time,
-                    min(
-                        self.ticker_cache.cache_seconds,
-                        PARTIAL_RESPONSE_RETRY_SECONDS,
-                    ),
-                    throttle_without_value=False,
-                )
-            if fallback.hit:
-                self.record_error("ticker24h", exc)
-                return fallback.value
-            raise
-
-        with self.market_cache_lock:
-            refresh_in = self.ticker_cache.cache_seconds
-            if incomplete_symbols:
-                refresh_in = min(
-                    self.ticker_cache.cache_seconds,
-                    PARTIAL_RESPONSE_RETRY_SECONDS,
-                )
-            self.ticker_cache.store(
-                tickers,
-                response_time,
-                refresh_in,
-                preserve_stale_deadline=bool(
-                    incomplete_symbols and cached_values
-                ),
-            )
-        return tickers
+        response = self.market_data.get_tickers()
+        self._raise_if_stopped()
+        return parse_market_tickers(response, active_symbols)
 
     def get_funding_rates(
         self,
         active_symbols: set[str],
     ) -> dict[str, dict[str, float | int | None]] | None:
         now = time.monotonic()
-        with self.market_cache_lock:
+        with self.funding_cache_lock:
             lookup = self.funding_cache.get_fresh(now)
             if lookup.hit:
                 return lookup.value
@@ -215,7 +144,7 @@ class BinanceFuturesClient:
             )
             cached_values = {}
             if incomplete_symbols:
-                with self.market_cache_lock:
+                with self.funding_cache_lock:
                     cached_values = self.funding_cache.copy_for_merge(
                         response_time,
                         incomplete_symbols,
@@ -238,7 +167,7 @@ class BinanceFuturesClient:
             raise
         except Exception as exc:
             failure_time = time.monotonic()
-            with self.market_cache_lock:
+            with self.funding_cache_lock:
                 fallback = self.funding_cache.fallback_after_failure(
                     failure_time,
                     min(
@@ -250,7 +179,7 @@ class BinanceFuturesClient:
             self.record_error("funding", exc)
             return fallback.value if fallback.hit else None
 
-        with self.market_cache_lock:
+        with self.funding_cache_lock:
             refresh_at = self._next_funding_refresh_at(
                 wall_time,
                 next_funding_times,
@@ -308,8 +237,14 @@ class BinanceFuturesClient:
         symbol: str,
         current_oi: float,
         current_price: float,
+        measured_wall_time: float,
     ) -> dict[str, float | None]:
-        return self.oi_history.get_changes(symbol, current_oi, current_price)
+        return self.oi_history.get_changes(
+            symbol,
+            current_oi,
+            current_price,
+            measured_wall_time,
+        )
 
     def _fetch_oi_history(self, symbol: str):
         return self.request_json(
@@ -325,25 +260,16 @@ class BinanceFuturesClient:
         reset_market_caches: bool = False,
     ) -> None:
         self.oi_history.retain_symbols(active_symbols)
-        with self.market_cache_lock:
+        with self.funding_cache_lock:
             if reset_market_caches:
-                self.ticker_cache.clear()
                 self.funding_cache.clear()
             else:
-                self.ticker_cache.retain_symbols(active_symbols)
                 self.funding_cache.retain_symbols(active_symbols)
 
     def clear_caches(self) -> None:
         self.oi_history.clear()
-        with self.market_cache_lock:
-            self.ticker_cache.clear()
+        with self.funding_cache_lock:
             self.funding_cache.clear()
-
-    def export_oi_history_cache(self) -> dict[str, dict[str, object]]:
-        return self.oi_history.export_cache()
-
-    def restore_oi_history_cache(self, records: object) -> int:
-        return self.oi_history.restore_cache(records)
 
     def close(self) -> None:
         if self._owns_http_client:

@@ -22,10 +22,6 @@ from realtime_oi_dashboard.application.oi.health import PollerClock, RecentError
 from realtime_oi_dashboard.application.oi.presenter import DashboardPresenter
 from realtime_oi_dashboard.application.oi.runtime import DashboardRuntime
 from realtime_oi_dashboard.domain.oi.state import OiStateStore
-from realtime_oi_dashboard.infrastructure.storage.oi_snapshot import (
-    SnapshotRepository,
-    SnapshotService,
-)
 from realtime_oi_dashboard.application.oi.symbol_refresher import SymbolRefresher
 
 
@@ -47,11 +43,8 @@ class OIPoller:
         batch_delay=1.0,
         oi_workers=3,
         refresh_symbols_interval=900,
-        ticker_cache_seconds=10,
         funding_cache_seconds=3600,
         market_cap_cache_seconds=DEFAULT_MARKET_CAP_REFRESH_SECONDS,
-        snapshot_save_interval=10,
-        snapshot_file=None,
         market_cap_file=None,
         http_client=None,
         shared_rest_cache=None,
@@ -63,10 +56,6 @@ class OIPoller:
             "refresh_symbols_interval",
             refresh_symbols_interval,
         )
-        ticker_cache_seconds = _positive_seconds(
-            "ticker_cache_seconds",
-            ticker_cache_seconds,
-        )
         funding_cache_seconds = _non_negative_seconds(
             "funding_cache_seconds",
             funding_cache_seconds,
@@ -74,15 +63,6 @@ class OIPoller:
         market_cap_cache_seconds = _non_negative_seconds(
             "market_cap_cache_seconds",
             market_cap_cache_seconds,
-        )
-        self.snapshot_save_interval = _non_negative_seconds(
-            "snapshot_save_interval",
-            snapshot_save_interval,
-        )
-        self.snapshot_file = (
-            Path(snapshot_file)
-            if snapshot_file
-            else DATA_DIR / "latest_oi.json"
         )
         self.market_cap_file = (
             Path(market_cap_file)
@@ -105,7 +85,6 @@ class OIPoller:
         self.binance = BinanceFuturesClient(
             self.stop_event,
             self.record_symbol_error,
-            ticker_cache_seconds=ticker_cache_seconds,
             funding_cache_seconds=funding_cache_seconds,
             http_client=self.http_client,
             shared_rest_cache=shared_rest_cache,
@@ -128,23 +107,12 @@ class OIPoller:
             self.record_symbol_error,
             workers=self.oi_workers,
         )
-        self.snapshot_service = SnapshotService(
-            SnapshotRepository(self.snapshot_file),
-            lambda: self._snapshot_symbols(),
-            self.binance.export_oi_history_cache,
-            save_interval=self.snapshot_save_interval,
-            iso_now=iso_now,
-            timestamp=timestamp,
-        )
-        loaded_cache = self.load_previous_cache()
-        self.binance.restore_oi_history_cache(loaded_cache.oi_history)
         self.symbol_refresher = SymbolRefresher(
             self.get_active_symbols,
             self.record_symbol_error,
             self.stop_event,
             self.lock,
             refresh_interval=self.refresh_symbols_interval,
-            known_symbols=loaded_cache.known_symbols,
         )
         self.oi_state = OiStateStore(
             max_age_seconds=ROW_MAX_AGE_SECONDS,
@@ -178,22 +146,12 @@ class OIPoller:
             timestamp=timestamp,
         )
 
-    def load_previous_cache(self):
-        return self.snapshot_service.load()
-
     def record_symbol_error(self, symbol, exc):
         if self.error_log.record(symbol, exc):
             print(f"{timestamp()} {symbol} update failed: {exc}")
 
     def recent_errors(self):
         return self.error_log.recent()
-
-    def save_state(self, *, force=False):
-        return self.snapshot_service.save(force=force)
-
-    def _snapshot_symbols(self):
-        with self.lock:
-            return set(self.symbols or self.known_symbols)
 
     def get_active_symbols(self):
         return self.binance.get_active_symbols()
@@ -272,10 +230,6 @@ class OIPoller:
             self.clock.clear_success()
             self.binance.clear_caches()
 
-        # Snapshot saving acquires its own lock before reading dashboard
-        # state. Reset it only after releasing the state lock so concurrent
-        # final saves cannot encounter the opposite lock order.
-        self.snapshot_service.reset_schedule()
         return True
 
     def next_batch(self):
@@ -346,8 +300,6 @@ class OIPoller:
                 "saved_at": iso_now(saved_at_wall_clock),
                 "error": None,
             }
-        self.save_state()
-
     def update_symbols(self, batch, tickers, funding_rates, market_caps, executor=None):
         return self.batch_runner.run(
             batch,

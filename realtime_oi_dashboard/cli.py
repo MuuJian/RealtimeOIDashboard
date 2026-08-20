@@ -74,15 +74,6 @@ def parse_args(argv=None):
         help="parallel OI requests",
     )
     parser.add_argument(
-        "--ticker-cache-seconds",
-        type=positive_float,
-        default=10,
-        help=(
-            "seconds to reuse one futures 24h ticker response for OI; "
-            "must be greater than 0"
-        ),
-    )
-    parser.add_argument(
         "--funding-cache-seconds",
         type=non_negative_float,
         default=3600,
@@ -98,11 +89,5 @@ def parse_args(argv=None):
             "seconds between background CoinGecko refresh rounds; "
             "0 uses only the minimum per-page interval"
         ),
-    )
-    parser.add_argument(
-        "--snapshot-save-interval",
-        type=non_negative_float,
-        default=10,
-        help="seconds between atomic cache writes; 0 writes every batch",
     )
     return parser.parse_args(argv)

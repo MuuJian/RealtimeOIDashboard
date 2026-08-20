@@ -105,35 +105,6 @@ def parse_funding_rates(response, active_symbols, now_ms):
     return funding_rates, next_funding_times
 
 
-def incomplete_market_ticker_symbols(tickers, active_symbols):
-    incomplete_symbols = active_symbols.difference(tickers)
-    incomplete_symbols.update(
-        symbol
-        for symbol, ticker in tickers.items()
-        if ticker["volume24h"] is None
-        or ticker["priceChangePercent"] is None
-    )
-    return incomplete_symbols
-
-
-def merge_market_ticker_cache(tickers, cached):
-    """Fill fields missing from a partial ticker response with usable cache."""
-
-    for symbol, cached_ticker in cached.items():
-        if not cached_ticker:
-            continue
-        ticker = tickers.get(symbol)
-        if ticker is None:
-            tickers[symbol] = dict(cached_ticker)
-            continue
-        for field in ("volume24h", "priceChangePercent"):
-            if ticker[field] is not None:
-                continue
-            cached_value = optional_float(cached_ticker.get(field))
-            if cached_value is not None:
-                ticker[field] = cached_value
-
-
 def incomplete_funding_symbols(funding_rates, active_symbols):
     incomplete_symbols = active_symbols.difference(funding_rates)
     incomplete_symbols.update(

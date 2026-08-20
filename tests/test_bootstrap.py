@@ -15,17 +15,8 @@ class FakeArgs:
     oi_workers = 1
 
 
-class FakeWorker:
-    def __init__(self):
-        self.saved_state = False
-
-    def save_state(self, force=False):
-        self.saved_state = force
-
-
 class FakeService:
     def __init__(self, *, should_fail_start=False):
-        self.worker = FakeWorker()
         self.should_fail_start = should_fail_start
         self.started = False
         self.closed = False
@@ -122,10 +113,8 @@ class MainTests(unittest.TestCase):
     def test_create_oi_service_returns_a_background_service(self):
         args = FakeArgs()
         args.oi_history_cache_seconds = 300
-        args.ticker_cache_seconds = 10
         args.funding_cache_seconds = 3600
         args.market_cap_cache_seconds = 3600
-        args.snapshot_save_interval = 10
 
         service = bootstrap.create_oi_service(args)
 

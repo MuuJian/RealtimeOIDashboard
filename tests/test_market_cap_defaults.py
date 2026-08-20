@@ -31,7 +31,6 @@ class MarketCapRefreshDefaultTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             poller = OIPoller(
-                snapshot_file=root / "latest_oi.json",
                 market_cap_file=root / "market_caps.json",
                 http_client=StubHttpClient(),
             )

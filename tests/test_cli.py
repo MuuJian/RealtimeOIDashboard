@@ -16,10 +16,16 @@ class ParseArgsTests(unittest.TestCase):
         self.assertEqual(args.port, 8777)
         self.assertEqual(args.market_cap_cache_seconds, 3_600)
         self.assertFalse(hasattr(args, "oi_history_cache_seconds"))
+        self.assertFalse(hasattr(args, "ticker_cache_seconds"))
+        self.assertFalse(hasattr(args, "snapshot_save_interval"))
 
     def test_oi_history_cache_option_is_removed(self):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             parse_args(["--oi-history-cache-seconds", "300"])
+
+    def test_oi_snapshot_option_is_removed(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parse_args(["--snapshot-save-interval", "300"])
 
     def test_platform_port_enables_public_bind(self):
         with patch.dict(os.environ, {"PORT": "8080"}, clear=True):
@@ -54,9 +60,9 @@ class ParseArgsTests(unittest.TestCase):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             parse_args(["--oi-workers", "0"])
 
-    def test_zero_ticker_cache_is_rejected(self):
+    def test_ticker_cache_option_is_internal(self):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-            parse_args(["--ticker-cache-seconds", "0"])
+            parse_args(["--ticker-cache-seconds", "5"])
 
     def test_legacy_market_cap_option_remains_supported(self):
         args = parse_args(["--market-cap-cache-seconds", "7200"])
