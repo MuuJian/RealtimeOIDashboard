@@ -5,6 +5,9 @@ from unittest.mock import patch
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
 from realtime_oi_dashboard.application.oi.batch import OIBatchRunner
+from realtime_oi_dashboard.infrastructure.binance.futures_client import (
+    OpenInterestSnapshot,
+)
 
 
 class FakeClient:
@@ -12,16 +15,16 @@ class FakeClient:
         self.history_wall_times = []
 
     def get_open_interest(self, symbol):
-        return 4.0
+        return OpenInterestSnapshot(value=4.0, timestamp_ms=1_700_000_123_456)
 
     def get_oi_history_changes(
         self,
         symbol,
         current_oi,
         current_price,
-        measured_wall_time,
+        current_timestamp_ms,
     ):
-        self.history_wall_times.append(measured_wall_time)
+        self.history_wall_times.append(current_timestamp_ms)
         return {"oiChangePercent24h": 25.0, "oiChangePercent7d": 50.0}
 
 
@@ -122,14 +125,13 @@ class OIBatchRunnerTests(unittest.TestCase):
         funding_rates = {
             "BTCUSDT": {
                 "fundingRatePercent": 0.01,
-                "nextFundingTime": 1_700_000_100_000,
+                "nextFundingTime": 1_700_000_200_000,
             }
         }
         market_caps = {"BTCUSDT": {"marketCap": 2_000.0}}
 
         client = FakeClient()
         with (
-            patch("realtime_oi_dashboard.application.oi.batch.time.time", return_value=1_700_000_000),
             patch(
                 "realtime_oi_dashboard.application.oi.batch.time.monotonic",
                 return_value=123.0,
@@ -144,7 +146,7 @@ class OIBatchRunnerTests(unittest.TestCase):
 
         self.assertEqual(update.symbol, "BTCUSDT")
         self.assertEqual(update.measured_at, 123.0)
-        self.assertEqual(client.history_wall_times, [1_700_000_000])
+        self.assertEqual(client.history_wall_times, [1_700_000_123_456])
         self.assertEqual(
             update.row,
             {
@@ -154,10 +156,10 @@ class OIBatchRunnerTests(unittest.TestCase):
                 "currentOi": 4.0,
                 "currentOiValue": 40.0,
                 "marketCap": 2_000.0,
-                "oiUpdatedAt": 1_700_000_000_000,
+                "oiUpdatedAt": 1_700_000_123_456,
                 "priceChangePercent": 2.5,
                 "fundingRatePercent": 0.01,
-                "nextFundingTime": 1_700_000_100_000,
+                "nextFundingTime": 1_700_000_200_000,
                 "oiChangePercent24h": 25.0,
                 "oiChangePercent7d": 50.0,
             },

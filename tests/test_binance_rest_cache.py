@@ -12,6 +12,9 @@ from realtime_oi_dashboard.infrastructure.binance.rest_cache import (
 )
 
 
+OPEN_INTEREST_URL = "https://fapi.binance.com/fapi/v1/openInterest"
+
+
 def ticker_payload():
     return [
         {
@@ -57,6 +60,11 @@ class FakeHttpClient:
     def __init__(self):
         self.tickers = ticker_payload()
         self.exchange_info = exchange_info_payload()
+        self.open_interest = {
+            "symbol": "BTCUSDT",
+            "openInterest": "123.45",
+            "time": 1_700_000_123_456,
+        }
         self.calls = []
         self.error = None
         self.request_started = None
@@ -73,6 +81,8 @@ class FakeHttpClient:
             return self.tickers
         if url == EXCHANGE_INFO_URL:
             return self.exchange_info
+        if url == OPEN_INTEREST_URL:
+            return self.open_interest
         raise AssertionError(f"unexpected URL: {url}")
 
 
@@ -222,6 +232,38 @@ class BinanceRestCacheTests(unittest.TestCase):
         self.assertEqual(client.calls.count(TICKER_URL), 1)
         self.assertEqual(client.calls.count(EXCHANGE_INFO_URL), 1)
         self.assertEqual(errors, [])
+
+    def test_current_oi_preserves_binance_transaction_time(self):
+        stop_event = threading.Event()
+        http_client = FakeHttpClient()
+        oi_client = BinanceFuturesClient(
+            stop_event,
+            lambda *_args: None,
+            funding_cache_seconds=3600,
+            http_client=http_client,
+        )
+
+        snapshot = oi_client.get_open_interest("BTCUSDT")
+
+        self.assertEqual(snapshot.value, 123.45)
+        self.assertEqual(snapshot.timestamp_ms, 1_700_000_123_456)
+
+    def test_current_oi_rejects_response_without_binance_time(self):
+        stop_event = threading.Event()
+        http_client = FakeHttpClient()
+        http_client.open_interest = {
+            "symbol": "BTCUSDT",
+            "openInterest": "123.45",
+        }
+        oi_client = BinanceFuturesClient(
+            stop_event,
+            lambda *_args: None,
+            funding_cache_seconds=3600,
+            http_client=http_client,
+        )
+
+        with self.assertRaisesRegex(ValueError, "open-interest response"):
+            oi_client.get_open_interest("BTCUSDT")
 
     def test_oi_observes_shared_ticker_refresh_without_a_second_ttl(self):
         cache, client, clock = self.create_cache()

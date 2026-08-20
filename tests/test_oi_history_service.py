@@ -59,11 +59,11 @@ class OiHistoryServiceTests(unittest.TestCase):
             "realtime_oi_dashboard.application.oi.history.time.monotonic",
             return_value=0,
         ) as monotonic:
-            service.get_changes("BTCUSDT", 110, 105, now_seconds)
+            service.get_changes("BTCUSDT", 110, 105, now_ms)
             monotonic.return_value = 3_599
-            service.get_changes("BTCUSDT", 110, 105, now_seconds)
+            service.get_changes("BTCUSDT", 110, 105, now_ms)
             monotonic.return_value = 3_600
-            service.get_changes("BTCUSDT", 110, 105, now_seconds)
+            service.get_changes("BTCUSDT", 110, 105, now_ms)
 
         self.assertEqual(responses, 2)
 

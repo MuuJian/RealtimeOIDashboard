@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
 from realtime_oi_dashboard.infrastructure.storage.market_cache import MarketCache
@@ -20,12 +21,20 @@ from realtime_oi_dashboard.infrastructure.binance.market_data import (
     DirectBinanceMarketData,
     resolve_market_data_source,
 )
-from realtime_oi_dashboard.domain.parsing import optional_float
+from realtime_oi_dashboard.domain.parsing import optional_float, optional_int
 from realtime_oi_dashboard.domain.symbols import is_valid_binance_symbol
 
 
 PARTIAL_RESPONSE_RETRY_SECONDS = 60
 MARKET_CACHE_STALE_GRACE_SECONDS = 15 * 60
+
+
+@dataclass(frozen=True, slots=True)
+class OpenInterestSnapshot:
+    """One current OI value and its Binance transaction timestamp."""
+
+    value: float
+    timestamp_ms: int
 
 
 class BinanceFuturesClient:
@@ -217,7 +226,7 @@ class BinanceFuturesClient:
 
         return now + self.funding_cache.cache_seconds
 
-    def get_open_interest(self, symbol: str) -> float:
+    def get_open_interest(self, symbol: str) -> OpenInterestSnapshot:
         data = self.request_json(
             self.oi_url,
             params={"symbol": symbol},
@@ -228,22 +237,32 @@ class BinanceFuturesClient:
             if isinstance(data, dict)
             else None
         )
-        if value is None or value < 0:
+        timestamp_ms = (
+            optional_int(data.get("time"))
+            if isinstance(data, dict)
+            else None
+        )
+        if (
+            value is None
+            or value < 0
+            or timestamp_ms is None
+            or timestamp_ms <= 0
+        ):
             raise ValueError("unexpected open-interest response")
-        return value
+        return OpenInterestSnapshot(value=value, timestamp_ms=timestamp_ms)
 
     def get_oi_history_changes(
         self,
         symbol: str,
         current_oi: float,
         current_price: float,
-        measured_wall_time: float,
+        current_timestamp_ms: int,
     ) -> dict[str, float | None]:
         return self.oi_history.get_changes(
             symbol,
             current_oi,
             current_price,
-            measured_wall_time,
+            current_timestamp_ms,
         )
 
     def _fetch_oi_history(self, symbol: str):

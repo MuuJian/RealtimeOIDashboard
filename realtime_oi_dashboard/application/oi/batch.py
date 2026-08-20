@@ -155,8 +155,8 @@ class OIBatchRunner:
             raise ValueError("ticker data unavailable")
         price = ticker["price"]
 
-        current_oi = self.client.get_open_interest(symbol)
-        measured_wall_time = time.time()
+        oi_snapshot = self.client.get_open_interest(symbol)
+        current_oi = oi_snapshot.value
         measured_at = time.monotonic()
         if self.stop_event.is_set():
             return None
@@ -170,7 +170,7 @@ class OIBatchRunner:
             symbol,
             current_oi,
             price,
-            measured_wall_time,
+            oi_snapshot.timestamp_ms,
         )
         return self.row_builder.build(
             symbol=symbol,
@@ -179,6 +179,6 @@ class OIBatchRunner:
             market_cap=(market_caps or {}).get(symbol, {}).get("marketCap"),
             current_oi=current_oi,
             oi_history=oi_history,
-            measured_wall_time=measured_wall_time,
+            oi_timestamp_ms=oi_snapshot.timestamp_ms,
             measured_at=measured_at,
         )
