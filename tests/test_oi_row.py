@@ -22,7 +22,7 @@ class OIRowBuilderTests(unittest.TestCase):
                 "oiChange24h": 1.25,
                 "oiChange7d": -2.5,
             },
-            measured_wall_time=1_000.0,
+            oi_timestamp_ms=1_000_000,
             measured_at=200.0,
         )
 

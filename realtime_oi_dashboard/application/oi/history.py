@@ -45,9 +45,9 @@ class OiHistoryService:
         symbol: str,
         current_oi: float,
         current_price: float,
-        measured_wall_time: float,
+        current_timestamp_ms: int,
     ) -> dict[str, float | None]:
-        baselines = self._get_baselines(symbol, measured_wall_time)
+        baselines = self._get_baselines(symbol, current_timestamp_ms)
         price_7d_baseline = history_point_price(
             baselines.past_7d_point,
             baselines.target_7d_ms,
@@ -78,7 +78,7 @@ class OiHistoryService:
     def _get_baselines(
         self,
         symbol: str,
-        measured_wall_time: float,
+        current_timestamp_ms: int,
     ) -> _Baselines:
         cached = self._get_cached(symbol)
         if (
@@ -86,7 +86,7 @@ class OiHistoryService:
             and cached.is_fresh(time.monotonic())
         ):
             target_24h_ms, target_7d_ms = _target_timestamps(
-                measured_wall_time
+                current_timestamp_ms
             )
             return _Baselines(
                 target_24h_ms=target_24h_ms,
@@ -119,7 +119,7 @@ class OiHistoryService:
                 OI_HISTORY_RETRY_SECONDS,
             )
 
-        target_24h_ms, target_7d_ms = _target_timestamps(measured_wall_time)
+        target_24h_ms, target_7d_ms = _target_timestamps(current_timestamp_ms)
         if history_points is not None:
             past_24h_point = self._find_point(
                 symbol,
@@ -225,6 +225,8 @@ class _Baselines:
     past_7d_point: HistoryPoint | None
 
 
-def _target_timestamps(measured_wall_time: float) -> tuple[int, int]:
-    now_ms = int(measured_wall_time * 1000)
-    return now_ms - 24 * HOUR_MS, now_ms - 7 * 24 * HOUR_MS
+def _target_timestamps(current_timestamp_ms: int) -> tuple[int, int]:
+    return (
+        current_timestamp_ms - 24 * HOUR_MS,
+        current_timestamp_ms - 7 * 24 * HOUR_MS,
+    )

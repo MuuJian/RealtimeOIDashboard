@@ -20,7 +20,7 @@ class OIRowBuilder:
         market_cap,
         current_oi,
         oi_history,
-        measured_wall_time,
+        oi_timestamp_ms,
         measured_at,
     ):
         if not ticker:
@@ -34,10 +34,9 @@ class OIRowBuilder:
 
         funding = funding or {}
         funding_rate_percent = funding.get("fundingRatePercent")
-        now_ms = int(measured_wall_time * 1000)
         next_funding_time = future_timestamp_ms(
             funding.get("nextFundingTime"),
-            now_ms,
+            oi_timestamp_ms,
         )
         return OiUpdate(
             symbol=symbol,
@@ -48,7 +47,7 @@ class OIRowBuilder:
                 "currentOi": current_oi,
                 "currentOiValue": current_oi_value,
                 "marketCap": market_cap,
-                "oiUpdatedAt": now_ms,
+                "oiUpdatedAt": oi_timestamp_ms,
                 "priceChangePercent": ticker.get("priceChangePercent"),
                 "fundingRatePercent": funding_rate_percent,
                 "nextFundingTime": next_funding_time,
