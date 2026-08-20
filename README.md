@@ -1,5 +1,20 @@
 # Realtime OI Dashboard
 
+## OI 告警 Telegram 设置
+
+1. 在 Telegram 中打开 `@BotFather`，发送 `/newbot` 创建机器人。
+2. 打开与新机器人的私聊并发送 `/start`，或者将机器人加入接收告警的群组。
+3. 向机器人私聊或目标群组发送一条消息后，在 PowerShell 中运行以下命令获取聊天 ID：
+   ```powershell
+   $updates = Invoke-RestMethod "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/getUpdates"
+   $updates.result[-1].message.chat.id
+   ```
+   将返回值设置为 `TELEGRAM_CHAT_ID`；群组 ID 通常为负数。
+4. 在启动 `main.py` 的运行环境中设置 `TELEGRAM_BOT_TOKEN` 和 `TELEGRAM_CHAT_ID`。
+5. 打开面板中的 OI 告警页面，先点击“發送測試訊息”确认配置正常，再启用实时通知。
+
+面板不会把这两个敏感值写入配置文件，也不会通过 API 响应返回。OI 告警只发送通知，绝不会自动下单。
+
 ## 安装
 
 需要 Python 3.10 或更高版本。前端检查需要 Node.js 22 或更高版本和 npm 10 或更高版本。
