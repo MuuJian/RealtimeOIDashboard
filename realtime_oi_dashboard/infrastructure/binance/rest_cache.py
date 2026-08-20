@@ -9,6 +9,10 @@ from math import isfinite
 from typing import Any, Callable
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
+from realtime_oi_dashboard.domain.market_data import (
+    MAX_SYMBOL_REMOVAL_FRACTION,
+    MIN_EXPECTED_ACTIVE_SYMBOLS,
+)
 from realtime_oi_dashboard.infrastructure.binance.market_data import (
     EXCHANGE_INFO_URL,
     TICKER_24H_URL,
@@ -46,6 +50,9 @@ class _SharedResource:
         retry_seconds: float,
         monotonic: Callable[[], float],
         error_message: str,
+        validate_transition: (
+            Callable[[object, object | None], bool] | None
+        ) = None,
     ) -> None:
         self._load = load
         self._validate = validate
@@ -54,6 +61,7 @@ class _SharedResource:
         self._retry_seconds = retry_seconds
         self._monotonic = monotonic
         self._error_message = error_message
+        self._validate_transition = validate_transition
         self._state_lock = threading.Lock()
         self._refresh_lock = threading.Lock()
         self._entry = _CacheEntry()
@@ -75,6 +83,14 @@ class _SharedResource:
             try:
                 value = self._load()
                 if not self._validate(value):
+                    raise ValueError(self._error_message)
+                if (
+                    self._validate_transition is not None
+                    and not self._validate_transition(
+                        value,
+                        self._stale_value(),
+                    )
+                ):
                     raise ValueError(self._error_message)
             except PollingStopped:
                 raise
@@ -130,6 +146,13 @@ class _SharedResource:
             )
             return self._entry.value
 
+    def _stale_value(self):
+        now = self._monotonic()
+        with self._state_lock:
+            if self._entry.value is None or now >= self._entry.stale_at:
+                return None
+            return self._entry.value
+
     def _store_retry_error(self, error: Exception) -> None:
         now = self._monotonic()
         with self._state_lock:
@@ -145,7 +168,6 @@ class CachedBinanceMarketData:
         *,
         http_client=None,
         source=None,
-        ticker_cache_seconds: float = TICKER_CACHE_SECONDS,
         exchange_info_cache_seconds: float = EXCHANGE_INFO_CACHE_SECONDS,
         ticker_stale_grace_seconds: float = TICKER_STALE_GRACE_SECONDS,
         exchange_info_stale_grace_seconds: float = (
@@ -162,10 +184,6 @@ class CachedBinanceMarketData:
         if not callable(monotonic):
             raise TypeError("monotonic must be callable")
 
-        ticker_cache_seconds = _positive_seconds(
-            "ticker_cache_seconds",
-            ticker_cache_seconds,
-        )
         exchange_info_cache_seconds = _positive_seconds(
             "exchange_info_cache_seconds",
             exchange_info_cache_seconds,
@@ -201,11 +219,12 @@ class CachedBinanceMarketData:
         self._tickers = _SharedResource(
             self._source.get_tickers,
             _is_ticker_payload,
-            cache_seconds=ticker_cache_seconds,
+            cache_seconds=TICKER_CACHE_SECONDS,
             stale_grace_seconds=ticker_stale_grace_seconds,
-            retry_seconds=min(TICKER_RETRY_SECONDS, ticker_cache_seconds),
+            retry_seconds=TICKER_RETRY_SECONDS,
             monotonic=monotonic,
             error_message="unexpected ticker response",
+            validate_transition=_ticker_transition_is_valid,
         )
         self._exchange_info = _SharedResource(
             self._source.get_exchange_info,
@@ -266,14 +285,30 @@ class CachedBinanceMarketData:
 
 
 def _is_ticker_payload(value: object) -> bool:
+    return len(_ticker_symbols(value)) >= MIN_EXPECTED_ACTIVE_SYMBOLS
+
+
+def _ticker_transition_is_valid(value: object, previous: object | None) -> bool:
+    if previous is None:
+        return True
+    previous_symbols = _ticker_symbols(previous)
+    current_symbols = _ticker_symbols(value)
+    removed_symbols = previous_symbols - current_symbols
+    return len(removed_symbols) <= (
+        len(previous_symbols) * MAX_SYMBOL_REMOVAL_FRACTION
+    )
+
+
+def _ticker_symbols(value: object) -> set[str]:
     if not isinstance(value, list):
-        return False
-    return any(
-        isinstance(item, dict)
+        return set()
+    return {
+        item["symbol"]
+        for item in value
+        if isinstance(item, dict)
         and isinstance(item.get("symbol"), str)
         and bool(item["symbol"])
-        for item in value
-    )
+    }
 
 
 def _is_exchange_info_payload(value: object) -> bool:

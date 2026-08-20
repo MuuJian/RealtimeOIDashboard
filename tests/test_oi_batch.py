@@ -8,10 +8,20 @@ from realtime_oi_dashboard.application.oi.batch import OIBatchRunner
 
 
 class FakeClient:
+    def __init__(self):
+        self.history_wall_times = []
+
     def get_open_interest(self, symbol):
         return 4.0
 
-    def get_oi_history_changes(self, symbol, current_oi, current_price):
+    def get_oi_history_changes(
+        self,
+        symbol,
+        current_oi,
+        current_price,
+        measured_wall_time,
+    ):
+        self.history_wall_times.append(measured_wall_time)
         return {"oiChangePercent24h": 25.0, "oiChangePercent7d": 50.0}
 
 
@@ -117,6 +127,7 @@ class OIBatchRunnerTests(unittest.TestCase):
         }
         market_caps = {"BTCUSDT": {"marketCap": 2_000.0}}
 
+        client = FakeClient()
         with (
             patch("realtime_oi_dashboard.application.oi.batch.time.time", return_value=1_700_000_000),
             patch(
@@ -124,7 +135,7 @@ class OIBatchRunnerTests(unittest.TestCase):
                 return_value=123.0,
             ),
         ):
-            update = self.updater().build_symbol_update(
+            update = self.updater(client=client).build_symbol_update(
                 "BTCUSDT",
                 tickers,
                 funding_rates,
@@ -133,6 +144,7 @@ class OIBatchRunnerTests(unittest.TestCase):
 
         self.assertEqual(update.symbol, "BTCUSDT")
         self.assertEqual(update.measured_at, 123.0)
+        self.assertEqual(client.history_wall_times, [1_700_000_000])
         self.assertEqual(
             update.row,
             {

@@ -326,7 +326,6 @@ class OIPollerAlertIntegrationTests(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         poller = OIPoller(
-            snapshot_file=Path(directory.name) / "latest_oi.json",
             market_cap_file=Path(directory.name) / "market-caps.json",
             alert_service=alert_service,
         )
@@ -336,7 +335,6 @@ class OIPollerAlertIntegrationTests(unittest.TestCase):
             tickers={}, funding_rates={}, market_caps={}
         )
         poller._reset_after_clock_discontinuity = lambda: False
-        poller.save_state = lambda: None
         return poller
 
     def test_successful_state_updates_are_observed_after_application(self):

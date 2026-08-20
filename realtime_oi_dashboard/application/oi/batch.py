@@ -170,6 +170,7 @@ class OIBatchRunner:
             symbol,
             current_oi,
             price,
+            measured_wall_time,
         )
         return self.row_builder.build(
             symbol=symbol,

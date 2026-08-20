@@ -22,7 +22,7 @@ SHUTDOWN_TIMEOUT_SECONDS = 15
 
 def main(argv=None):
     args = parse_args(argv)
-    shared_rest_cache = create_shared_rest_cache(args)
+    shared_rest_cache = create_shared_rest_cache()
     cvd_service = None
     if getattr(args, "cvd_enabled", True):
         try:
@@ -61,10 +61,8 @@ def main(argv=None):
     )
 
 
-def create_shared_rest_cache(args):
-    return BinanceRestCache(
-        ticker_cache_seconds=getattr(args, "ticker_cache_seconds", 10),
-    )
+def create_shared_rest_cache():
+    return BinanceRestCache()
 
 
 def create_oi_service(
@@ -77,10 +75,8 @@ def create_oi_service(
         batch_size=args.oi_batch_size,
         batch_delay=args.oi_batch_delay,
         oi_workers=args.oi_workers,
-        ticker_cache_seconds=args.ticker_cache_seconds,
         funding_cache_seconds=args.funding_cache_seconds,
         market_cap_cache_seconds=args.market_cap_cache_seconds,
-        snapshot_save_interval=args.snapshot_save_interval,
         cvd_state_provider=cvd_state_provider,
         shared_rest_cache=shared_rest_cache,
         alert_service=create_oi_alert_service(),
@@ -197,8 +193,7 @@ def run_dashboard(
                 print("\nDashboard stopped.")
         finally:
             _stop_shared_rest_cache(shared_rest_cache)
-            if _stop_service(services, "oi"):
-                _save_final_oi_state(oi_service)
+            _stop_service(services, "oi")
             if signal_scan_started:
                 _stop_service(services, "signal_scan")
             if cvd_started:
@@ -291,17 +286,9 @@ def _stop_service(services, key):
     return True
 
 
-def _save_final_oi_state(service):
-    try:
-        service.worker.save_state(force=True)
-    except Exception as exc:
-        print(f"{timestamp()} failed to save final OI cache: {exc}")
-
-
 def _stop_oi_service(service):
     services = ServiceGroup(oi=("OI poller", service))
-    if _stop_service(services, "oi"):
-        _save_final_oi_state(service)
+    _stop_service(services, "oi")
 
 
 def _stop_signal_scan_service(service):

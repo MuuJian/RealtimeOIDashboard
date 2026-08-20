@@ -24,6 +24,14 @@ def ticker_payload():
             "quoteVolume": "10000",
             "priceChangePercent": "2.5",
         }
+    ] + [
+        {
+            "symbol": f"TEST{index}USDT",
+            "lastPrice": "1",
+            "quoteVolume": "100",
+            "priceChangePercent": "0",
+        }
+        for index in range(19)
     ]
 
 
@@ -78,7 +86,6 @@ class BinanceRestCacheTests(unittest.TestCase):
         client = client or FakeHttpClient()
         cache = BinanceRestCache(
             http_client=client,
-            ticker_cache_seconds=10,
             exchange_info_cache_seconds=900,
             ticker_stale_grace_seconds=30,
             exchange_info_stale_grace_seconds=60,
@@ -146,6 +153,18 @@ class BinanceRestCacheTests(unittest.TestCase):
         with self.assertRaisesRegex(ConnectionError, "temporary failure"):
             cache.get_tickers()
 
+    def test_large_ticker_universe_shrink_keeps_last_good_response(self):
+        cache, client, clock = self.create_cache()
+        cached = cache.get_tickers()
+        client.tickers = ticker_payload()[:10]
+        clock.value = 10
+
+        fallback = cache.get_tickers()
+
+        self.assertIs(fallback, cached)
+        self.assertEqual(len(fallback), 20)
+        self.assertEqual(client.calls.count(TICKER_URL), 2)
+
     def test_exchange_info_uses_its_longer_stale_fallback_window(self):
         cache, client, clock = self.create_cache()
         cached = cache.get_exchange_info()
@@ -197,7 +216,6 @@ class BinanceRestCacheTests(unittest.TestCase):
         oi_client = BinanceFuturesClient(
             stop_event,
             lambda symbol, error: errors.append((symbol, error)),
-            ticker_cache_seconds=10,
             funding_cache_seconds=3600,
             http_client=direct_http,
             shared_rest_cache=cache,
@@ -225,6 +243,29 @@ class BinanceRestCacheTests(unittest.TestCase):
         self.assertEqual(client.calls.count(EXCHANGE_INFO_URL), 1)
         self.assertEqual(errors, [])
 
+    def test_oi_observes_shared_ticker_refresh_without_a_second_ttl(self):
+        cache, client, clock = self.create_cache()
+        cache.get_tickers()
+        stop_event = threading.Event()
+        oi_client = BinanceFuturesClient(
+            stop_event,
+            lambda *_args: None,
+            funding_cache_seconds=3600,
+            http_client=FakeHttpClient(),
+            shared_rest_cache=cache,
+        )
+
+        clock.value = 9
+        first = oi_client.get_market_tickers({"BTCUSDT"})
+        client.tickers = ticker_payload()
+        client.tickers[0]["lastPrice"] = "200"
+        clock.value = 10
+        refreshed = oi_client.get_market_tickers({"BTCUSDT"})
+
+        self.assertEqual(first["BTCUSDT"]["price"], 100)
+        self.assertEqual(refreshed["BTCUSDT"]["price"], 200)
+        self.assertEqual(client.calls.count(TICKER_URL), 2)
+
     def test_stop_prevents_new_shared_requests(self):
         cache, client, _ = self.create_cache()
         cache.stop()
@@ -233,14 +274,6 @@ class BinanceRestCacheTests(unittest.TestCase):
             cache.get_tickers()
 
         self.assertEqual(client.calls, [])
-
-    def test_zero_ticker_cache_is_rejected(self):
-        with self.assertRaisesRegex(ValueError, "ticker_cache_seconds"):
-            BinanceRestCache(
-                source=FakeHttpClient(),
-                ticker_cache_seconds=0,
-            )
-
 
 if __name__ == "__main__":
     unittest.main()
