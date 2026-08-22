@@ -80,50 +80,62 @@ class CoinGeckoMarketCapClient:
         self,
         active_symbols_provider: Callable[[], set[str]],
     ) -> None:
-        """Refresh one page at a time until polling is stopped."""
-        try:
-            while True:
-                active_symbols = active_symbols_provider()
-                if not active_symbols:
-                    self._wait_for_retry(1)
-                    continue
+        """Refresh pages until stopped, recovering unexpected cycle failures."""
+        while True:
+            try:
+                self._run_refresh_cycle(active_symbols_provider)
+            except PollingStopped:
+                return
+            except Exception as exc:
+                self._record_error("marketCap", exc)
+                try:
+                    self._wait_for_retry(COINGECKO_RETRY_BASE_SECONDS)
+                except PollingStopped:
+                    return
 
-                cycle_started = time.monotonic()
-                failed_pages = []
-                for page in range(1, COINGECKO_PAGE_COUNT + 1):
-                    matched = self._refresh_page_with_retries(
-                        page,
-                        active_symbols,
-                    )
-                    loaded = self.count(active_symbols)
-                    if matched is None:
-                        failed_pages.append(page)
-                        self._record_progress(
-                            "CoinGecko market-cap page "
-                            f"{page}/{COINGECKO_PAGE_COUNT} failed after "
-                            f"{COINGECKO_PAGE_FAILURE_ATTEMPTS} attempts; "
-                            f"loaded {loaded}/{len(active_symbols)} active symbols."
-                        )
-                    else:
-                        self._record_progress(
-                            "CoinGecko market-cap page "
-                            f"{page}/{COINGECKO_PAGE_COUNT} succeeded; "
-                            f"matched {matched}, loaded "
-                            f"{loaded}/{len(active_symbols)} active symbols."
-                        )
-                    if page < COINGECKO_PAGE_COUNT:
-                        self._wait_for_retry(COINGECKO_PAGE_DELAY_SECONDS)
-
-                self._log_cycle_summary(active_symbols, failed_pages)
-
-                elapsed = time.monotonic() - cycle_started
-                next_cycle_delay = max(
-                    self._refresh_seconds - elapsed,
-                    COINGECKO_PAGE_DELAY_SECONDS,
-                )
-                self._wait_for_retry(next_cycle_delay)
-        except PollingStopped:
+    def _run_refresh_cycle(
+        self,
+        active_symbols_provider: Callable[[], set[str]],
+    ) -> None:
+        active_symbols = active_symbols_provider()
+        if not active_symbols:
+            self._wait_for_retry(1)
             return
+
+        cycle_started = time.monotonic()
+        failed_pages = []
+        for page in range(1, COINGECKO_PAGE_COUNT + 1):
+            matched = self._refresh_page_with_retries(
+                page,
+                active_symbols,
+            )
+            loaded = self.count(active_symbols)
+            if matched is None:
+                failed_pages.append(page)
+                self._record_progress(
+                    "CoinGecko market-cap page "
+                    f"{page}/{COINGECKO_PAGE_COUNT} failed after "
+                    f"{COINGECKO_PAGE_FAILURE_ATTEMPTS} attempts; "
+                    f"loaded {loaded}/{len(active_symbols)} active symbols."
+                )
+            else:
+                self._record_progress(
+                    "CoinGecko market-cap page "
+                    f"{page}/{COINGECKO_PAGE_COUNT} succeeded; "
+                    f"matched {matched}, loaded "
+                    f"{loaded}/{len(active_symbols)} active symbols."
+                )
+            if page < COINGECKO_PAGE_COUNT:
+                self._wait_for_retry(COINGECKO_PAGE_DELAY_SECONDS)
+
+        self._log_cycle_summary(active_symbols, failed_pages)
+
+        elapsed = time.monotonic() - cycle_started
+        next_cycle_delay = max(
+            self._refresh_seconds - elapsed,
+            COINGECKO_PAGE_DELAY_SECONDS,
+        )
+        self._wait_for_retry(next_cycle_delay)
 
     def refresh_page(
         self,
