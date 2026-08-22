@@ -187,6 +187,39 @@
 .oi-table th:nth-child(13),
 .oi-table td:nth-child(13) { width: 90px; }
 
+@media (min-width: 1592px) {
+  .oi-table {
+    min-width: 100%;
+  }
+
+  .oi-table th:nth-child(1),
+  .oi-table td:nth-child(1) { width: 2.9%; }
+  .oi-table th:nth-child(2),
+  .oi-table td:nth-child(2) { width: 10.1%; }
+  .oi-table th:nth-child(3),
+  .oi-table td:nth-child(3) { width: 8.2%; }
+  .oi-table th:nth-child(4),
+  .oi-table td:nth-child(4) { width: 7.6%; }
+  .oi-table th:nth-child(5),
+  .oi-table td:nth-child(5) { width: 8.5%; }
+  .oi-table th:nth-child(6),
+  .oi-table td:nth-child(6) { width: 8.2%; }
+  .oi-table th:nth-child(7),
+  .oi-table td:nth-child(7) { width: 8.2%; }
+  .oi-table th:nth-child(8),
+  .oi-table td:nth-child(8) { width: 8.5%; }
+  .oi-table th:nth-child(9),
+  .oi-table td:nth-child(9) { width: 9.1%; }
+  .oi-table th:nth-child(10),
+  .oi-table td:nth-child(10) { width: 7.6%; }
+  .oi-table th:nth-child(11),
+  .oi-table td:nth-child(11) { width: 7.6%; }
+  .oi-table th:nth-child(12),
+  .oi-table td:nth-child(12) { width: 7.9%; }
+  .oi-table th:nth-child(13),
+  .oi-table td:nth-child(13) { width: 5.7%; }
+}
+
 .signal-table th:nth-child(1),
 .signal-table td:nth-child(1) { width: 160px; }
 .signal-table th:nth-child(2),

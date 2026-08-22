@@ -1,5 +1,6 @@
 import { createFilterBar } from "./components/FilterBar.js";
 import { createDashboardStatus } from "./components/DashboardStatus.js";
+import { createHorizontalScrollControl } from "./components/HorizontalScrollControl.js";
 import { createHighOi7dTable } from "./components/HighOi7dTable.js";
 import { createMarketTooltip } from "./components/MarketTooltip.js";
 import { createOiRankingTable } from "./components/OiRankingTable.js";
@@ -39,6 +40,13 @@ const sort = useTableSort({ storageKey: "oiTableSortV2" });
 const motionEffects = createMotionEffects();
 const priceFeed = createBinancePriceFeed();
 const rankingProcessor = createRankingProcessor();
+const horizontalScroll = createHorizontalScrollControl({
+  viewport: elements.rankingViewport,
+  track: elements.rankingHorizontalTrack,
+  thumb: elements.rankingHorizontalThumb,
+  scrollElement: elements.rankingHorizontalScroll,
+  shell: elements.rankingScrollShell,
+});
 
 const table = createOiRankingTable({
   tbody: elements.rankBody,
@@ -155,6 +163,7 @@ function disposeResources() {
   rankingView.dispose();
   marketTooltip.dispose();
   motionEffects.dispose();
+  horizontalScroll.dispose();
   table.dispose();
   dashboardStatus.dispose();
   stopLiveUpdates();
