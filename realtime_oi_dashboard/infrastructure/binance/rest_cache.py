@@ -13,6 +13,8 @@ from realtime_oi_dashboard.domain.market_data import (
     MAX_SYMBOL_REMOVAL_FRACTION,
     MIN_EXPECTED_ACTIVE_SYMBOLS,
 )
+from realtime_oi_dashboard.domain.parsing import optional_float
+from realtime_oi_dashboard.domain.symbols import is_valid_binance_symbol
 from realtime_oi_dashboard.infrastructure.binance.market_data import (
     EXCHANGE_INFO_URL,
     TICKER_24H_URL,
@@ -306,20 +308,25 @@ def _ticker_symbols(value: object) -> set[str]:
         item["symbol"]
         for item in value
         if isinstance(item, dict)
-        and isinstance(item.get("symbol"), str)
-        and bool(item["symbol"])
+        and is_valid_binance_symbol(item.get("symbol"))
+        and (price := optional_float(item.get("lastPrice"))) is not None
+        and price > 0
     }
 
 
 def _is_exchange_info_payload(value: object) -> bool:
     if not isinstance(value, dict) or not isinstance(value.get("symbols"), list):
         return False
-    return any(
-        isinstance(item, dict)
-        and isinstance(item.get("symbol"), str)
-        and bool(item["symbol"])
+    active_symbols = {
+        item["symbol"]
         for item in value["symbols"]
-    )
+        if isinstance(item, dict)
+        and is_valid_binance_symbol(item.get("symbol"))
+        and item.get("quoteAsset") == "USDT"
+        and item.get("status") == "TRADING"
+        and item.get("contractType") == "PERPETUAL"
+    }
+    return len(active_symbols) >= MIN_EXPECTED_ACTIVE_SYMBOLS
 
 
 def _positive_seconds(name: str, value: object) -> float:

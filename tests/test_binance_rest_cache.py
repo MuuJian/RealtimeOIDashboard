@@ -174,6 +174,37 @@ class BinanceRestCacheTests(unittest.TestCase):
         self.assertEqual(len(fallback), 20)
         self.assertEqual(client.calls.count(TICKER_URL), 2)
 
+    def test_invalid_ticker_prices_do_not_count_toward_response_size(self):
+        cache, client, clock = self.create_cache()
+        cached = cache.get_tickers()
+        client.tickers = ticker_payload()
+        for item in client.tickers[:10]:
+            item["lastPrice"] = "invalid"
+        clock.value = 10
+
+        fallback = cache.get_tickers()
+
+        self.assertIs(fallback, cached)
+        self.assertEqual(len(fallback), 20)
+        self.assertEqual(client.calls.count(TICKER_URL), 2)
+
+    def test_undersized_exchange_info_is_retried_instead_of_cached(self):
+        cache, client, clock = self.create_cache()
+        client.exchange_info = exchange_info_payload(1)
+
+        with self.assertRaisesRegex(ValueError, "exchange-info response"):
+            cache.get_exchange_info()
+        clock.value = 59.999
+        with self.assertRaisesRegex(ValueError, "exchange-info response"):
+            cache.get_exchange_info()
+
+        client.exchange_info = exchange_info_payload(20)
+        clock.value = 60
+        refreshed = cache.get_exchange_info()
+
+        self.assertEqual(len(refreshed["symbols"]), 20)
+        self.assertEqual(client.calls.count(EXCHANGE_INFO_URL), 2)
+
     def test_exchange_info_uses_its_longer_stale_fallback_window(self):
         cache, client, clock = self.create_cache()
         cached = cache.get_exchange_info()
