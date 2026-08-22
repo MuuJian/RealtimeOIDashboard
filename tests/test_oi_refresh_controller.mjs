@@ -142,3 +142,66 @@ test("ignores an old response after the controller stops", async () => {
     else globalThis.fetch = previousFetch;
   }
 });
+
+test("does not refresh data freshness when payload application fails", async () => {
+  const previousWindow = globalThis.window;
+  const previousFetch = globalThis.fetch;
+  const previousPerformance = globalThis.performance;
+  let clock = 0;
+  let rejectPayload = false;
+
+  globalThis.window = {
+    setTimeout,
+    clearTimeout,
+    setInterval: () => 1,
+    clearInterval() {},
+  };
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => validPayload,
+  });
+  Object.defineProperty(globalThis, "performance", {
+    configurable: true,
+    value: { now: () => clock },
+  });
+
+  const originalDateNow = Date.now;
+  Date.now = () => clock;
+  const errors = [];
+  const controller = createOiRefreshController({
+    onPayload() {
+      if (rejectPayload) throw new Error("payload application failed");
+    },
+    onError: (error, context) => errors.push({ error, context }),
+    onSettled: () => {},
+    refreshIntervalMs: 60_000,
+    maxStaleMs: 10,
+  });
+
+  try {
+    controller.start();
+    await tick();
+    await tick();
+
+    clock = 20;
+    rejectPayload = true;
+    controller.refresh();
+    await tick();
+    await tick();
+
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0].error.message, "payload application failed");
+    assert.equal(errors[0].context.dataExpired, true);
+  } finally {
+    controller.dispose();
+    Date.now = originalDateNow;
+    Object.defineProperty(globalThis, "performance", {
+      configurable: true,
+      value: previousPerformance,
+    });
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});

@@ -99,8 +99,8 @@ export function createOiRefreshController({
         signal: currentController.signal,
       });
       if (!isCurrent(currentGeneration, currentController)) return;
-      lastResponseAt = responseClock();
       onPayload(payload);
+      lastResponseAt = responseClock();
     } catch (error) {
       if (!isCurrent(currentGeneration, currentController)) return;
       if (error.message === "OI 請求已取消") return;
