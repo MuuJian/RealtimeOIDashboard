@@ -63,7 +63,7 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 13px;
+  gap: 8px;
 }
 
 .dominance-header {
@@ -80,72 +80,78 @@
   font-weight: 650;
 }
 
-.connection-chip {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 8px;
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line));
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
-  color: var(--muted-bright);
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
+.dominance-status-a11y {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
   white-space: nowrap;
 }
 
-.connection-dot {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 70%, transparent);
-}
-
-.dominance-track {
-  display: flex;
+.dominance-chart {
   width: 100%;
-  height: 25px;
+  min-height: 82px;
+}
+
+.dominance-chart svg {
+  display: block;
+  width: 100%;
+  height: 68px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--line) 82%, white 8%);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, .035);
-  box-shadow: inset 0 1px 5px rgba(0, 0, 0, .28);
+  border-radius: 5px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .025), transparent);
 }
 
-.dominance-segment {
-  width: 0;
-  min-width: 0;
+.dominance-grid-line {
+  stroke: color-mix(in srgb, var(--line) 72%, transparent);
+  stroke-dasharray: 4 4;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.dominance-area {
+  fill: var(--dominance-color);
   opacity: .88;
-  transition: width .5s cubic-bezier(.22, 1, .36, 1), opacity .2s ease, filter .2s ease;
+  stroke: color-mix(in srgb, var(--dominance-color) 72%, white 12%);
+  stroke-width: .7;
+  transition: opacity .2s ease, filter .2s ease;
+  vector-effect: non-scaling-stroke;
 }
 
-.dominance-segment + .dominance-segment {
-  box-shadow: -1px 0 rgba(5, 10, 19, .6);
-}
-
-.dominance-segment:hover {
+.dominance-area:hover {
   filter: brightness(1.18);
   opacity: 1;
 }
 
 .dominance-btc {
-  background: #4f73e8;
+  --dominance-color: #4f73e8;
+  background: var(--dominance-color);
 }
 
 .dominance-eth {
-  background: #16a085;
+  --dominance-color: #16a085;
+  background: var(--dominance-color);
 }
 
 .dominance-sol {
-  background: #a06be5;
+  --dominance-color: #a06be5;
+  background: var(--dominance-color);
 }
 
 .dominance-other {
-  background: #c8753c;
+  --dominance-color: #c8753c;
+  background: var(--dominance-color);
+}
+
+.dominance-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 650;
 }
 
 .dominance-legend {
@@ -155,9 +161,11 @@
 }
 
 .dominance-item {
-  display: grid;
+  display: flex;
   min-width: 0;
-  gap: 2px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
 }
 
 .dominance-name {
@@ -182,18 +190,9 @@
 .dominance-item strong {
   overflow: hidden;
   color: var(--ink);
-  font-size: 13px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dominance-item > span:last-child {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 9px;
-  font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -385,11 +384,17 @@
 
 @media (max-width: 640px) {
   .metric-dominance {
-    min-height: 154px;
+    min-height: 184px;
   }
 
-  .dominance-track {
-    height: 23px;
+  .dominance-chart svg {
+    height: 72px;
+  }
+
+  .dominance-item {
+    display: grid;
+    justify-content: start;
+    gap: 2px;
   }
 
   .dominance-item strong {

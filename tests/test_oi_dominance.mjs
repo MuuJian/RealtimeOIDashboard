@@ -5,11 +5,11 @@ import { buildOiDominance } from "../realtime_oi_dashboard/static/js/utils/oiDom
 
 test("groups current OI value into BTC, ETH, SOL and OTHER", () => {
   const result = buildOiDominance([
-    { symbol: "BTCUSDT", currentOiValue: 100 },
-    { symbol: "ETHUSDT", currentOiValue: 50 },
-    { symbol: "SOLUSDT", currentOiValue: 25 },
-    { symbol: "XRPUSDT", currentOiValue: 15 },
-    { symbol: "BNBUSDT", currentOiValue: 10 },
+    currentRow("BTCUSDT", 100),
+    currentRow("ETHUSDT", 50),
+    currentRow("SOLUSDT", 25),
+    currentRow("XRPUSDT", 15),
+    currentRow("BNBUSDT", 10),
   ]);
 
   assert.equal(result.total, 200);
@@ -26,12 +26,43 @@ test("groups current OI value into BTC, ETH, SOL and OTHER", () => {
 
 test("ignores invalid and non-positive OI values", () => {
   const result = buildOiDominance([
-    { symbol: "BTCUSDT", currentOiValue: null },
-    { symbol: "ETHUSDT", currentOiValue: Number.NaN },
-    { symbol: "SOLUSDT", currentOiValue: -1 },
-    { symbol: "XRPUSDT", currentOiValue: 0 },
+    { symbol: "BTCUSDT", currentOi: null, price: 1 },
+    { symbol: "ETHUSDT", currentOi: Number.NaN, price: 1 },
+    { symbol: "SOLUSDT", currentOi: -1, price: 1 },
+    { symbol: "XRPUSDT", currentOi: 0, price: 1 },
   ]);
 
   assert.equal(result.total, 0);
   assert.deepEqual(result.groups.map(group => group.percent), [0, 0, 0, 0]);
 });
+
+test("builds real 7d and 24h dominance points from row baselines", () => {
+  const result = buildOiDominance([
+    {
+      ...currentRow("BTCUSDT", 100),
+      oi24hChangePercent: 100,
+      priceChangePercent: 0,
+      oi7dChangePercent: 300,
+      price7dBaseline: 1,
+    },
+    currentRow("ETHUSDT", 100),
+  ]);
+
+  assert.deepEqual(
+    result.points.map(point => point.groups[0].percent),
+    [20, 1 / 3 * 100, 50],
+  );
+});
+
+function currentRow(symbol, currentOiValue) {
+  return {
+    symbol,
+    currentOi: currentOiValue,
+    price: 1,
+    currentOiValue,
+    oi24hChangePercent: 0,
+    priceChangePercent: 0,
+    oi7dChangePercent: 0,
+    price7dBaseline: 1,
+  };
+}
