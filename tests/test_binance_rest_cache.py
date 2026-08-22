@@ -188,6 +188,32 @@ class BinanceRestCacheTests(unittest.TestCase):
         self.assertEqual(len(fallback), 20)
         self.assertEqual(client.calls.count(TICKER_URL), 2)
 
+    def test_non_ascii_or_lowercase_symbols_do_not_satisfy_response_size(self):
+        cache, client, _ = self.create_cache()
+        client.tickers = [
+            {
+                "symbol": f"币{index}USDT",
+                "lastPrice": "1",
+            }
+            for index in range(20)
+        ]
+        client.exchange_info = {
+            "symbols": [
+                {
+                    "symbol": f"coin{index}USDT",
+                    "quoteAsset": "USDT",
+                    "contractType": "PERPETUAL",
+                    "status": "TRADING",
+                }
+                for index in range(20)
+            ]
+        }
+
+        with self.assertRaisesRegex(ValueError, "ticker response"):
+            cache.get_tickers()
+        with self.assertRaisesRegex(ValueError, "exchange-info response"):
+            cache.get_exchange_info()
+
     def test_undersized_exchange_info_is_retried_instead_of_cached(self):
         cache, client, clock = self.create_cache()
         client.exchange_info = exchange_info_payload(1)

@@ -4,5 +4,10 @@ from __future__ import annotations
 
 
 def is_valid_binance_symbol(value: object) -> bool:
-    """Return whether *value* contains only Binance symbol characters."""
-    return isinstance(value, str) and value.isalnum()
+    """Return whether *value* is a non-empty uppercase ASCII symbol."""
+    return (
+        isinstance(value, str)
+        and value.isascii()
+        and value.isalnum()
+        and value == value.upper()
+    )

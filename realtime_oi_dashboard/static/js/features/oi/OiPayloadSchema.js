@@ -56,9 +56,7 @@ export function isOiRow(item) {
 
 function isSymbol(value) {
   return typeof value === "string"
-    && Boolean(value)
-    && value === value.trim()
-    && value === value.toUpperCase();
+    && /^[A-Z0-9]+$/.test(value);
 }
 
 function isPositiveNumber(value) {
