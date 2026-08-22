@@ -1,4 +1,5 @@
 import { renderStatCards, renderWsState } from "../components/StatCard.js";
+import { renderOiDominance } from "../components/OiDominanceCard.js";
 
 const PRICE_STATUS_LABELS = Object.freeze({
   connecting: "連接中",
@@ -37,7 +38,10 @@ export function createDashboardRenderer({
 
     if (stats) {
       motionEffects.pulseValues(
-        renderStatCards(elements, rankingData.getStats()),
+        [
+          ...renderOiDominance(elements, rankingData.getRows()),
+          ...renderStatCards(elements, rankingData.getStats()),
+        ],
       );
     }
 
