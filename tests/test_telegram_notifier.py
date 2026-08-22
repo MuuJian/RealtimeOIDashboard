@@ -64,8 +64,9 @@ class TelegramNotifierTests(unittest.TestCase):
         notifier.drain_for_test()
 
         self.assertEqual(len(attempts), 3)
-        self.assertEqual(outcomes[0][:3], (event, "sent", None))
-        self.assertIsInstance(outcomes[0][3], str)
+        self.assertEqual(outcomes[0][:3], (event, "queued", None))
+        self.assertEqual(outcomes[-1][:3], (event, "sent", None))
+        self.assertIsInstance(outcomes[-1][3], str)
         self.assertEqual(event.delivery_status, "pending")
 
     def test_transport_error_does_not_expose_credentials_in_status_or_callback(self):
@@ -88,12 +89,13 @@ class TelegramNotifierTests(unittest.TestCase):
         notifier.enqueue(alert_event())
         notifier.drain_for_test()
 
-        self.assertEqual(outcomes[0][0], "failed")
+        self.assertEqual(outcomes[0][0], "queued")
+        self.assertEqual(outcomes[-1][0], "failed")
         self.assertNotIn("secret", str(notifier.get_status()))
         self.assertNotIn("123", str(notifier.get_status()))
-        self.assertNotIn("secret", outcomes[0][1])
-        self.assertNotIn("123", outcomes[0][1])
-        self.assertIsInstance(outcomes[0][2], str)
+        self.assertNotIn("secret", outcomes[-1][1])
+        self.assertNotIn("123", outcomes[-1][1])
+        self.assertIsInstance(outcomes[-1][2], str)
 
     def test_saturated_alert_queue_marks_event_and_public_status_failed(self):
         outcomes = []

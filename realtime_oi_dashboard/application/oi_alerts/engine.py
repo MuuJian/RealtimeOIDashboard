@@ -25,17 +25,22 @@ class AlertEngine:
         crossed.difference_update(
             threshold for threshold in self.config.thresholds if oi_value < threshold
         )
-        if not self.config.enabled:
+        if (
+            not self.config.scale_alerts_enabled
+            or not self._monitors(symbol)
+        ):
             return []
 
-        events = []
-        for threshold, signal in zip(self.config.thresholds, SIGNALS):
-            if oi_value >= threshold and threshold not in crossed:
-                crossed.add(threshold)
-                events.append(
-                    AlertEvent(symbol, oi_value, threshold, signal, triggered_at)
-                )
-        return events
+        newly_crossed = [
+            (threshold, signal)
+            for threshold, signal in zip(self.config.thresholds, SIGNALS)
+            if oi_value >= threshold and threshold not in crossed
+        ]
+        crossed.update(threshold for threshold, _signal in newly_crossed)
+        if not newly_crossed:
+            return []
+        threshold, signal = newly_crossed[-1]
+        return [AlertEvent(symbol, oi_value, threshold, signal, triggered_at)]
 
     def baseline(self, rows: Mapping[str, float]) -> None:
         for symbol, oi_value in rows.items():
@@ -50,3 +55,10 @@ class AlertEngine:
         self.config = config
         self.crossed_thresholds = {}
         self.baseline(rows)
+
+    def retain_symbols(self, symbols: set[str]) -> None:
+        for symbol in set(self.crossed_thresholds) - symbols:
+            del self.crossed_thresholds[symbol]
+
+    def _monitors(self, symbol: str) -> bool:
+        return not self.config.symbols or symbol in self.config.symbols

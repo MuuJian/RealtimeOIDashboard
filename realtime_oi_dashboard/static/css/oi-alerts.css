@@ -14,9 +14,13 @@
 
 .oi-alerts-controls {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) repeat(3, minmax(108px, 140px)) auto auto;
+  grid-template-columns: repeat(4, minmax(145px, 1fr));
   align-items: end;
   gap: 10px;
+}
+
+.oi-alert-watchlist {
+  grid-column: span 2;
 }
 
 .oi-alerts-toggle,
@@ -50,6 +54,8 @@
 .oi-alerts-actions {
   display: flex;
   gap: 8px;
+  grid-column: span 2;
+  justify-content: flex-end;
 }
 
 .oi-alerts-actions button {
@@ -141,6 +147,11 @@
   max-height: min(38vh, 360px);
 }
 
+.oi-alerts-table,
+.oi-alerts-events-table {
+  min-width: 1180px;
+}
+
 .oi-alerts-events-wrap {
   max-height: min(42vh, 440px);
   border-top: 1px solid var(--line);
@@ -180,7 +191,8 @@
   }
 
   .oi-alerts-toggle,
-  .oi-alerts-actions {
+  .oi-alerts-actions,
+  .oi-alert-watchlist {
     grid-column: span 3;
   }
 }
@@ -191,7 +203,8 @@
   }
 
   .oi-alerts-toggle,
-  .oi-alerts-actions {
+  .oi-alerts-actions,
+  .oi-alert-watchlist {
     grid-column: auto;
   }
 
@@ -207,23 +220,22 @@
   .oi-alerts-events-table th:nth-child(3),
   .oi-alerts-events-table td:nth-child(3),
   .oi-alerts-events-table th:nth-child(4),
-  .oi-alerts-events-table td:nth-child(4) {
-    display: none;
-  }
-
-  .oi-alerts-events-table th:nth-child(7),
-  .oi-alerts-events-table td:nth-child(7),
-  .oi-alerts-events-table th:nth-child(8),
-  .oi-alerts-events-table td:nth-child(8) {
+  .oi-alerts-events-table td:nth-child(4),
+  .oi-alerts-events-table th:nth-child(5),
+  .oi-alerts-events-table td:nth-child(5),
+  .oi-alerts-events-table th:nth-child(6),
+  .oi-alerts-events-table td:nth-child(6) {
     display: none;
   }
 
   .oi-alerts-events-table th:nth-child(1),
-  .oi-alerts-events-table td:nth-child(1) { width: 25%; }
+  .oi-alerts-events-table td:nth-child(1) { width: 24%; }
   .oi-alerts-events-table th:nth-child(2),
-  .oi-alerts-events-table td:nth-child(2) { width: 27%; }
-  .oi-alerts-events-table th:nth-child(5),
-  .oi-alerts-events-table td:nth-child(5) { width: 30%; }
-  .oi-alerts-events-table th:nth-child(6),
-  .oi-alerts-events-table td:nth-child(6) { width: 18%; }
+  .oi-alerts-events-table td:nth-child(2) { width: 22%; }
+  .oi-alerts-events-table th:nth-child(7),
+  .oi-alerts-events-table td:nth-child(7) { width: 22%; }
+  .oi-alerts-events-table th:nth-child(8),
+  .oi-alerts-events-table td:nth-child(8) { width: 16%; }
+  .oi-alerts-events-table th:nth-child(9),
+  .oi-alerts-events-table td:nth-child(9) { width: 16%; }
 }

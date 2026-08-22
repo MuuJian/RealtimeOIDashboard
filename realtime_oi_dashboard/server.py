@@ -160,7 +160,13 @@ class DashboardHandler(DashboardRequestHandler):
             self.send_json({"error": "Signal scan poller unavailable"}, status=503)
             return
         try:
-            self.send_json(provider.get_state())
+            state = provider.get_state()
+            self.send_json(
+                _enrich_signal_scan_state(
+                    state,
+                    getattr(self.server, "oi_state_provider", None),
+                )
+            )
         except BackgroundServiceStopped as exc:
             self.send_json({"error": str(exc)}, status=503)
         except Exception as exc:
@@ -182,13 +188,29 @@ class DashboardHandler(DashboardRequestHandler):
     def update_oi_alert_config(self, payload: dict) -> None:
         try:
             config = validate_alert_config(
-                payload.get("enabled"), payload.get("thresholds")
+                payload.get("enabled"),
+                payload.get("thresholds"),
+                scale_alerts_enabled=payload.get("scale_alerts_enabled", True),
+                change_window_minutes=payload.get("change_window_minutes", 15),
+                min_oi_change_percent=payload.get("min_oi_change_percent", 3.0),
+                min_price_change_percent=payload.get("min_price_change_percent", 0.5),
+                require_cvd_confirmation=payload.get("require_cvd_confirmation", False),
+                cooldown_minutes=payload.get("cooldown_minutes", 30),
+                symbols=payload.get("symbols", ()),
             )
-            if not isinstance(payload.get("enabled"), bool):
-                raise ValueError("enabled must be a boolean")
+            for field in ("enabled", "scale_alerts_enabled", "require_cvd_confirmation"):
+                if field in payload and not isinstance(payload.get(field), bool):
+                    raise ValueError(f"{field} must be a boolean")
             sanitized_payload = {
                 "enabled": config.enabled,
                 "thresholds": list(config.thresholds),
+                "scale_alerts_enabled": config.scale_alerts_enabled,
+                "change_window_minutes": config.change_window_minutes,
+                "min_oi_change_percent": config.min_oi_change_percent,
+                "min_price_change_percent": config.min_price_change_percent,
+                "require_cvd_confirmation": config.require_cvd_confirmation,
+                "cooldown_minutes": config.cooldown_minutes,
+                "symbols": list(config.symbols),
             }
         except (TypeError, ValueError, OverflowError):
             self.send_json({"error": "Invalid alert configuration"}, status=400)
@@ -274,6 +296,88 @@ def _oi_readiness(provider):
     return state, {"status": component_status, "rows": row_count}
 
 
+def _enrich_signal_scan_state(state: object, oi_provider) -> dict:
+    if not isinstance(state, dict):
+        raise ValueError("signal scan state is invalid")
+    try:
+        features = oi_provider.get_signal_features() if oi_provider is not None else {}
+    except Exception:
+        features = {}
+    if not isinstance(features, dict):
+        features = {}
+    enriched = dict(state)
+    for group_name in ("bulls", "bears", "spikes"):
+        rows = state.get(group_name)
+        if not isinstance(rows, list):
+            continue
+        enriched[group_name] = [
+            _enrich_signal_row(row, features.get(row.get("symbol")), group_name)
+            if isinstance(row, dict)
+            else row
+            for row in rows
+        ]
+    enriched["feature_window_minutes"] = _feature_window(features)
+    return enriched
+
+
+def _enrich_signal_row(row: dict, feature: object, group_name: str) -> dict:
+    feature = feature if isinstance(feature, Mapping) else {}
+    oi_change = _finite_or_none(feature.get("oi_change_percent"))
+    price_change = _finite_or_none(feature.get("price_change_percent"))
+    cvd_ratio = _finite_or_none(feature.get("cvd_ratio"))
+    funding = _finite_or_none(feature.get("funding_rate_percent"))
+    direction = {
+        "bulls": "多頭趨勢",
+        "bears": "空頭趨勢",
+        "spikes": "波動突增",
+    }.get(group_name, "市場訊號")
+    context = []
+    if oi_change is not None:
+        context.append(f"OI {oi_change:+.2f}%")
+    if cvd_ratio is not None:
+        context.append(f"CVD {cvd_ratio:+.1%}")
+    if context:
+        reason = f"{direction}；" + "，".join(context)
+    else:
+        reason = f"{direction}；OI 窗口預熱中"
+    return {
+        **row,
+        "oiChangePercent": oi_change,
+        "oiValueChangePercent": _finite_or_none(
+            feature.get("oi_value_change_percent")
+        ),
+        "windowPriceChangePercent": price_change,
+        "currentOiValue": _finite_or_none(feature.get("current_oi_value")),
+        "cvd15mRatio": cvd_ratio,
+        "cvdDirection": feature.get("cvd_direction")
+        if isinstance(feature.get("cvd_direction"), str)
+        else None,
+        "fundingRatePercent": funding,
+        "oiUpdatedAt": feature.get("exchange_timestamp_ms")
+        if isinstance(feature.get("exchange_timestamp_ms"), int)
+        else None,
+        "signalReason": reason,
+    }
+
+
+def _feature_window(features: Mapping) -> int | None:
+    for feature in features.values():
+        if isinstance(feature, Mapping):
+            value = feature.get("window_minutes")
+            if isinstance(value, int) and not isinstance(value, bool):
+                return value
+    return None
+
+
+def _finite_or_none(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    from math import isfinite
+
+    parsed = float(value)
+    return parsed if isfinite(parsed) else None
+
+
 def _signal_scan_readiness(provider) -> dict:
     if provider is None:
         return {"status": "unavailable", "signals": 0}
@@ -329,18 +433,44 @@ def _public_alert_state(state: object) -> dict:
     if not isinstance(config, Mapping):
         raise ValueError("alert configuration is invalid")
     validated_config = validate_alert_config(
-        config.get("enabled"), config.get("thresholds")
+        config.get("enabled"),
+        config.get("thresholds"),
+        scale_alerts_enabled=config.get("scale_alerts_enabled", True),
+        change_window_minutes=config.get("change_window_minutes", 15),
+        min_oi_change_percent=config.get("min_oi_change_percent", 3.0),
+        min_price_change_percent=config.get("min_price_change_percent", 0.5),
+        require_cvd_confirmation=config.get("require_cvd_confirmation", False),
+        cooldown_minutes=config.get("cooldown_minutes", 30),
+        symbols=config.get("symbols", ()),
     )
     return {
+        "schema_version": 2,
         "config": {
             "enabled": validated_config.enabled,
             "thresholds": list(validated_config.thresholds),
+            "scale_alerts_enabled": validated_config.scale_alerts_enabled,
+            "change_window_minutes": validated_config.change_window_minutes,
+            "min_oi_change_percent": validated_config.min_oi_change_percent,
+            "min_price_change_percent": validated_config.min_price_change_percent,
+            "require_cvd_confirmation": validated_config.require_cvd_confirmation,
+            "cooldown_minutes": validated_config.cooldown_minutes,
+            "symbols": list(validated_config.symbols),
         },
         "telegram": _public_telegram_status(state.get("notifier")),
         "storage": _public_alert_storage_status(state.get("storage")),
         "active": _public_alert_records(
             state.get("active"),
-            ("symbol", "oi_value", "threshold", "signal", "last_triggered_at"),
+            (
+                "symbol",
+                "event_type",
+                "oi_value",
+                "threshold",
+                "signal",
+                "oi_change_percent",
+                "price_change_percent",
+                "explanation",
+                "as_of",
+            ),
         ),
         "events": _public_alert_events(state.get("events")),
     }
@@ -393,9 +523,15 @@ def _public_alert_events(records: object) -> list[dict]:
         records,
         (
             "symbol",
+            "event_id",
+            "event_type",
             "oi_value",
             "threshold",
             "signal",
+            "oi_change_percent",
+            "price_change_percent",
+            "explanation",
+            "exchange_timestamp_ms",
             "triggered_at",
             "delivery_status",
             "failure_reason",

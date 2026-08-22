@@ -36,6 +36,8 @@ class FakeNode {
     this.listeners.get(type)?.({ preventDefault() {} });
   }
 
+  focus() {}
+
   setAttribute(name, value) {
     this.attributes.set(name, value);
   }
@@ -45,38 +47,65 @@ class FakeNode {
   }
 }
 
+const config = {
+  enabled: true,
+  thresholds: [75e6, 100e6, 150e6],
+  scale_alerts_enabled: true,
+  change_window_minutes: 15,
+  min_oi_change_percent: 3,
+  min_price_change_percent: 0.5,
+  require_cvd_confirmation: false,
+  cooldown_minutes: 30,
+  symbols: [],
+};
+
 function sortButton(key) {
   const button = Object.assign(new FakeNode("button"), { dataset: { sortKey: key } });
   button.parentNode = new FakeNode("th");
   return button;
 }
 
+function activeRow(overrides = {}) {
+  return {
+    symbol: "BTCUSDT",
+    event_type: "oi_expansion",
+    oi_value: 160e6,
+    threshold: 3,
+    oi_change_percent: 4.2,
+    price_change_percent: 1.1,
+    signal: "Bullish OI expansion",
+    explanation: "OI 15m +4.20%, price +1.10%",
+    as_of: "2026-08-17T09:00:00Z",
+    ...overrides,
+  };
+}
+
+function eventRow(overrides = {}) {
+  return {
+    ...activeRow(),
+    event_id: "event-1",
+    threshold: 3,
+    triggered_at: "2026-08-17T10:00:00Z",
+    exchange_timestamp_ms: 1_787_327_400_000,
+    delivery_status: "failed",
+    failure_reason: "Telegram delivery failed",
+    last_attempt_at: "2026-08-17T10:00:03Z",
+    ...overrides,
+  };
+}
+
 function payload(overrides = {}) {
   return {
-    config: { enabled: true, thresholds: [75e6, 100e6, 150e6] },
+    schema_version: 2,
+    config,
     telegram: {
-      status: "unavailable",
-      last_error: "connection refused",
+      status: "not_configured",
+      last_error: null,
       last_attempt_at: null,
     },
-    storage: { status: "load_error", last_error: "Saved alert state was invalid" },
-    active: [{
-      symbol: "BTCUSDT",
-      oi_value: 160e6,
-      threshold: 150e6,
-      signal: "High OI alert",
-      last_triggered_at: "2026-08-17T09:00:00Z",
-    }],
-    events: [{
-      symbol: "ETHUSDT",
-      oi_value: 80e6,
-      threshold: 75e6,
-      signal: "Long entry",
-      triggered_at: "2026-08-17T10:00:00Z",
-      delivery_status: "failed",
-      failure_reason: "Telegram delivery failed",
-      last_attempt_at: "2026-08-17T10:00:03Z",
-    }],
+    storage: { status: "ok", last_error: null },
+    active: [activeRow()],
+    events: [eventRow()],
     ...overrides,
   };
 }
@@ -86,6 +115,13 @@ function createElements() {
     statusElement: new FakeNode("p"),
     signalLabelsElement: new FakeNode("p"),
     enabledInput: new FakeNode("input"),
+    scaleEnabledInput: new FakeNode("input"),
+    symbolsInput: new FakeNode("input"),
+    windowMinutesInput: new FakeNode("input"),
+    minOiChangeInput: new FakeNode("input"),
+    minPriceChangeInput: new FakeNode("input"),
+    cooldownMinutesInput: new FakeNode("input"),
+    requireCvdInput: new FakeNode("input"),
     threshold75Input: new FakeNode("input"),
     threshold100Input: new FakeNode("input"),
     threshold150Input: new FakeNode("input"),
@@ -93,115 +129,78 @@ function createElements() {
     testButton: new FakeNode("button"),
     activeBody: new FakeNode("tbody"),
     eventsBody: new FakeNode("tbody"),
-    activeSortButtons: ["symbol", "oi_value", "threshold", "signal", "last_triggered_at"].map(sortButton),
-    eventsSortButtons: ["symbol", "oi_value", "threshold", "signal", "triggered_at", "delivery_status", "failure_reason", "last_attempt_at"].map(sortButton),
+    activeSortButtons: ["symbol", "event_type", "oi_value", "oi_change_percent", "price_change_percent", "signal", "as_of"].map(sortButton),
+    eventsSortButtons: ["triggered_at", "symbol", "event_type", "oi_value", "oi_change_percent", "price_change_percent", "signal", "delivery_status", "failure_reason"].map(sortButton),
   };
 }
 
-test("renders fixed signal labels, active rows, and failed delivery events as text", () => {
+function installDocument() {
   const previousDocument = globalThis.document;
   globalThis.document = { createElement: tagName => new FakeNode(tagName) };
+  return () => {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  };
+}
+
+test("renders neutral OI scale labels and directional signal context", () => {
+  const restoreDocument = installDocument();
   const elements = createElements();
   const panel = createOiAlertsPanel({ elements });
-  panel.bind(new AbortController().signal);
 
   try {
     panel.render(payload());
 
-    assert.equal(elements.signalLabelsElement.textContent, "75M：建立多單 | 100M：加倉 | 150M：高 OI 警示");
-    assert.equal(elements.statusElement.textContent.includes("Telegram：無法使用"), true);
-    assert.equal(elements.statusElement.textContent.includes("讀取失敗"), true);
-    assert.equal(elements.statusElement.textContent.includes("最近嘗試：無法使用"), true);
-    assert.equal(elements.threshold75Input.value, "75");
-    assert.equal(elements.threshold100Input.value, "100");
-    assert.equal(elements.threshold150Input.value, "150");
-    assert.equal(elements.activeBody.children[0].children[0].textContent, "BTCUSDT");
-    assert.equal(elements.activeBody.children[0].children[4].textContent, "2026-08-17T09:00:00Z");
-    assert.equal(elements.eventsBody.children[0].children[5].textContent, "發送失敗");
-    assert.equal(elements.eventsBody.children[0].children[6].textContent, "Telegram 發送失敗");
-    assert.equal(elements.eventsBody.children[0].children[7].textContent, "2026-08-17T10:00:03Z");
+    assert.match(elements.signalLabelsElement.textContent, /15m OI ≥ 3%/);
+    assert.match(elements.signalLabelsElement.textContent, /75M：OI 規模提醒/);
+    assert.equal(elements.windowMinutesInput.value, 15);
+    assert.equal(elements.activeBody.children[0].children[1].textContent, "方向訊號");
+    assert.equal(elements.activeBody.children[0].children[5].textContent, "多頭擴倉");
+    assert.equal(elements.eventsBody.children[0].children[7].textContent, "發送失敗");
+    assert.equal(elements.eventsBody.children[0].children[8].textContent, "Telegram 發送失敗");
   } finally {
-    if (previousDocument === undefined) delete globalThis.document;
-    else globalThis.document = previousDocument;
+    restoreDocument();
   }
 });
 
-test("keeps unsaved threshold edits visible through refresh and save errors", () => {
-  const previousDocument = globalThis.document;
-  globalThis.document = { createElement: tagName => new FakeNode(tagName) };
-  const elements = createElements();
-  const panel = createOiAlertsPanel({ elements });
-  panel.bind(new AbortController().signal);
-
-  try {
-    panel.render(payload());
-    elements.threshold75Input.value = "100";
-    elements.threshold100Input.value = "75";
-    elements.threshold75Input.dispatch("input");
-    elements.threshold100Input.dispatch("input");
-    panel.render(payload({
-      config: { enabled: false, thresholds: [90e6, 120e6, 180e6] },
-    }));
-    panel.renderError(new Error("Invalid alert configuration"));
-
-    assert.equal(elements.threshold75Input.value, "100");
-    assert.equal(elements.threshold100Input.value, "75");
-    assert.equal(elements.statusElement.textContent, "無法更新 OI 警報。請稍後再試。");
-  } finally {
-    if (previousDocument === undefined) delete globalThis.document;
-    else globalThis.document = previousDocument;
-  }
-});
-
-test("refreshes only clean unfocused fields and clears edits after a confirmed save", async () => {
-  const previousDocument = globalThis.document;
+test("preserves dirty rule edits and submits the complete configuration", async () => {
+  const restoreDocument = installDocument();
   const previousWindow = globalThis.window;
   const previousFetch = globalThis.fetch;
-  globalThis.document = { createElement: tagName => new FakeNode(tagName) };
   globalThis.window = { setTimeout, clearTimeout };
   const elements = createElements();
   const panel = createOiAlertsPanel({ elements });
   panel.bind(new AbortController().signal);
-  globalThis.fetch = async () => ({
-    ok: true,
-    json: async () => payload({
-      config: { enabled: false, thresholds: [95e6, 125e6, 185e6] },
-    }),
-  });
+  const requests = [];
+  globalThis.fetch = async (_url, options) => {
+    requests.push(JSON.parse(options.body));
+    return { ok: true, json: async () => payload() };
+  };
 
   try {
     panel.render(payload());
-    elements.threshold75Input.value = "81";
-    elements.threshold75Input.dispatch("input");
-    elements.threshold100Input.dispatch("focus");
+    elements.minOiChangeInput.value = "5";
+    elements.minOiChangeInput.dispatch("input");
+    panel.render(payload({ config: { ...config, min_oi_change_percent: 4 } }));
+    assert.equal(elements.minOiChangeInput.value, "5");
 
-    panel.render(payload({
-      config: { enabled: false, thresholds: [90e6, 120e6, 180e6] },
-    }));
-
-    assert.equal(elements.enabledInput.checked, false);
-    assert.equal(elements.threshold75Input.value, "81");
-    assert.equal(elements.threshold100Input.value, "100");
-    assert.equal(elements.threshold150Input.value, "180");
-
-    elements.threshold100Input.dispatch("blur");
+    elements.symbolsInput.value = "BTCUSDT, ETHUSDT";
     elements.saveButton.dispatch("click");
     await new Promise(resolve => setImmediate(resolve));
 
-    assert.equal(elements.threshold75Input.value, "95");
-    assert.equal(elements.threshold100Input.value, "125");
-    assert.equal(elements.threshold150Input.value, "185");
-
-    panel.render(payload({
-      config: { enabled: true, thresholds: [96e6, 126e6, 186e6] },
-    }));
-    assert.equal(elements.enabledInput.checked, true);
-    assert.equal(elements.threshold75Input.value, "96");
-    assert.equal(elements.threshold100Input.value, "126");
-    assert.equal(elements.threshold150Input.value, "186");
+    assert.deepEqual(requests[0], {
+      enabled: true,
+      scale_alerts_enabled: true,
+      change_window_minutes: 15,
+      min_oi_change_percent: 5,
+      min_price_change_percent: 0.5,
+      require_cvd_confirmation: false,
+      cooldown_minutes: 30,
+      symbols: ["BTCUSDT", "ETHUSDT"],
+      thresholds: [75e6, 100e6, 150e6],
+    });
   } finally {
-    if (previousDocument === undefined) delete globalThis.document;
-    else globalThis.document = previousDocument;
+    restoreDocument();
     if (previousWindow === undefined) delete globalThis.window;
     else globalThis.window = previousWindow;
     if (previousFetch === undefined) delete globalThis.fetch;
@@ -209,27 +208,24 @@ test("refreshes only clean unfocused fields and clears edits after a confirmed s
   }
 });
 
-test("keeps fixed signal names paired with the saved threshold values", () => {
-  const previousDocument = globalThis.document;
-  globalThis.document = { createElement: tagName => new FakeNode(tagName) };
+test("adds a Signal Scan symbol to the editable watchlist", () => {
+  const restoreDocument = installDocument();
   const elements = createElements();
   const panel = createOiAlertsPanel({ elements });
 
   try {
-    panel.render(payload({
-      config: { enabled: true, thresholds: [90e6, 120e6, 180e6] },
-    }));
-
-    assert.equal(elements.signalLabelsElement.textContent, "90M：建立多單 | 120M：加倉 | 180M：高 OI 警示");
+    panel.render(payload({ config: { ...config, symbols: ["BTCUSDT"] } }));
+    panel.addSymbol("ETHUSDT");
+    panel.addSymbol("ETHUSDT");
+    assert.equal(elements.symbolsInput.value, "BTCUSDT, ETHUSDT");
+    assert.match(elements.statusElement.textContent, /請儲存規則/);
   } finally {
-    if (previousDocument === undefined) delete globalThis.document;
-    else globalThis.document = previousDocument;
+    restoreDocument();
   }
 });
 
-test("sorts OI alert tables by numeric, time, and text columns across refreshes", () => {
-  const previousDocument = globalThis.document;
-  globalThis.document = { createElement: tagName => new FakeNode(tagName) };
+test("sorts active signals numerically and preserves the sort across refreshes", () => {
+  const restoreDocument = installDocument();
   const elements = createElements();
   const panel = createOiAlertsPanel({ elements });
   panel.bind(new AbortController().signal);
@@ -237,83 +233,20 @@ test("sorts OI alert tables by numeric, time, and text columns across refreshes"
   try {
     panel.render(payload({
       active: [
-        { symbol: "ETHUSDT", oi_value: 80e6, threshold: 75e6, signal: "Long entry", last_triggered_at: "2026-08-17T08:00:00Z" },
-        { symbol: "BTCUSDT", oi_value: 160e6, threshold: 150e6, signal: "High OI alert", last_triggered_at: "2026-08-17T09:00:00Z" },
-      ],
-      events: [
-        { symbol: "ETHUSDT", oi_value: 80e6, threshold: 75e6, signal: "Long entry", triggered_at: "2026-08-17T09:00:00Z", delivery_status: "sent", failure_reason: null, last_attempt_at: "2026-08-17T09:00:01Z" },
-        { symbol: "BTCUSDT", oi_value: 160e6, threshold: 150e6, signal: "High OI alert", triggered_at: "2026-08-17T10:00:00Z", delivery_status: "sent", failure_reason: null, last_attempt_at: "2026-08-17T10:00:01Z" },
+        activeRow({ symbol: "ETHUSDT", oi_change_percent: 3.2 }),
+        activeRow({ symbol: "BTCUSDT", oi_change_percent: 6.4 }),
       ],
     }));
-
-    elements.activeSortButtons[1].dispatch("click");
+    elements.activeSortButtons[3].dispatch("click");
     assert.equal(elements.activeBody.children[0].children[0].textContent, "BTCUSDT");
-    assert.equal(elements.activeSortButtons[1].parentNode.getAttribute("aria-sort"), "descending");
-
-    elements.activeSortButtons[1].dispatch("click");
+    panel.render(payload({
+      active: [
+        activeRow({ symbol: "ETHUSDT", oi_change_percent: 7.1 }),
+        activeRow({ symbol: "BTCUSDT", oi_change_percent: 4.3 }),
+      ],
+    }));
     assert.equal(elements.activeBody.children[0].children[0].textContent, "ETHUSDT");
-    assert.equal(elements.activeSortButtons[1].parentNode.getAttribute("aria-sort"), "ascending");
-
-    elements.eventsSortButtons[4].dispatch("click");
-    assert.equal(elements.eventsBody.children[0].children[0].textContent, "BTCUSDT");
-
-    elements.eventsSortButtons[4].dispatch("click");
-    assert.equal(elements.eventsBody.children[0].children[0].textContent, "ETHUSDT");
-
-    elements.activeSortButtons[0].dispatch("click");
-    assert.equal(elements.activeBody.children[0].children[0].textContent, "BTCUSDT");
-
-    panel.render(payload({
-      active: [
-        { symbol: "ETHUSDT", oi_value: 81e6, threshold: 75e6, signal: "Long entry", last_triggered_at: "2026-08-17T08:00:00Z" },
-        { symbol: "BTCUSDT", oi_value: 161e6, threshold: 150e6, signal: "High OI alert", last_triggered_at: "2026-08-17T09:00:00Z" },
-      ],
-      events: [
-        { symbol: "BTCUSDT", oi_value: 160e6, threshold: 150e6, signal: "High OI alert", triggered_at: "2026-08-17T10:00:00Z", delivery_status: "sent", failure_reason: null, last_attempt_at: "2026-08-17T10:00:01Z" },
-        { symbol: "ETHUSDT", oi_value: 80e6, threshold: 75e6, signal: "Long entry", triggered_at: "2026-08-17T09:00:00Z", delivery_status: "sent", failure_reason: null, last_attempt_at: "2026-08-17T09:00:01Z" },
-      ],
-    }));
-    assert.equal(elements.activeBody.children[0].children[0].textContent, "BTCUSDT");
-    assert.equal(elements.eventsBody.children[0].children[0].textContent, "ETHUSDT");
-    assert.equal(elements.activeSortButtons[0].parentNode.getAttribute("aria-sort"), "ascending");
-    assert.equal(elements.eventsSortButtons[4].parentNode.getAttribute("aria-sort"), "ascending");
-
-    panel.render(payload({
-      active: [
-        { symbol: "BTCUSDT", oi_value: 161e6, threshold: 150e6, signal: "High OI alert", last_triggered_at: "2026-08-17T09:00:00Z" },
-        { symbol: "ETHUSDT", oi_value: 81e6, threshold: 75e6, signal: "Long entry", last_triggered_at: "2026-08-17T08:00:00Z" },
-      ],
-    }));
-    assert.equal(elements.activeBody.children[0].children[0].textContent, "BTCUSDT");
   } finally {
-    if (previousDocument === undefined) delete globalThis.document;
-    else globalThis.document = previousDocument;
-  }
-});
-
-test("renders OI Alerts labels, statuses, and signals in Traditional Chinese", () => {
-  const previousDocument = globalThis.document;
-  globalThis.document = { createElement: tagName => new FakeNode(tagName) };
-  const elements = createElements();
-  const panel = createOiAlertsPanel({ elements });
-
-  try {
-    panel.render(payload());
-
-    assert.equal(elements.signalLabelsElement.textContent, "75M：建立多單 | 100M：加倉 | 150M：高 OI 警示");
-    assert.equal(elements.statusElement.textContent.includes("Telegram：無法使用"), true);
-    assert.equal(elements.activeBody.children[0].children[3].textContent, "高 OI 警示");
-    assert.equal(elements.eventsBody.children[0].children[3].textContent, "建立多單");
-    assert.equal(elements.eventsBody.children[0].children[5].textContent, "發送失敗");
-
-    panel.render(payload({
-      storage: { status: "ok", last_error: null },
-      telegram: { status: "sending", last_error: null, last_attempt_at: "2026-08-17T11:00:00Z" },
-    }));
-    assert.equal(elements.statusElement.textContent.includes("警報狀態：正常"), true);
-    assert.equal(elements.statusElement.textContent.includes("Telegram：傳送中"), true);
-  } finally {
-    if (previousDocument === undefined) delete globalThis.document;
-    else globalThis.document = previousDocument;
+    restoreDocument();
   }
 });

@@ -90,6 +90,33 @@ test("accepts a signal row with at most one trend direction", () => {
   );
 });
 
+test("accepts validated OI, CVD, funding, and explanation context", () => {
+  assert.equal(
+    isSignalScanPayload(payload({
+      feature_window_minutes: 15,
+      bulls: [signalRow({
+        isBull: true,
+        oiChangePercent: 4.2,
+        oiValueChangePercent: 5.1,
+        windowPriceChangePercent: 0.9,
+        currentOiValue: 125e6,
+        cvd15mRatio: 0.12,
+        cvdDirection: "buying",
+        fundingRatePercent: 0.01,
+        oiUpdatedAt: 1_787_327_400_000,
+        signalReason: "多頭趨勢；OI +4.20%，CVD +12.0%",
+      })],
+    })),
+    true,
+  );
+  assert.equal(
+    isSignalScanPayload(payload({
+      bulls: [signalRow({ isBull: true, oiChangePercent: "4.2" })],
+    })),
+    false,
+  );
+});
+
 test("rejects payload arrays above the server result limits", () => {
   const rows = Array.from({ length: 9 }, (_, index) => (
     signalRow({ symbol: `S${index}USDT` })

@@ -11,17 +11,36 @@ class AlertEngineTests(unittest.TestCase):
     def test_first_observation_baselines_without_event(self):
         self.assertEqual(self.engine.observe("BTCUSDT", 80_000_000, "t1"), [])
 
-    def test_crossing_each_threshold_emits_the_fixed_signal(self):
+    def test_crossing_multiple_thresholds_emits_one_highest_scale_signal(self):
         self.engine.observe("BTCUSDT", 70_000_000, "t1")
         events = self.engine.observe("BTCUSDT", 160_000_000, "t2")
         self.assertEqual(
             [(event.threshold, event.signal) for event in events],
-            [
-                (75_000_000, "Long entry"),
-                (100_000_000, "Add position"),
-                (150_000_000, "High OI alert"),
-            ],
+            [(150_000_000, "Very large OI alert")],
         )
+
+    def test_watchlist_limits_new_scale_events(self):
+        self.engine.set_config(
+            AlertConfig(symbols=("ETHUSDT",)),
+            {"BTCUSDT": 70_000_000, "ETHUSDT": 70_000_000},
+        )
+
+        self.assertEqual(self.engine.observe("BTCUSDT", 80_000_000, "t1"), [])
+        self.assertEqual(
+            self.engine.observe("ETHUSDT", 80_000_000, "t1")[0].symbol,
+            "ETHUSDT",
+        )
+
+    def test_direction_toggle_does_not_disable_independent_scale_events(self):
+        self.engine.set_config(
+            AlertConfig(enabled=False, scale_alerts_enabled=True),
+            {"BTCUSDT": 70_000_000},
+        )
+
+        events = self.engine.observe("BTCUSDT", 80_000_000, "t1")
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].event_type, "oi_scale")
 
     def test_staying_above_threshold_does_not_duplicate(self):
         self.engine.observe("ETHUSDT", 70_000_000, "t1")

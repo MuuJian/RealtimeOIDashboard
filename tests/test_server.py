@@ -24,7 +24,17 @@ class FakeStateProvider:
 class FakeAlertProvider:
     def __init__(self, state=None, error=None):
         self.state = {
-            "config": {"enabled": True, "thresholds": [75e6, 100e6, 150e6]},
+            "config": {
+                "enabled": True,
+                "thresholds": [75e6, 100e6, 150e6],
+                "scale_alerts_enabled": True,
+                "change_window_minutes": 15,
+                "min_oi_change_percent": 3.0,
+                "min_price_change_percent": 0.5,
+                "require_cvd_confirmation": False,
+                "cooldown_minutes": 30,
+                "symbols": [],
+            },
             "notifier": {
                 "status": "not_configured",
                 "last_error": None,
@@ -131,7 +141,10 @@ class DashboardServerTests(unittest.TestCase):
         self.assertEqual(oi_status, 200)
         self.assertEqual(oi_payload, self.oi_provider.state)
         self.assertEqual(signal_status, 200)
-        self.assertEqual(signal_payload, self.signal_provider.state)
+        self.assertEqual(
+            signal_payload,
+            {**self.signal_provider.state, "feature_window_minutes": None},
+        )
 
     def test_stopped_provider_preserves_existing_503_response(self):
         self.server.signal_scan_state_provider = FakeStateProvider(
@@ -171,17 +184,28 @@ class DashboardServerTests(unittest.TestCase):
         }
         self.alert_provider.state["active"] = [{
             "symbol": "BTCUSDT",
+            "event_type": "oi_scale",
             "oi_value": 80e6,
             "threshold": 75e6,
-            "signal": "Long entry",
+            "signal": "OI scale alert",
+            "oi_change_percent": None,
+            "price_change_percent": None,
+            "explanation": "OI scale alert: total OI is $80,000,000",
+            "as_of": "2026-08-17T10:00:00Z",
             "last_triggered_at": "2026-08-17T10:00:00Z",
             "token": "must-not-leak",
         }]
         self.alert_provider.state["events"] = [{
             "symbol": "BTCUSDT",
+            "event_id": "event-1",
+            "event_type": "oi_scale",
             "oi_value": 80e6,
             "threshold": 75e6,
-            "signal": "Long entry",
+            "signal": "OI scale alert",
+            "oi_change_percent": None,
+            "price_change_percent": None,
+            "explanation": "OI scale alert: total OI reached $80,000,000",
+            "exchange_timestamp_ms": 1_787_327_400_000,
             "triggered_at": "2026-08-17T10:00:00Z",
             "delivery_status": "failed",
             "failure_reason": "Telegram delivery failed",
@@ -194,9 +218,10 @@ class DashboardServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["storage"]["status"], "load_error")
         self.assertEqual(
-            payload["active"][0]["last_triggered_at"],
+            payload["active"][0]["as_of"],
             "2026-08-17T10:00:00Z",
         )
+        self.assertEqual(payload["active"][0]["threshold"], 75e6)
         self.assertEqual(payload["events"][0]["failure_reason"], "Telegram delivery failed")
         self.assertEqual(payload["events"][0]["last_attempt_at"], "2026-08-17T10:00:03Z")
         self.assertNotIn("private", json.dumps(payload).lower())
@@ -219,7 +244,17 @@ class DashboardServerTests(unittest.TestCase):
         self.assertEqual(payload["config"]["enabled"], True)
         self.assertEqual(
             self.alert_provider.updated_payloads,
-            [{"enabled": True, "thresholds": [75e6, 100e6, 150e6]}],
+            [{
+                "enabled": True,
+                "thresholds": [75e6, 100e6, 150e6],
+                "scale_alerts_enabled": True,
+                "change_window_minutes": 15,
+                "min_oi_change_percent": 3.0,
+                "min_price_change_percent": 0.5,
+                "require_cvd_confirmation": False,
+                "cooldown_minutes": 30,
+                "symbols": [],
+            }],
         )
 
     def test_alert_config_rejects_non_increasing_thresholds(self):

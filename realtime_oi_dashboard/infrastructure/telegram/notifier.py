@@ -74,6 +74,7 @@ class TelegramNotifier:
         self.start()
         try:
             self._queue.put_nowait((event, _event_message(event)))
+            self._report(event, "queued", None, None)
         except queue.Full:
             attempted_at = self._now()
             with self._lock:
@@ -179,10 +180,21 @@ class TelegramNotifier:
 
 
 def _event_message(event: AlertEvent) -> str:
-    return (
-        f"OI alert: {event.symbol} crossed ${event.threshold:,.0f} "
-        f"({event.signal}); current OI ${event.oi_value:,.0f}."
-    )
+    lines = [
+        f"{event.signal}: {event.symbol}",
+        f"Current OI: ${event.oi_value:,.0f}",
+        f"Exchange time: {event.triggered_at}",
+    ]
+    if event.event_type == "oi_scale":
+        lines.insert(2, f"OI scale: ${event.threshold:,.0f}")
+    else:
+        if event.oi_change_percent is not None:
+            lines.insert(2, f"OI change: {event.oi_change_percent:+.2f}%")
+        if event.price_change_percent is not None:
+            lines.insert(3, f"Price change: {event.price_change_percent:+.2f}%")
+    if event.explanation:
+        lines.append(event.explanation)
+    return "\n".join(lines)
 
 
 def _post_json(url: str, payload: dict) -> None:

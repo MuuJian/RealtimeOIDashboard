@@ -156,3 +156,39 @@ test("always renders the saved time in UTC+8", () => {
     else globalThis.document = previousDocument;
   }
 });
+
+test("renders unified OI context and forwards create-alert actions", () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    createElement: tagName => new FakeNode(tagName),
+  };
+  const created = [];
+  const bullsBody = new FakeNode("tbody");
+  const panel = createSignalScanPanel({
+    bullsBody,
+    bearsBody: new FakeNode("tbody"),
+    spikesBody: new FakeNode("tbody"),
+    statusEl: new FakeNode("div"),
+    onCreateAlert: symbol => created.push(symbol),
+  });
+
+  try {
+    panel.render(payload({
+      bulls: [{
+        ...payload().bulls[0],
+        oiChangePercent: 4.2,
+        cvd15mRatio: 0.12,
+        fundingRatePercent: 0.01,
+        signalReason: "多頭趨勢；OI +4.20%",
+      }],
+    }));
+    const cells = bullsBody.firstChild.children;
+    assert.equal(cells[4].textContent, "+4.20%");
+    assert.equal(cells[8].textContent, "多頭趨勢；OI +4.20%");
+    cells[9].firstChild.onclick();
+    assert.deepEqual(created, ["BTCUSDT"]);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});

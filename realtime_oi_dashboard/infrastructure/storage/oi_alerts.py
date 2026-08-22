@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass, field
 from math import isfinite
 from pathlib import Path
+from uuid import uuid4
 
 from realtime_oi_dashboard.domain.oi_alerts.model import (
     AlertConfig,
@@ -41,6 +42,13 @@ class AlertSnapshot:
             "config": {
                 "enabled": self.config.enabled,
                 "thresholds": list(self.config.thresholds),
+                "scale_alerts_enabled": self.config.scale_alerts_enabled,
+                "change_window_minutes": self.config.change_window_minutes,
+                "min_oi_change_percent": self.config.min_oi_change_percent,
+                "min_price_change_percent": self.config.min_price_change_percent,
+                "require_cvd_confirmation": self.config.require_cvd_confirmation,
+                "cooldown_minutes": self.config.cooldown_minutes,
+                "symbols": list(self.config.symbols),
             },
             "crossed_thresholds": {
                 symbol: sorted(thresholds)
@@ -65,6 +73,12 @@ class AlertSnapshot:
                     "threshold": event.threshold,
                     "signal": event.signal,
                     "triggered_at": event.triggered_at,
+                    "event_id": event.event_id,
+                    "event_type": event.event_type,
+                    "oi_change_percent": event.oi_change_percent,
+                    "price_change_percent": event.price_change_percent,
+                    "explanation": event.explanation,
+                    "exchange_timestamp_ms": event.exchange_timestamp_ms,
                     "delivery_status": event.delivery_status,
                     "failure_reason": event.failure_reason,
                     "last_attempt_at": event.last_attempt_at,
@@ -81,7 +95,17 @@ class AlertSnapshot:
         if not isinstance(config_payload, dict):
             raise ValueError("alert snapshot configuration is missing")
         config = validate_alert_config(
-            config_payload.get("enabled"), config_payload.get("thresholds")
+            config_payload.get("enabled"),
+            config_payload.get("thresholds"),
+            scale_alerts_enabled=config_payload.get(
+                "scale_alerts_enabled", config_payload.get("enabled", True)
+            ),
+            change_window_minutes=config_payload.get("change_window_minutes", 15),
+            min_oi_change_percent=config_payload.get("min_oi_change_percent", 3.0),
+            min_price_change_percent=config_payload.get("min_price_change_percent", 0.5),
+            require_cvd_confirmation=config_payload.get("require_cvd_confirmation", False),
+            cooldown_minutes=config_payload.get("cooldown_minutes", 30),
+            symbols=config_payload.get("symbols", ()),
         )
         crossed_thresholds = _crossed_thresholds(payload.get("crossed_thresholds"))
         events = _events(payload.get("events"))
@@ -186,6 +210,8 @@ def _last_triggered_at(
 
 def _event(event: dict) -> AlertEvent:
     status = event["delivery_status"]
+    if status not in {"pending", "queued", "sent", "failed", "not_configured"}:
+        raise ValueError("event delivery status is invalid")
     failure_reason = event.get("failure_reason")
     last_attempt_at = event.get("last_attempt_at")
     if status == "failed":
@@ -203,7 +229,48 @@ def _event(event: dict) -> AlertEvent:
         threshold=float(event["threshold"]),
         signal=event["signal"],
         triggered_at=event["triggered_at"],
+        event_id=event.get("event_id") or uuid4().hex,
+        event_type=event.get("event_type", "oi_scale"),
+        oi_change_percent=_optional_finite(event.get("oi_change_percent")),
+        price_change_percent=_optional_finite(event.get("price_change_percent")),
+        explanation=(
+            _optional_string(event.get("explanation"))
+            or f"{event['signal']}: total OI reached ${float(event['oi_value']):,.0f}"
+        ),
+        exchange_timestamp_ms=_optional_positive_int(
+            event.get("exchange_timestamp_ms")
+        ),
         delivery_status=status,
         failure_reason=failure_reason,
         last_attempt_at=last_attempt_at,
     )
+
+
+def _optional_finite(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError("event metric is invalid")
+    parsed = float(value)
+    if not isfinite(parsed):
+        raise ValueError("event metric is invalid")
+    return parsed
+
+
+def _optional_string(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("event explanation is invalid")
+    return value
+
+
+def _optional_positive_int(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError("event exchange timestamp is invalid")
+    parsed = int(value)
+    if parsed <= 0:
+        raise ValueError("event exchange timestamp is invalid")
+    return parsed

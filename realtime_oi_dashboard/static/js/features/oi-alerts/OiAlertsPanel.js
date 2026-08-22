@@ -2,12 +2,19 @@ import {
   saveOiAlertsConfig,
   sendOiAlertsTestMessage,
 } from "./OiAlertsApiClient.js";
+import { formatUtc8DateTime } from "../../utils/format.js";
 
-const SIGNALS = ["建立多單", "加倉", "高 OI 警示"];
+const SIGNALS = ["OI 規模提醒", "大額 OI", "超大額 OI"];
 const SIGNAL_LABELS = new Map([
-  ["Long entry", "建立多單"],
-  ["Add position", "加倉"],
-  ["High OI alert", "高 OI 警示"],
+  ["OI scale alert", "OI 規模提醒"],
+  ["Large OI alert", "大額 OI"],
+  ["Very large OI alert", "超大額 OI"],
+  ["Bullish OI expansion", "多頭擴倉"],
+  ["Bearish OI expansion", "空頭擴倉"],
+  ["OI expansion", "OI 擴張／方向未確認"],
+  ["Long entry", "舊版：建立多單"],
+  ["Add position", "舊版：加倉"],
+  ["High OI alert", "舊版：高 OI 警示"],
 ]);
 const MILLION = 1_000_000;
 
@@ -16,6 +23,13 @@ export function createOiAlertsPanel({ elements }) {
     statusElement,
     signalLabelsElement,
     enabledInput,
+    scaleEnabledInput,
+    symbolsInput,
+    windowMinutesInput,
+    minOiChangeInput,
+    minPriceChangeInput,
+    cooldownMinutesInput,
+    requireCvdInput,
     threshold75Input,
     threshold100Input,
     threshold150Input,
@@ -31,7 +45,17 @@ export function createOiAlertsPanel({ elements }) {
     threshold100Input,
     threshold150Input,
   ];
-  const configInputs = [enabledInput, ...thresholdInputs];
+  const configInputs = [
+    enabledInput,
+    scaleEnabledInput,
+    symbolsInput,
+    windowMinutesInput,
+    minOiChangeInput,
+    minPriceChangeInput,
+    cooldownMinutesInput,
+    requireCvdInput,
+    ...thresholdInputs,
+  ];
   let savePending = false;
   let testPending = false;
   const dirtyConfigInputs = new Set();
@@ -44,15 +68,18 @@ export function createOiAlertsPanel({ elements }) {
     lastPayload = payload;
     if (configSaved) dirtyConfigInputs.clear();
     renderConfig(payload.config, { force: configSaved });
-    signalLabelsElement.textContent = signalLabelsText(
-      thresholdInputs.map(input => Number(input.value) * MILLION),
-    );
+    signalLabelsElement.textContent = signalLabelsText({
+      thresholds: thresholdInputs.map(input => Number(input.value) * MILLION),
+      windowMinutes: Number(windowMinutesInput?.value || 15),
+      minOiChange: Number(minOiChangeInput?.value || 3),
+      minPriceChange: Number(minPriceChangeInput?.value || 0.5),
+    });
     const editStatus = dirtyConfigInputs.size > 0 || focusedConfigInputs.size > 0
       ? "有尚未儲存的警報設定。"
       : "";
     statusElement.textContent = `${editStatus}${storageStatusText(payload.storage)} ${telegramStatusText(payload.telegram)}`;
-    activeBody.replaceChildren(...rowsOrEmpty(sortRows(payload.active, activeSort), createActiveRow, 5));
-    eventsBody.replaceChildren(...rowsOrEmpty(sortRows(payload.events, eventsSort), createEventRow, 8));
+    activeBody.replaceChildren(...rowsOrEmpty(sortRows(payload.active, activeSort), createActiveRow, 8));
+    eventsBody.replaceChildren(...rowsOrEmpty(sortRows(payload.events, eventsSort), createEventRow, 9));
   }
 
   function renderError(error) {
@@ -93,6 +120,13 @@ export function createOiAlertsPanel({ elements }) {
     try {
       const payload = await saveOiAlertsConfig({
         enabled: Boolean(enabledInput.checked),
+        scale_alerts_enabled: scaleEnabledInput ? Boolean(scaleEnabledInput.checked) : true,
+        change_window_minutes: Number(windowMinutesInput?.value || 15),
+        min_oi_change_percent: Number(minOiChangeInput?.value || 3),
+        min_price_change_percent: Number(minPriceChangeInput?.value || 0.5),
+        require_cvd_confirmation: Boolean(requireCvdInput?.checked),
+        cooldown_minutes: Number(cooldownMinutesInput?.value || 30),
+        symbols: parseSymbols(symbolsInput?.value),
         thresholds: thresholdInputs.map(input => Number(input.value) * MILLION),
       });
       render(payload, { configSaved: true });
@@ -126,6 +160,23 @@ export function createOiAlertsPanel({ elements }) {
     if (canRenderConfigInput(enabledInput, force)) {
       enabledInput.checked = Boolean(config?.enabled);
     }
+    if (canRenderConfigInput(scaleEnabledInput, force)) {
+      scaleEnabledInput.checked = Boolean(config?.scale_alerts_enabled);
+    }
+    if (canRenderConfigInput(requireCvdInput, force)) {
+      requireCvdInput.checked = Boolean(config?.require_cvd_confirmation);
+    }
+    if (canRenderConfigInput(symbolsInput, force)) {
+      symbolsInput.value = Array.isArray(config?.symbols) ? config.symbols.join(", ") : "";
+    }
+    for (const [input, value] of [
+      [windowMinutesInput, config?.change_window_minutes],
+      [minOiChangeInput, config?.min_oi_change_percent],
+      [minPriceChangeInput, config?.min_price_change_percent],
+      [cooldownMinutesInput, config?.cooldown_minutes],
+    ]) {
+      if (canRenderConfigInput(input, force)) input.value = value ?? "";
+    }
     const thresholds = Array.isArray(config?.thresholds) ? config.thresholds : [];
     thresholdInputs.forEach((input, index) => {
       if (!canRenderConfigInput(input, force)) return;
@@ -157,17 +208,28 @@ export function createOiAlertsPanel({ elements }) {
   }
 
   function canRenderConfigInput(input, force) {
-    return force
-      || (!dirtyConfigInputs.has(input) && !focusedConfigInputs.has(input));
+    return Boolean(input) && (force
+      || (!dirtyConfigInputs.has(input) && !focusedConfigInputs.has(input))
+    );
   }
 
   function setSaveControlsDisabled(disabled) {
-    for (const control of [enabledInput, ...thresholdInputs, saveButton]) {
+    for (const control of [...configInputs, saveButton]) {
       if (control) control.disabled = disabled;
     }
   }
 
-  return { bind, render, renderError };
+  function addSymbol(symbol) {
+    if (!symbolsInput) return;
+    const symbols = parseSymbols(symbolsInput.value);
+    if (!symbols.includes(symbol)) symbols.push(symbol);
+    symbolsInput.value = symbols.join(", ");
+    dirtyConfigInputs.add(symbolsInput);
+    symbolsInput.focus?.();
+    statusElement.textContent = `${symbol} 已加入監控清單；請儲存規則。`;
+  }
+
+  return { addSymbol, bind, render, renderError };
 }
 
 function sortRows(rows, sort) {
@@ -181,7 +243,7 @@ function sortRows(rows, sort) {
 }
 
 function compareSortValues(left, right, key) {
-  if (key === "oi_value" || key === "threshold") {
+  if (["oi_value", "threshold", "oi_change_percent", "price_change_percent"].includes(key)) {
     return compareNumbers(left, right);
   }
   if (key.endsWith("_at")) {
@@ -197,7 +259,7 @@ function compareNumbers(left, right) {
 }
 
 function defaultSortDirection(key) {
-  return key === "oi_value" || key === "threshold" || key.endsWith("_at")
+  return ["oi_value", "threshold", "oi_change_percent", "price_change_percent"].includes(key) || key.endsWith("_at") || key === "as_of"
     ? "desc"
     : "asc";
 }
@@ -229,23 +291,41 @@ function rowsOrEmpty(rows, createRow, colspan) {
 function createActiveRow(row) {
   return createRow([
     safeText(row?.symbol),
+    eventTypeText(row?.event_type),
     formatUsd(row?.oi_value),
-    formatUsd(row?.threshold),
+    formatPercentValue(row?.oi_change_percent),
+    formatPercentValue(row?.price_change_percent),
     signalText(row?.signal),
-    dateText(row?.last_triggered_at),
+    explanationText(row),
+    dateText(row?.as_of),
   ]);
+}
+
+function explanationText(row) {
+  if (row?.event_type === "oi_scale" && Number.isFinite(row?.threshold)) {
+    return `${signalText(row.signal)}：目前 OI ${formatUsd(row.oi_value)}，門檻 ${formatUsd(row.threshold)}`;
+  }
+  if (row?.event_type === "oi_expansion") {
+    const parts = [
+      `OI ${formatPercentValue(row.oi_change_percent)}`,
+      `價格 ${formatPercentValue(row.price_change_percent)}`,
+    ];
+    return `${signalText(row.signal)}：${parts.join("、")}`;
+  }
+  return safeText(row?.explanation);
 }
 
 function createEventRow(row) {
   return createRow([
-    safeText(row?.symbol),
-    formatUsd(row?.oi_value),
-    formatUsd(row?.threshold),
-    signalText(row?.signal),
     dateText(row?.triggered_at),
+    safeText(row?.symbol),
+    eventTypeText(row?.event_type),
+    formatUsd(row?.oi_value),
+    formatPercentValue(row?.oi_change_percent),
+    formatPercentValue(row?.price_change_percent),
+    signalText(row?.signal),
     deliveryStatusText(row?.delivery_status),
     failureReasonText(row?.failure_reason),
-    dateText(row?.last_attempt_at),
   ]);
 }
 
@@ -276,10 +356,11 @@ function formatUsd(value) {
   })}M`;
 }
 
-function signalLabelsText(thresholds) {
-  return SIGNALS.map((signal, index) => (
+function signalLabelsText({ thresholds, windowMinutes, minOiChange, minPriceChange }) {
+  const scale = SIGNALS.map((signal, index) => (
     `${formatThreshold(thresholds?.[index])}：${signal}`
   )).join(" | ");
+  return `${windowMinutes}m OI ≥ ${minOiChange}% 且價格 ≥ ±${minPriceChange}%：方向擴倉；${scale}`;
 }
 
 function formatThreshold(value) {
@@ -288,7 +369,8 @@ function formatThreshold(value) {
 }
 
 function dateText(value) {
-  return typeof value === "string" && value.trim() ? value : "無法使用";
+  if (typeof value !== "string" || !value.trim()) return "-";
+  return formatUtc8DateTime(value) || value;
 }
 
 function safeText(value, fallback = "無法使用") {
@@ -299,12 +381,34 @@ function signalText(value) {
   return SIGNAL_LABELS.get(value) || safeText(value);
 }
 
+function eventTypeText(value) {
+  return new Map([
+    ["oi_expansion", "方向訊號"],
+    ["oi_scale", "OI 規模"],
+  ]).get(value) || safeText(value);
+}
+
+function formatPercentValue(value) {
+  if (!Number.isFinite(value)) return "-";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
+function parseSymbols(value) {
+  const symbols = String(value || "")
+    .split(/[\s,，]+/)
+    .map(symbol => symbol.trim().toUpperCase())
+    .filter(Boolean);
+  return [...new Set(symbols)];
+}
+
+
 function deliveryStatusText(value) {
   return new Map([
     ["pending", "等待發送"],
     ["queued", "已加入佇列"],
     ["sent", "已發送"],
     ["failed", "發送失敗"],
+    ["not_configured", "Telegram 未設定"],
   ]).get(value) || safeText(value);
 }
 

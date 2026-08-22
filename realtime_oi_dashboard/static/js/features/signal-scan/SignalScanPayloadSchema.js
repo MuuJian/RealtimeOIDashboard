@@ -23,6 +23,7 @@ export function isSignalScanPayload(payload) {
     && Array.isArray(payload.bulls)
     && Array.isArray(payload.bears)
     && Array.isArray(payload.spikes)
+    && isOptionalWindow(payload.feature_window_minutes)
     && payload.bulls.length <= MAX_TREND_ROWS
     && payload.bears.length <= MAX_TREND_ROWS
     && payload.spikes.length <= MAX_SPIKE_ROWS
@@ -56,8 +57,33 @@ function isSignalRow(item) {
     && typeof item.isBear === "boolean"
     && !(item.isBull && item.isBear)
     && item.price > 0
-    && item.volRatio >= 0,
+    && item.volRatio >= 0
+    && isOptionalFiniteNumber(item.oiChangePercent)
+    && isOptionalFiniteNumber(item.oiValueChangePercent)
+    && isOptionalFiniteNumber(item.windowPriceChangePercent)
+    && isOptionalFiniteNumber(item.currentOiValue)
+    && isOptionalFiniteNumber(item.cvd15mRatio)
+    && isOptionalText(item.cvdDirection)
+    && isOptionalFiniteNumber(item.fundingRatePercent)
+    && isOptionalFiniteNumber(item.oiUpdatedAt)
+    && (item.signalReason === undefined || (
+      typeof item.signalReason === "string" && item.signalReason.trim().length > 0
+    ))
   );
+}
+
+function isOptionalFiniteNumber(value) {
+  return value === undefined || value === null || isFiniteNumber(value);
+}
+
+function isOptionalWindow(value) {
+  return value === undefined
+    || value === null
+    || (Number.isSafeInteger(value) && value > 0 && value <= 240);
+}
+
+function isOptionalText(value) {
+  return value === undefined || isOptionalString(value);
 }
 
 function isSymbol(value) {

@@ -146,6 +146,13 @@ test("maps every OI alerts panel element", () => {
     ["oiAlertsStatus", { id: "oiAlertsStatus" }],
     ["oiAlertsSignalLabels", { id: "oiAlertsSignalLabels" }],
     ["oiAlertsEnabled", { id: "oiAlertsEnabled" }],
+    ["oiAlertsScaleEnabled", { id: "oiAlertsScaleEnabled" }],
+    ["oiAlertsSymbols", { id: "oiAlertsSymbols" }],
+    ["oiAlertsWindowMinutes", { id: "oiAlertsWindowMinutes" }],
+    ["oiAlertsMinOiChange", { id: "oiAlertsMinOiChange" }],
+    ["oiAlertsMinPriceChange", { id: "oiAlertsMinPriceChange" }],
+    ["oiAlertsCooldownMinutes", { id: "oiAlertsCooldownMinutes" }],
+    ["oiAlertsRequireCvd", { id: "oiAlertsRequireCvd" }],
     ["oiAlertsSave", { id: "oiAlertsSave" }],
   ]);
   const root = {
@@ -167,6 +174,13 @@ test("maps every OI alerts panel element", () => {
     "oiAlertsStatus",
     "oiAlertsSignalLabels",
     "oiAlertsEnabled",
+    "oiAlertsScaleEnabled",
+    "oiAlertsSymbols",
+    "oiAlertsWindowMinutes",
+    "oiAlertsMinOiChange",
+    "oiAlertsMinPriceChange",
+    "oiAlertsCooldownMinutes",
+    "oiAlertsRequireCvd",
     "oiAlertsSave",
   ]) {
     assert.equal(elements[key], ids.get(key));

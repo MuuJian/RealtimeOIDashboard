@@ -21,7 +21,7 @@ from realtime_oi_dashboard.application.oi.batch import OIBatchRunner
 from realtime_oi_dashboard.application.oi.health import PollerClock, RecentErrorLog
 from realtime_oi_dashboard.application.oi.presenter import DashboardPresenter
 from realtime_oi_dashboard.application.oi.runtime import DashboardRuntime
-from realtime_oi_dashboard.domain.oi.state import OiStateStore
+from realtime_oi_dashboard.domain.oi.state import OiStateStore, OiUpdate
 from realtime_oi_dashboard.application.oi.symbol_refresher import SymbolRefresher
 from realtime_oi_dashboard.application.oi_alerts.service import OiAlertService
 from realtime_oi_dashboard.infrastructure.storage.oi_alerts import AlertStateRepository
@@ -121,6 +121,7 @@ class OIPoller:
         self.oi_state = OiStateStore(
             max_age_seconds=ROW_MAX_AGE_SECONDS,
         )
+        self.cvd_state_provider = cvd_state_provider
         self.alert_service = alert_service or OiAlertService(
             AlertStateRepository(DATA_DIR / "oi-alerts.json"),
         )
@@ -208,6 +209,9 @@ class OIPoller:
             reset_market_caches=reset_market_caches,
         )
         self.market_caps.retain_symbols(active)
+        retain_alert_symbols = getattr(self.alert_service, "retain_symbols", None)
+        if callable(retain_alert_symbols):
+            retain_alert_symbols(active)
 
     def prune_stale_data(self, now=None):
         """Drop rows that exceeded the retention window."""
@@ -310,7 +314,7 @@ class OIPoller:
                 return
 
             self.alert_service.observe_updates(
-                accepted_updates,
+                self._with_cvd_updates(accepted_updates),
                 triggered_at=iso_now(),
             )
 
@@ -379,6 +383,30 @@ class OIPoller:
 
     def send_alert_test_message(self):
         return self.alert_service.send_test_message()
+
+    def get_signal_features(self):
+        with self.lock:
+            return self.alert_service.get_features()
+
+    def _with_cvd_updates(self, updates):
+        provider = self.cvd_state_provider
+        if provider is None:
+            return updates
+        try:
+            state = provider.get_state()
+            cvd_rows = state.get("rows") if isinstance(state, dict) else None
+        except Exception:
+            cvd_rows = None
+        if not isinstance(cvd_rows, dict):
+            return updates
+        return [
+            OiUpdate(
+                update.symbol,
+                {**update.row, **cvd_rows.get(update.symbol, {})},
+                update.measured_at,
+            )
+            for update in updates
+        ]
 
 def _positive_int(name, value):
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:

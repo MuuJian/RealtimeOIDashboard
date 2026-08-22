@@ -1,13 +1,22 @@
+import { assertOiAlertsPayload } from "./OiAlertsPayloadSchema.js";
+
 const REQUEST_TIMEOUT_MS = 8000;
 
 export function loadOiAlerts({ signal } = {}) {
   return requestOiAlerts("/api/oi-alerts", { method: "GET", signal });
 }
 
-export function saveOiAlertsConfig({ enabled, thresholds }, { signal } = {}) {
+export function saveOiAlertsConfig(config, { signal } = {}) {
   const body = {
-    enabled,
-    thresholds,
+    enabled: config.enabled,
+    scale_alerts_enabled: config.scale_alerts_enabled,
+    change_window_minutes: config.change_window_minutes,
+    min_oi_change_percent: config.min_oi_change_percent,
+    min_price_change_percent: config.min_price_change_percent,
+    require_cvd_confirmation: config.require_cvd_confirmation,
+    cooldown_minutes: config.cooldown_minutes,
+    symbols: config.symbols,
+    thresholds: config.thresholds,
   };
   return requestOiAlerts("/api/oi-alerts/config", {
     method: "PUT",
@@ -54,7 +63,9 @@ async function requestOiAlerts(url, { method, body, signal }) {
         : `OI alerts request failed (${response.status})`;
       throw new Error(message);
     }
-    return payload;
+    return url === "/api/oi-alerts/test-message"
+      ? payload
+      : assertOiAlertsPayload(payload);
   } catch (error) {
     if (controller.signal.aborted || error?.name === "AbortError") {
       throw createAbortError(abortReason);

@@ -1,4 +1,6 @@
 import {
+  binanceFuturesUrl,
+  formatFundingRate,
   formatPercent,
   formatPrice,
   formatUtc8Time,
@@ -6,28 +8,34 @@ import {
 } from "../../utils/format.js";
 import { syncChildren } from "../../utils/dom.js";
 
-export function createSignalScanPanel({ bullsBody, bearsBody, spikesBody, statusEl }) {
+export function createSignalScanPanel({
+  bullsBody,
+  bearsBody,
+  spikesBody,
+  statusEl,
+  onCreateAlert = () => {},
+}) {
   let lastPayload = null;
   const bullTable = createRowRenderer({
     tbody: bullsBody,
-    colspan: 6,
+    colspan: 10,
     emptyMessage: "目前沒有符合條件的多頭標的。",
     createRow: createTrendRow,
-    updateRow: (tr, row) => updateTrendRow(tr, row, "pos"),
+    updateRow: (tr, row) => updateTrendRow(tr, row, onCreateAlert),
   });
   const bearTable = createRowRenderer({
     tbody: bearsBody,
-    colspan: 6,
+    colspan: 10,
     emptyMessage: "目前沒有符合條件的空頭標的。",
     createRow: createTrendRow,
-    updateRow: (tr, row) => updateTrendRow(tr, row, "neg"),
+    updateRow: (tr, row) => updateTrendRow(tr, row, onCreateAlert),
   });
   const spikeTable = createRowRenderer({
     tbody: spikesBody,
-    colspan: 5,
+    colspan: 10,
     emptyMessage: "目前沒有波動率突增的標的。",
     createRow: createSpikeRow,
-    updateRow: updateSpikeRow,
+    updateRow: (tr, row) => updateSpikeRow(tr, row, onCreateAlert),
   });
 
   function render(payload) {
@@ -76,19 +84,56 @@ export function createSignalScanPanel({ bullsBody, bearsBody, spikesBody, status
     const priceCell = document.createElement("td");
     const chg1hCell = document.createElement("td");
     const chg24hCell = document.createElement("td");
+    const oiChangeCell = document.createElement("td");
+    const cvdCell = document.createElement("td");
+    const fundingCell = document.createElement("td");
     const aboveE20Cell = document.createElement("td");
-    const strengthCell = document.createElement("td");
-    const strengthBar = document.createElement("span");
-    strengthBar.className = "strength-bar";
-    strengthCell.append(strengthBar);
-    tr.append(symbolCell, priceCell, chg1hCell, chg24hCell, aboveE20Cell, strengthCell);
-    tr._cells = { symbolCell, priceCell, chg1hCell, chg24hCell, aboveE20Cell, strengthBar };
+    const reasonCell = document.createElement("td");
+    reasonCell.className = "signal-reason";
+    const actionCell = document.createElement("td");
+    const actionButton = createAlertButton();
+    actionCell.append(actionButton);
+    tr.append(
+      symbolCell,
+      priceCell,
+      chg1hCell,
+      chg24hCell,
+      oiChangeCell,
+      cvdCell,
+      fundingCell,
+      aboveE20Cell,
+      reasonCell,
+      actionCell,
+    );
+    tr._cells = {
+      symbolCell,
+      priceCell,
+      chg1hCell,
+      chg24hCell,
+      oiChangeCell,
+      cvdCell,
+      fundingCell,
+      aboveE20Cell,
+      reasonCell,
+      actionButton,
+    };
     return tr;
   }
 
-  function updateTrendRow(tr, row, strengthClass) {
-    const { symbolCell, priceCell, chg1hCell, chg24hCell, aboveE20Cell, strengthBar } = tr._cells;
-    symbolCell.textContent = row.symbol.replace("USDT", "");
+  function updateTrendRow(tr, row, createAlert) {
+    const {
+      symbolCell,
+      priceCell,
+      chg1hCell,
+      chg24hCell,
+      oiChangeCell,
+      cvdCell,
+      fundingCell,
+      aboveE20Cell,
+      reasonCell,
+      actionButton,
+    } = tr._cells;
+    renderSymbolLink(symbolCell, row.symbol);
     priceCell.textContent = formatPrice(row.price);
     chg1hCell.textContent = formatPercent(row.chg1h);
     chg1hCell.className = signClass(row.chg1h);
@@ -96,9 +141,8 @@ export function createSignalScanPanel({ bullsBody, bearsBody, spikesBody, status
     chg24hCell.className = signClass(row.chg24h);
     aboveE20Cell.textContent = formatPercent(row.aboveE20);
     aboveE20Cell.className = signClass(row.aboveE20);
-    const width = Math.min(60, Math.max(4, Math.abs(row.aboveE20) * 8));
-    strengthBar.style.width = `${width.toFixed(0)}px`;
-    strengthBar.className = `strength-bar ${strengthClass}`;
+    renderContextCells({ oiChangeCell, cvdCell, fundingCell, reasonCell }, row);
+    bindAlertButton(actionButton, row.symbol, createAlert);
   }
 
   function createSpikeRow() {
@@ -109,20 +153,63 @@ export function createSignalScanPanel({ bullsBody, bearsBody, spikesBody, status
     const chg1hCell = document.createElement("td");
     const chg24hCell = document.createElement("td");
     const volRatioCell = document.createElement("td");
-    tr.append(symbolCell, priceCell, chg1hCell, chg24hCell, volRatioCell);
-    tr._cells = { symbolCell, priceCell, chg1hCell, chg24hCell, volRatioCell };
+    const oiChangeCell = document.createElement("td");
+    const cvdCell = document.createElement("td");
+    const fundingCell = document.createElement("td");
+    const reasonCell = document.createElement("td");
+    reasonCell.className = "signal-reason";
+    const actionCell = document.createElement("td");
+    const actionButton = createAlertButton();
+    actionCell.append(actionButton);
+    tr.append(
+      symbolCell,
+      priceCell,
+      chg1hCell,
+      chg24hCell,
+      volRatioCell,
+      oiChangeCell,
+      cvdCell,
+      fundingCell,
+      reasonCell,
+      actionCell,
+    );
+    tr._cells = {
+      symbolCell,
+      priceCell,
+      chg1hCell,
+      chg24hCell,
+      volRatioCell,
+      oiChangeCell,
+      cvdCell,
+      fundingCell,
+      reasonCell,
+      actionButton,
+    };
     return tr;
   }
 
-  function updateSpikeRow(tr, row) {
-    const { symbolCell, priceCell, chg1hCell, chg24hCell, volRatioCell } = tr._cells;
-    symbolCell.textContent = row.symbol.replace("USDT", "");
+  function updateSpikeRow(tr, row, createAlert) {
+    const {
+      symbolCell,
+      priceCell,
+      chg1hCell,
+      chg24hCell,
+      volRatioCell,
+      oiChangeCell,
+      cvdCell,
+      fundingCell,
+      reasonCell,
+      actionButton,
+    } = tr._cells;
+    renderSymbolLink(symbolCell, row.symbol);
     priceCell.textContent = formatPrice(row.price);
     chg1hCell.textContent = formatPercent(row.chg1h);
     chg1hCell.className = signClass(row.chg1h);
     chg24hCell.textContent = formatPercent(row.chg24h);
     chg24hCell.className = signClass(row.chg24h);
     volRatioCell.textContent = `${row.volRatio.toFixed(1)}×`;
+    renderContextCells({ oiChangeCell, cvdCell, fundingCell, reasonCell }, row);
+    bindAlertButton(actionButton, row.symbol, createAlert);
   }
 
   function formatSavedAt(value) {
@@ -131,6 +218,43 @@ export function createSignalScanPanel({ bullsBody, bearsBody, spikesBody, status
   }
 
   return { render, renderError };
+}
+
+function renderContextCells({ oiChangeCell, cvdCell, fundingCell, reasonCell }, row) {
+  oiChangeCell.textContent = formatPercent(row.oiChangePercent);
+  oiChangeCell.className = signClass(row.oiChangePercent);
+  cvdCell.textContent = row.cvd15mRatio == null
+    ? "-"
+    : formatPercent(row.cvd15mRatio * 100);
+  cvdCell.className = signClass(row.cvd15mRatio);
+  fundingCell.textContent = formatFundingRate(row.fundingRatePercent);
+  fundingCell.className = signClass(row.fundingRatePercent);
+  reasonCell.textContent = row.signalReason || "等待 OI 窗口資料";
+}
+
+function renderSymbolLink(cell, symbol) {
+  let link = cell.firstElementChild;
+  if (!link) {
+    link = document.createElement("a");
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    cell.append(link);
+  }
+  link.href = binanceFuturesUrl(symbol);
+  link.textContent = symbol.replace("USDT", "");
+}
+
+function createAlertButton() {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "signal-alert-action";
+  button.textContent = "加入監控";
+  return button;
+}
+
+function bindAlertButton(button, symbol, onCreateAlert) {
+  button.onclick = () => onCreateAlert(symbol);
+  button.setAttribute?.("aria-label", `將 ${symbol} 加入 OI 警報監控`);
 }
 
 function createRowRenderer({

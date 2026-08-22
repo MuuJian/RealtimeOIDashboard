@@ -72,6 +72,10 @@ const signalScanPanel = createSignalScanPanel({
   bearsBody: elements.signalScanBearsBody,
   spikesBody: elements.signalScanSpikesBody,
   statusEl: elements.signalScanStatus,
+  onCreateAlert: symbol => {
+    oiAlertsPanel.addSymbol(symbol);
+    activateTab("oiAlerts");
+  },
 });
 
 const signalScanRefresh = createSignalScanRefreshController({
@@ -84,6 +88,13 @@ const oiAlertsPanel = createOiAlertsPanel({
     statusElement: elements.oiAlertsStatus,
     signalLabelsElement: elements.oiAlertsSignalLabels,
     enabledInput: elements.oiAlertsEnabled,
+    scaleEnabledInput: elements.oiAlertsScaleEnabled,
+    symbolsInput: elements.oiAlertsSymbols,
+    windowMinutesInput: elements.oiAlertsWindowMinutes,
+    minOiChangeInput: elements.oiAlertsMinOiChange,
+    minPriceChangeInput: elements.oiAlertsMinPriceChange,
+    cooldownMinutesInput: elements.oiAlertsCooldownMinutes,
+    requireCvdInput: elements.oiAlertsRequireCvd,
     threshold75Input: elements.oiAlertThreshold75,
     threshold100Input: elements.oiAlertThreshold100,
     threshold150Input: elements.oiAlertThreshold150,

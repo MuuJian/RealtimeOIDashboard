@@ -4,11 +4,12 @@ import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from realtime_oi_dashboard.application.oi.poller import OIPoller, ROW_MAX_AGE_SECONDS
 from realtime_oi_dashboard.application.oi_alerts.service import OiAlertService
 from realtime_oi_dashboard.domain.oi.state import OiUpdate
-from realtime_oi_dashboard.domain.oi_alerts.model import AlertConfig
+from realtime_oi_dashboard.domain.oi_alerts.model import AlertConfig, AlertEvent
 from realtime_oi_dashboard.infrastructure.storage.oi_alerts import (
     AlertSnapshot,
     AlertStateRepository,
@@ -173,7 +174,7 @@ class OiAlertServiceTests(unittest.TestCase):
             )
             self.assertEqual(
                 [(event.threshold, event.signal) for event in later_events],
-                [(120_000_000, "High OI alert")],
+                [(120_000_000, "Very large OI alert")],
             )
 
     def test_runtime_history_is_bounded_to_the_newest_fifty_events(self):
@@ -260,6 +261,70 @@ class OiAlertServiceTests(unittest.TestCase):
 
             self.assertEqual(active[0]["last_triggered_at"], "t2")
 
+    def test_active_scale_rows_follow_watchlist_and_use_exchange_time(self):
+        with tempfile.TemporaryDirectory() as directory:
+            service = OiAlertService(
+                AlertStateRepository(Path(directory) / "oi-alerts.json"),
+                notifier_factory=RecordingNotifier,
+            )
+            service.update_config(
+                {
+                    "enabled": True,
+                    "thresholds": [75e6, 100e6, 150e6],
+                    "scale_alerts_enabled": True,
+                    "change_window_minutes": 15,
+                    "min_oi_change_percent": 3,
+                    "min_price_change_percent": 0.5,
+                    "require_cvd_confirmation": False,
+                    "cooldown_minutes": 30,
+                    "symbols": ["BTCUSDT"],
+                },
+                {},
+            )
+            exchange_ms = 1_787_327_400_000
+
+            active = service.get_state({
+                "BTCUSDT": {
+                    "currentOiValue": 80_000_000,
+                    "oiUpdatedAt": exchange_ms,
+                },
+                "ETHUSDT": {
+                    "currentOiValue": 200_000_000,
+                    "oiUpdatedAt": exchange_ms,
+                },
+            })["active"]
+
+            self.assertEqual([row["symbol"] for row in active], ["BTCUSDT"])
+            self.assertEqual(active[0]["exchange_timestamp_ms"], exchange_ms)
+            self.assertEqual(active[0]["as_of"], "2026-08-21T15:50:00+00:00")
+
+    def test_disabled_scale_rules_are_not_listed_as_active(self):
+        with tempfile.TemporaryDirectory() as directory:
+            service = OiAlertService(
+                AlertStateRepository(Path(directory) / "oi-alerts.json"),
+                notifier_factory=RecordingNotifier,
+            )
+            service.update_config(
+                {
+                    "enabled": True,
+                    "thresholds": [75e6, 100e6, 150e6],
+                    "scale_alerts_enabled": False,
+                    "change_window_minutes": 15,
+                    "min_oi_change_percent": 3,
+                    "min_price_change_percent": 0.5,
+                    "require_cvd_confirmation": False,
+                    "cooldown_minutes": 30,
+                    "symbols": [],
+                },
+                {},
+            )
+
+            active = service.get_state(
+                {"BTCUSDT": {"currentOiValue": 80_000_000}}
+            )["active"]
+
+            self.assertEqual(active, [])
+
     def test_active_alert_keeps_trigger_time_after_event_eviction_and_restart(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = AlertStateRepository(Path(directory) / "oi-alerts.json")
@@ -320,14 +385,98 @@ class OiAlertServiceTests(unittest.TestCase):
             )
             self.assertNotIn(str(path), str(storage))
 
+    def test_uses_exchange_time_and_quantity_change_for_directional_event(self):
+        with tempfile.TemporaryDirectory() as directory:
+            notifier = None
+
+            def notifier_factory(*, mark_delivery):
+                nonlocal notifier
+                notifier = RecordingNotifier(mark_delivery=mark_delivery)
+                return notifier
+
+            service = OiAlertService(
+                AlertStateRepository(Path(directory) / "oi-alerts.json"),
+                notifier_factory=notifier_factory,
+            )
+            start_ms = 1_787_327_400_000
+            service.observe_updates(
+                [OiUpdate("BTCUSDT", {
+                    "currentOi": 100,
+                    "currentOiValue": 50_000_000,
+                    "price": 100,
+                    "oiUpdatedAt": start_ms,
+                }, 1)],
+                triggered_at="server-time-1",
+            )
+
+            events = service.observe_updates(
+                [OiUpdate("BTCUSDT", {
+                    "currentOi": 104,
+                    "currentOiValue": 52_520_000,
+                    "price": 101,
+                    "oiUpdatedAt": start_ms + 15 * 60_000,
+                }, 2)],
+                triggered_at="server-time-2",
+            )
+
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0].signal, "Bullish OI expansion")
+            self.assertAlmostEqual(events[0].oi_change_percent, 4.0)
+            self.assertAlmostEqual(events[0].price_change_percent, 1.0)
+            self.assertEqual(events[0].exchange_timestamp_ms, start_ms + 15 * 60_000)
+            self.assertNotIn("server-time", events[0].triggered_at)
+            self.assertEqual(notifier.enqueued, events)
+
+    def test_unchanged_observation_does_not_rewrite_alert_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = AlertStateRepository(Path(directory) / "oi-alerts.json")
+            service = OiAlertService(
+                repository,
+                notifier_factory=RecordingNotifier,
+            )
+            service.observe_updates(
+                [OiUpdate("BTCUSDT", {"currentOiValue": 70_000_000}, 1)],
+                triggered_at="t1",
+            )
+            with patch.object(repository, "save", wraps=repository.save) as save:
+                service.observe_updates(
+                    [OiUpdate("BTCUSDT", {"currentOiValue": 71_000_000}, 2)],
+                    triggered_at="t2",
+                )
+
+            save.assert_not_called()
+
+    def test_start_requeues_persisted_pending_events_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = AlertStateRepository(Path(directory) / "oi-alerts.json")
+            repository.save(AlertSnapshot(events=(
+                AlertEvent(
+                    "BTCUSDT", 80_000_000, 75_000_000,
+                    "OI scale alert", "2026-08-22T00:00:00+00:00",
+                ),
+            )))
+            notifier = None
+
+            def notifier_factory(*, mark_delivery):
+                nonlocal notifier
+                notifier = RecordingNotifier(mark_delivery=mark_delivery)
+                return notifier
+
+            service = OiAlertService(repository, notifier_factory=notifier_factory)
+            service.start()
+            service.start()
+
+            self.assertEqual(len(notifier.enqueued), 1)
+
 
 class OIPollerAlertIntegrationTests(unittest.TestCase):
-    def create_poller(self, alert_service):
+    def create_poller(self, alert_service, cvd_state_provider=None):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         poller = OIPoller(
             market_cap_file=Path(directory.name) / "market-caps.json",
             alert_service=alert_service,
+            cvd_state_provider=cvd_state_provider,
         )
         poller.symbol_refresher.symbols = ["BTCUSDT", "ETHUSDT"]
         poller.refresh_symbols_if_needed = lambda: None
@@ -361,6 +510,31 @@ class OIPollerAlertIntegrationTests(unittest.TestCase):
             },
         )
         self.assertEqual(alerts.observed[0][0], [results[0], results[2]])
+
+    def test_alert_features_receive_the_matching_cvd_snapshot(self):
+        alerts = RecordingAlertService()
+        cvd = SimpleNamespace(get_state=lambda: {
+            "rows": {
+                "BTCUSDT": {
+                    "cvd15mRatio": 0.25,
+                    "cvdStatus": "buying",
+                },
+            },
+        })
+        poller = self.create_poller(alerts, cvd_state_provider=cvd)
+        measured_at = time.monotonic()
+        update = OiUpdate(
+            "BTCUSDT",
+            {"currentOiValue": 80_000_000},
+            measured_at,
+        )
+        poller.update_symbols = lambda *_args, **_kwargs: [update]
+
+        poller.update_batch()
+
+        observed = alerts.observed[0][0][0]
+        self.assertEqual(observed.row["cvd15mRatio"], 0.25)
+        self.assertEqual(observed.row["cvdStatus"], "buying")
 
     def test_stale_updates_are_not_forwarded_to_alert_evaluation(self):
         alerts = RecordingAlertService()

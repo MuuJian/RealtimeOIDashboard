@@ -65,3 +65,28 @@
 .spike-table th:nth-child(3), .spike-table td:nth-child(3) { width: 110px; }
 .spike-table th:nth-child(4), .spike-table td:nth-child(4) { width: 110px; }
 .spike-table th:nth-child(5), .spike-table td:nth-child(5) { width: 120px; }
+
+.trend-table,
+.spike-table {
+  min-width: 1180px;
+}
+
+.signal-reason {
+  min-width: 220px;
+  white-space: normal;
+  line-height: 1.4;
+}
+
+.signal-alert-action {
+  padding: 6px 9px;
+  border-color: rgba(86, 231, 255, .38);
+  background: rgba(86, 231, 255, .08);
+  color: var(--cyan);
+  white-space: nowrap;
+}
+
+.signal-alert-action:hover,
+.signal-alert-action:focus-visible {
+  border-color: var(--cyan);
+  background: rgba(86, 231, 255, .16);
+}

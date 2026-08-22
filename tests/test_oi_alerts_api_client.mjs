@@ -8,8 +8,20 @@ import {
 } from "../realtime_oi_dashboard/static/js/features/oi-alerts/OiAlertsApiClient.js";
 
 const validPayload = {
-  config: { enabled: true, thresholds: [75e6, 100e6, 150e6] },
+  schema_version: 2,
+  config: {
+    enabled: true,
+    thresholds: [75e6, 100e6, 150e6],
+    scale_alerts_enabled: true,
+    change_window_minutes: 15,
+    min_oi_change_percent: 3,
+    min_price_change_percent: 0.5,
+    require_cvd_confirmation: false,
+    cooldown_minutes: 30,
+    symbols: [],
+  },
   telegram: { status: "not_configured", last_error: null, last_attempt_at: null },
+  storage: { status: "ok", last_error: null },
   active: [],
   events: [],
 };

@@ -105,3 +105,23 @@ class AlertStateRepositoryTests(unittest.TestCase):
             repository.load_error,
             "Saved OI alert state could not be loaded; defaults are active",
         )
+
+    def test_legacy_disabled_master_switch_keeps_both_alert_types_disabled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "oi-alerts.json"
+            path.write_text(
+                json.dumps({
+                    "config": {
+                        "enabled": False,
+                        "thresholds": [75e6, 100e6, 150e6],
+                    },
+                    "crossed_thresholds": {},
+                    "events": [],
+                }),
+                encoding="utf-8",
+            )
+
+            config = AlertStateRepository(path).load().config
+
+        self.assertFalse(config.enabled)
+        self.assertFalse(config.scale_alerts_enabled)
