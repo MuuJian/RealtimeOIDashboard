@@ -66,6 +66,9 @@ class DashboardRuntime:
 
                 self.stop_event.wait(self.batch_delay)
         finally:
+            # Every exit path owns cancellation, including setup failures and
+            # unexpected BaseExceptions that bypass the polling-loop handlers.
+            self.stop_event.set()
             try:
                 if executor is not None:
                     executor.shutdown(wait=True, cancel_futures=True)

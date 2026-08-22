@@ -1,5 +1,6 @@
 import threading
 import unittest
+from unittest.mock import patch
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
 from realtime_oi_dashboard.application.oi.runtime import DashboardRuntime
@@ -86,6 +87,40 @@ class DashboardRuntimeTests(unittest.TestCase):
 
         self.assertEqual(updates, [])
         self.assertEqual(closed, [True])
+
+    def test_executor_setup_failure_stops_market_cap_worker_before_close(self):
+        stop_event = threading.Event()
+        market_cap_started = threading.Event()
+        market_cap_stopped = threading.Event()
+        close_observations = []
+
+        def refresh_market_caps(_symbols_provider):
+            market_cap_started.set()
+            stop_event.wait(1)
+            if stop_event.is_set():
+                market_cap_stopped.set()
+
+        runtime = DashboardRuntime(
+            lambda **_kwargs: None,
+            refresh_market_caps,
+            lambda: {"BTCUSDT"},
+            lambda _error: None,
+            lambda: close_observations.append(market_cap_stopped.is_set()),
+            stop_event,
+            batch_delay=0,
+            workers=2,
+        )
+
+        with patch(
+            "realtime_oi_dashboard.application.oi.runtime.ThreadPoolExecutor",
+            side_effect=RuntimeError("executor unavailable"),
+        ), self.assertRaisesRegex(RuntimeError, "executor unavailable"):
+            runtime.run_forever()
+
+        self.assertTrue(market_cap_started.is_set())
+        self.assertTrue(stop_event.is_set())
+        self.assertTrue(market_cap_stopped.is_set())
+        self.assertEqual(close_observations, [True])
 
 
 if __name__ == "__main__":
