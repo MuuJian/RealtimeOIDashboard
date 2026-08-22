@@ -1,7 +1,9 @@
 import threading
 import unittest
 
+from realtime_oi_dashboard.application.oi.symbol_refresher import SymbolRefresher
 from realtime_oi_dashboard.domain.errors import PollingStopped
+from realtime_oi_dashboard.domain.oi.history_points import MAX_SAFE_INTEGER
 from realtime_oi_dashboard.infrastructure.binance.futures_client import (
     BinanceFuturesClient,
 )
@@ -34,16 +36,17 @@ def ticker_payload():
     ]
 
 
-def exchange_info_payload():
+def exchange_info_payload(count=20):
     return {
         "symbols": [
             {
-                "symbol": "BTCUSDT",
+                "symbol": "BTCUSDT" if index == 0 else f"INFO{index}USDT",
                 "quoteAsset": "USDT",
                 "contractType": "PERPETUAL",
                 "underlyingType": "COIN",
                 "status": "TRADING",
             }
+            for index in range(count)
         ]
     }
 
@@ -185,6 +188,40 @@ class BinanceRestCacheTests(unittest.TestCase):
         self.assertIs(throttled, cached)
         self.assertEqual(client.calls.count(EXCHANGE_INFO_URL), 2)
 
+    def test_large_symbol_removal_confirmation_forces_a_second_request(self):
+        cache, client, clock = self.create_cache()
+        client.exchange_info = exchange_info_payload(30)
+        stop_event = threading.Event()
+        oi_client = BinanceFuturesClient(
+            stop_event,
+            lambda *_args: None,
+            funding_cache_seconds=3600,
+            http_client=FakeHttpClient(),
+            shared_rest_cache=cache,
+        )
+        errors = []
+        refresher = SymbolRefresher(
+            oi_client.get_active_symbols,
+            lambda symbol, error: errors.append((symbol, str(error))),
+            stop_event,
+            threading.RLock(),
+            refresh_interval=900,
+            monotonic=clock,
+        )
+        refresher.refresh_if_due(lambda _refresh: None)
+
+        client.exchange_info = exchange_info_payload(20)
+        clock.value = 900
+        first_confirmation = refresher.refresh_if_due(lambda _refresh: None)
+        clock.value = refresher.retry_at
+        second_confirmation = refresher.refresh_if_due(lambda _refresh: None)
+
+        self.assertFalse(first_confirmation)
+        self.assertTrue(second_confirmation)
+        self.assertEqual(len(refresher.symbols), 20)
+        self.assertEqual(client.calls.count(EXCHANGE_INFO_URL), 3)
+        self.assertEqual(len(errors), 1)
+
     def test_concurrent_failed_misses_share_one_request_error(self):
         client = FakeHttpClient()
         client.error = ConnectionError("temporary failure")
@@ -255,6 +292,20 @@ class BinanceRestCacheTests(unittest.TestCase):
             "symbol": "BTCUSDT",
             "openInterest": "123.45",
         }
+        oi_client = BinanceFuturesClient(
+            stop_event,
+            lambda *_args: None,
+            funding_cache_seconds=3600,
+            http_client=http_client,
+        )
+
+        with self.assertRaisesRegex(ValueError, "open-interest response"):
+            oi_client.get_open_interest("BTCUSDT")
+
+    def test_current_oi_rejects_timestamp_above_javascript_safe_integer(self):
+        stop_event = threading.Event()
+        http_client = FakeHttpClient()
+        http_client.open_interest["time"] = MAX_SAFE_INTEGER + 1
         oi_client = BinanceFuturesClient(
             stop_event,
             lambda *_args: None,

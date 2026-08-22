@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
+from realtime_oi_dashboard.domain.oi.history_points import MAX_SAFE_INTEGER
 from realtime_oi_dashboard.infrastructure.storage.market_cache import MarketCache
 from realtime_oi_dashboard.domain.market_data import (
     incomplete_funding_symbols,
@@ -99,8 +100,8 @@ class BinanceFuturesClient:
         if self.stop_event.wait(delay):
             raise PollingStopped
 
-    def get_active_symbols(self) -> list[str]:
-        data = self.market_data.get_exchange_info()
+    def get_active_symbols(self, *, force_refresh: bool = False) -> list[str]:
+        data = self.market_data.get_exchange_info(force_refresh=force_refresh)
         self._raise_if_stopped()
         if not isinstance(data, dict) or not isinstance(data.get("symbols"), list):
             raise ValueError("unexpected exchange-info response")
@@ -247,6 +248,7 @@ class BinanceFuturesClient:
             or value < 0
             or timestamp_ms is None
             or timestamp_ms <= 0
+            or timestamp_ms > MAX_SAFE_INTEGER
         ):
             raise ValueError("unexpected open-interest response")
         return OpenInterestSnapshot(value=value, timestamp_ms=timestamp_ms)

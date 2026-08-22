@@ -68,15 +68,15 @@ class _SharedResource:
         self._retry_error = None
         self._retry_error_until = 0.0
 
-    def get(self):
-        cached = self._fresh_value()
+    def get(self, *, force_refresh: bool = False):
+        cached = None if force_refresh else self._fresh_value()
         if cached is not None:
             return cached
 
         # Only one caller performs an expired resource refresh. Waiters check
         # the cache again after acquiring the lock and reuse its result.
         with self._refresh_lock:
-            cached = self._fresh_value()
+            cached = None if force_refresh else self._fresh_value()
             if cached is not None:
                 return cached
 
@@ -244,10 +244,10 @@ class CachedBinanceMarketData:
         self._raise_if_stopped()
         return self._tickers.get()
 
-    def get_exchange_info(self) -> dict:
+    def get_exchange_info(self, *, force_refresh: bool = False) -> dict:
         self._raise_if_closed()
         self._raise_if_stopped()
-        return self._exchange_info.get()
+        return self._exchange_info.get(force_refresh=force_refresh)
 
     def close(self) -> None:
         self.stop()
