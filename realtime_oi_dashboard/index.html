@@ -47,10 +47,7 @@
       <section class="metrics">
       <div class="metric metric-blue metric-dominance" data-motion="metric">
         <div class="dominance-header">
-          <div>
-            <div class="label">OI 市場佔比</div>
-            <div class="dominance-basis">7D · 24H · 現在</div>
-          </div>
+          <div class="label">OI 市場佔比</div>
         </div>
         <div id="oiDominanceBar" class="dominance-chart" role="img" aria-label="OI 市場佔比暫無資料">
           <svg viewBox="0 0 320 76" preserveAspectRatio="none" aria-hidden="true">
@@ -58,32 +55,25 @@
             <line class="dominance-grid-line" x1="0" y1="38" x2="320" y2="38"></line>
             <line class="dominance-grid-line" x1="0" y1="75" x2="320" y2="75"></line>
             <path class="dominance-area dominance-other" data-oi-dominance-segment="other"></path>
-            <path class="dominance-area dominance-sol" data-oi-dominance-segment="sol"></path>
             <path class="dominance-area dominance-eth" data-oi-dominance-segment="eth"></path>
             <path class="dominance-area dominance-btc" data-oi-dominance-segment="btc"></path>
           </svg>
-          <div class="dominance-axis" aria-hidden="true">
-            <span>7D 前</span>
-            <span>24H 前</span>
-            <span>現在</span>
+          <div id="oiDominanceTooltip" class="dominance-tooltip" hidden>
+            <time data-oi-dominance-time></time>
+            <div data-oi-dominance-tooltip="btc"><span><i class="dominance-dot dominance-btc"></i>BTC</span><strong></strong><em></em></div>
+            <div data-oi-dominance-tooltip="eth"><span><i class="dominance-dot dominance-eth"></i>ETH</span><strong></strong><em></em></div>
+            <div data-oi-dominance-tooltip="other"><span><i class="dominance-dot dominance-other"></i>OTHER</span><strong></strong><em></em></div>
           </div>
         </div>
         <div class="dominance-legend">
           <div class="dominance-item" data-oi-dominance-item="btc">
             <span class="dominance-name"><i class="dominance-dot dominance-btc"></i>BTC</span>
-            <strong data-oi-dominance-percent>-</strong>
           </div>
           <div class="dominance-item" data-oi-dominance-item="eth">
             <span class="dominance-name"><i class="dominance-dot dominance-eth"></i>ETH</span>
-            <strong data-oi-dominance-percent>-</strong>
-          </div>
-          <div class="dominance-item" data-oi-dominance-item="sol">
-            <span class="dominance-name"><i class="dominance-dot dominance-sol"></i>SOL</span>
-            <strong data-oi-dominance-percent>-</strong>
           </div>
           <div class="dominance-item" data-oi-dominance-item="other">
             <span class="dominance-name"><i class="dominance-dot dominance-other"></i>OTHER</span>
-            <strong data-oi-dominance-percent>-</strong>
           </div>
         </div>
       </div>

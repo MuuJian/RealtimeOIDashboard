@@ -39,7 +39,11 @@ export function createDashboardRenderer({
     if (stats) {
       motionEffects.pulseValues(
         [
-          ...renderOiDominance(elements, rankingData.getRows()),
+          ...renderOiDominance(
+            elements,
+            rankingData.getRows(),
+            rankingData.getDominanceHistory(),
+          ),
           ...renderStatCards(elements, rankingData.getStats()),
         ],
       );

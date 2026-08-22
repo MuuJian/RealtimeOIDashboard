@@ -1,28 +1,46 @@
 const PRIMARY_MARKETS = Object.freeze([
   { key: "btc", label: "BTC", symbol: "BTCUSDT" },
   { key: "eth", label: "ETH", symbol: "ETHUSDT" },
-  { key: "sol", label: "SOL", symbol: "SOLUSDT" },
 ]);
 
 const PRIMARY_SYMBOLS = new Map(
   PRIMARY_MARKETS.map(market => [market.symbol, market.key]),
 );
 
-export function buildOiDominance(rows) {
-  const points = [
-    buildPoint(rows, "7d"),
-    buildPoint(rows, "24h"),
-    buildPoint(rows, "now"),
-  ];
-  const current = points[2];
+export function buildOiDominance(rows, history = []) {
+  const current = buildPoint(rows, "now");
+  const historicalPoints = history.map(historyPoint);
+  const points = historicalPoints.length
+    ? [...historicalPoints, current]
+    : [current, current];
   return { ...current, points };
+}
+
+function historyPoint(point) {
+  return {
+    timestamp: point.timestamp,
+    total: 100,
+    groups: [
+      ...PRIMARY_MARKETS.map(({ key, label }) => ({
+        key,
+        label,
+        value: Number(point[`${key}Value`]) || 0,
+        percent: Number(point[key]) || 0,
+      })),
+      {
+        key: "other",
+        label: "OTHER",
+        value: Number(point.otherValue) || 0,
+        percent: Number(point.other) || 0,
+      },
+    ],
+  };
 }
 
 function buildPoint(rows, period) {
   const values = new Map([
     ["btc", 0],
     ["eth", 0],
-    ["sol", 0],
     ["other", 0],
   ]);
 
@@ -46,7 +64,20 @@ function buildPoint(rows, period) {
     };
   });
 
-  return { total, groups };
+  return {
+    timestamp: latestTimestamp(rows),
+    total,
+    groups,
+  };
+}
+
+function latestTimestamp(rows) {
+  return (rows || []).reduce((latest, row) => {
+    const timestamp = Number(row?.oiUpdatedAt);
+    return Number.isSafeInteger(timestamp) && timestamp > latest
+      ? timestamp
+      : latest;
+  }, Date.now());
 }
 
 function oiValueAt(row, period) {

@@ -6,6 +6,7 @@ export function getDashboardElements(root = document) {
     marketCapLoadedText: root.getElementById("marketCapLoadedText"),
     wsState: root.getElementById("wsState"),
     oiDominanceBar: root.getElementById("oiDominanceBar"),
+    oiDominanceTooltip: root.getElementById("oiDominanceTooltip"),
     oiDominanceSegments: root.querySelectorAll("[data-oi-dominance-segment]"),
     oiDominanceItems: root.querySelectorAll("[data-oi-dominance-item]"),
     topIncrease: root.getElementById("topIncrease"),

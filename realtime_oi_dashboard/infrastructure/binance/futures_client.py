@@ -274,6 +274,9 @@ class BinanceFuturesClient:
             timeout=10,
         )
 
+    def get_oi_dominance_history(self) -> list[dict[str, float | int]]:
+        return self.oi_history.get_dominance_history()
+
     def retain_symbols(
         self,
         active_symbols: set[str],

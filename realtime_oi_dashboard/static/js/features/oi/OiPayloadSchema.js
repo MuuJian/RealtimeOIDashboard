@@ -46,6 +46,7 @@ export function isOiPayload(payload) {
     && payload.market_cap_loaded_symbols >= 0
     && payload.market_cap_loaded_symbols <= payload.total_symbols
     && isCvdMeta(payload.cvd_meta)
+    && isOiDominanceHistory(payload.oi_dominance_history)
     && payload.active_symbols.every(isSymbol)
     && Array.isArray(payload.rows)
     && payload.rows.every(isOiRow),
@@ -72,6 +73,25 @@ function isCvdMeta(value) {
     && ["warming", "live", "stale", "partial", "unavailable"].every(
       key => Number.isSafeInteger(counts[key]) && counts[key] >= 0,
     );
+}
+
+function isOiDominanceHistory(value) {
+  return Array.isArray(value)
+    && value.length <= 200
+    && value.every((point, index) => (
+      point
+      && typeof point === "object"
+      && isTimestamp(point.timestamp)
+      && (index === 0 || point.timestamp > value[index - 1].timestamp)
+      && [point.btc, point.eth, point.other].every(
+        share => isNonNegativeNumber(share) && share <= 100,
+      )
+      && [point.btcValue, point.ethValue, point.otherValue]
+        .every(isNonNegativeNumber)
+      && Math.abs(
+        point.btc + point.eth + point.other - 100
+      ) < 0.01
+    ));
 }
 
 export function isOiRow(item) {

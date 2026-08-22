@@ -22,10 +22,17 @@ from realtime_oi_dashboard.domain.oi.history_points import (
     history_point_value,
     parse_oi_history_points,
 )
+from realtime_oi_dashboard.domain.parsing import optional_float
 
 
 OI_HISTORY_CACHE_SECONDS = 60 * 60
 OI_HISTORY_RETRY_SECONDS = 60
+DOMINANCE_CHART_INTERVAL_MS = 4 * HOUR_MS
+DOMINANCE_GROUPS = ("btc", "eth", "other")
+DOMINANCE_SYMBOLS = {
+    "BTCUSDT": "btc",
+    "ETHUSDT": "eth",
+}
 
 
 class OiHistoryService:
@@ -40,6 +47,9 @@ class OiHistoryService:
         self._record_error = record_error
         self._lock = threading.Lock()
         self._cache: dict[str, OiHistoryCacheEntry] = {}
+        self._value_series: dict[str, tuple[tuple[int, float], ...]] = {}
+        self._dominance_history_cache: tuple[dict[str, float | int], ...] = ()
+        self._dominance_history_dirty = True
 
     def get_changes(
         self,
@@ -124,6 +134,7 @@ class OiHistoryService:
             )
 
         if history_points is not None:
+            self._store_value_series(symbol, history_points)
             past_24h_point = self._find_point(
                 symbol,
                 history_points,
@@ -214,10 +225,50 @@ class OiHistoryService:
                 for symbol, item in self._cache.items()
                 if symbol in active_symbols
             }
+            retained_series = {
+                symbol: series
+                for symbol, series in self._value_series.items()
+                if symbol in active_symbols
+            }
+            if retained_series != self._value_series:
+                self._value_series = retained_series
+                self._dominance_history_dirty = True
 
     def clear(self) -> None:
         with self._lock:
             self._cache.clear()
+            self._value_series.clear()
+            self._dominance_history_cache = ()
+            self._dominance_history_dirty = True
+
+    def get_dominance_history(self) -> list[dict[str, float | int]]:
+        """Aggregate cached notional OI into four-hour chart shares."""
+        with self._lock:
+            if self._dominance_history_dirty:
+                self._dominance_history_cache = tuple(
+                    _aggregate_dominance_history(self._value_series)
+                )
+                self._dominance_history_dirty = False
+            return [dict(point) for point in self._dominance_history_cache]
+
+    def _store_value_series(self, symbol, history_points) -> None:
+        values_by_interval = {}
+        for timestamp_ms, item in history_points:
+            value = optional_float(item.get("sumOpenInterestValue"))
+            if value is None or value <= 0:
+                continue
+            chart_timestamp = (
+                timestamp_ms
+                // DOMINANCE_CHART_INTERVAL_MS
+                * DOMINANCE_CHART_INTERVAL_MS
+            )
+            values_by_interval[chart_timestamp] = value
+        series = tuple(sorted(values_by_interval.items()))
+        with self._lock:
+            if self._value_series.get(symbol) == series:
+                return
+            self._value_series[symbol] = series
+            self._dominance_history_dirty = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,6 +277,39 @@ class _Baselines:
     target_7d_ms: int
     past_24h_point: HistoryPoint | None
     past_7d_point: HistoryPoint | None
+
+
+def _aggregate_dominance_history(value_series):
+    totals_by_interval = {}
+    for symbol, series in value_series.items():
+        group = DOMINANCE_SYMBOLS.get(symbol, "other")
+        for timestamp_ms, value in series:
+            totals = totals_by_interval.setdefault(
+                timestamp_ms,
+                {key: 0.0 for key in DOMINANCE_GROUPS},
+            )
+            totals[group] += value
+
+    result = []
+    for timestamp_ms in sorted(totals_by_interval):
+        totals = totals_by_interval[timestamp_ms]
+        if any(totals[key] <= 0 for key in DOMINANCE_GROUPS):
+            continue
+        total = sum(totals.values())
+        if total <= 0:
+            continue
+        result.append({
+            "timestamp": timestamp_ms,
+            **{
+                key: totals[key] / total * 100
+                for key in DOMINANCE_GROUPS
+            },
+            **{
+                f"{key}Value": totals[key]
+                for key in DOMINANCE_GROUPS
+            },
+        })
+    return result
 
 
 def _target_timestamps(current_timestamp_ms: int) -> tuple[int, int]:

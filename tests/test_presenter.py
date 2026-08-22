@@ -24,6 +24,7 @@ class DashboardPresenterTests(unittest.TestCase):
             schema_version=7,
             stale_rows_error="stale",
             cvd_state_provider=cvd_state_provider,
+            dominance_history_provider=lambda: [{"timestamp": 1, "btc": 100}],
             monotonic=lambda: 100.0,
             wall_time=lambda: 1_000.0,
         )
@@ -53,6 +54,7 @@ class DashboardPresenterTests(unittest.TestCase):
                 "active_symbols",
                 "total_symbols",
                 "market_cap_loaded_symbols",
+                "oi_dominance_history",
                 "rows",
                 "recent_errors",
                 "cvd_meta",
@@ -62,6 +64,10 @@ class DashboardPresenterTests(unittest.TestCase):
         self.assertEqual(payload["active_symbols"], ["BTCUSDT", "ETHUSDT"])
         self.assertEqual(payload["total_symbols"], 2)
         self.assertEqual(payload["market_cap_loaded_symbols"], 1)
+        self.assertEqual(
+            payload["oi_dominance_history"],
+            [{"timestamp": 1, "btc": 100}],
+        )
         self.assertEqual(payload["rows"][0]["symbol"], "BTCUSDT")
         self.assertEqual(payload["rows"][0]["price"], 100.0)
         self.assertEqual(payload["rows"][0]["cvdStatus"], "unavailable")
