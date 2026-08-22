@@ -18,6 +18,7 @@ export function createOiRankingStore() {
   const rowsBySymbol = new Map();
   let rows = [];
   let stats = buildOiStats(rows);
+  let dominanceHistory = [];
 
   function setRows(nextRows, priceMap) {
     const seen = new Set();
@@ -64,6 +65,9 @@ export function createOiRankingStore() {
 
   return {
     setRows,
+    setDominanceHistory(nextHistory) {
+      dominanceHistory = nextHistory.map(point => ({ ...point }));
+    },
     applyPriceUpdates,
     getRows() {
       return rows;
@@ -73,6 +77,9 @@ export function createOiRankingStore() {
     },
     getStats() {
       return stats;
+    },
+    getDominanceHistory() {
+      return dominanceHistory;
     },
   };
 }

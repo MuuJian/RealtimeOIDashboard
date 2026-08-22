@@ -73,13 +73,6 @@
   gap: 12px;
 }
 
-.dominance-basis {
-  margin-top: 5px;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 650;
-}
-
 .dominance-status-a11y {
   position: absolute;
   width: 1px;
@@ -91,14 +84,15 @@
 }
 
 .dominance-chart {
+  position: relative;
   width: 100%;
-  min-height: 82px;
+  min-height: 94px;
 }
 
 .dominance-chart svg {
   display: block;
   width: 100%;
-  height: 68px;
+  height: 94px;
   overflow: hidden;
   border-radius: 5px;
   background: linear-gradient(180deg, rgba(255, 255, 255, .025), transparent);
@@ -125,6 +119,67 @@
   opacity: 1;
 }
 
+.dominance-tooltip {
+  position: absolute;
+  z-index: 4;
+  top: 4px;
+  width: 190px;
+  padding: 10px 11px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, white 9%);
+  border-radius: 9px;
+  background: rgba(8, 12, 20, .96);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .42);
+  color: var(--ink);
+  pointer-events: none;
+}
+
+.dominance-tooltip time {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted-bright);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.dominance-tooltip > div {
+  display: grid;
+  grid-template-columns: minmax(48px, 1fr) 42px 68px;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dominance-tooltip > div + div {
+  margin-top: 5px;
+}
+
+.dominance-tooltip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted-bright);
+  font-weight: 750;
+}
+
+.dominance-tooltip strong,
+.dominance-tooltip em {
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dominance-tooltip strong {
+  color: var(--ink);
+}
+
+.dominance-tooltip em {
+  color: var(--muted);
+  font-style: normal;
+}
+
 .dominance-btc {
   --dominance-color: #4f73e8;
   background: var(--dominance-color);
@@ -135,28 +190,14 @@
   background: var(--dominance-color);
 }
 
-.dominance-sol {
-  --dominance-color: #a06be5;
-  background: var(--dominance-color);
-}
-
 .dominance-other {
   --dominance-color: #c8753c;
   background: var(--dominance-color);
 }
 
-.dominance-axis {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 8px;
-  font-weight: 650;
-}
-
 .dominance-legend {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -164,8 +205,9 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 4px;
+  text-align: center;
 }
 
 .dominance-name {
@@ -384,21 +426,16 @@
 
 @media (max-width: 640px) {
   .metric-dominance {
-    min-height: 184px;
+    min-height: 190px;
   }
 
   .dominance-chart svg {
-    height: 72px;
+    height: 98px;
   }
 
   .dominance-item {
-    display: grid;
-    justify-content: start;
-    gap: 2px;
-  }
-
-  .dominance-item strong {
-    font-size: 12px;
+    display: flex;
+    justify-content: center;
   }
 
   .metric-summary {

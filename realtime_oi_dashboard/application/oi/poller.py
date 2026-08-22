@@ -133,6 +133,7 @@ class OIPoller:
             self.market_caps.count,
             schema_version=OI_API_SCHEMA_VERSION,
             stale_rows_error=STALE_ROWS_ERROR,
+            dominance_history_provider=self.binance.get_oi_dominance_history,
         )
         self.runtime = DashboardRuntime(
             self.update_batch,

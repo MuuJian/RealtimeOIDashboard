@@ -8,6 +8,7 @@ const validPayload = {
   active_symbols: [],
   total_symbols: 0,
   market_cap_loaded_symbols: 0,
+  oi_dominance_history: [],
   rows: [],
 };
 

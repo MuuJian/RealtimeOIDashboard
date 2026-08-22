@@ -17,6 +17,7 @@ class DashboardPresenter:
         *,
         schema_version: int,
         stale_rows_error: str,
+        dominance_history_provider=None,
         monotonic=time.monotonic,
         wall_time=time.time,
     ) -> None:
@@ -26,6 +27,7 @@ class DashboardPresenter:
         self.market_cap_count = market_cap_count
         self.schema_version = schema_version
         self.stale_rows_error = stale_rows_error
+        self.dominance_history_provider = dominance_history_provider or (lambda: [])
         self.monotonic = monotonic
         self.wall_time = wall_time
 
@@ -38,6 +40,7 @@ class DashboardPresenter:
         state["market_cap_loaded_symbols"] = self.market_cap_count(
             set(state["active_symbols"])
         )
+        state["oi_dominance_history"] = self.dominance_history_provider()
         rows = self.state_store.copy_rows()
         if rows and self.clock.rows_are_stale(self.wall_time()):
             rows = []

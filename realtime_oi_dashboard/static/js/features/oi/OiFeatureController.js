@@ -23,6 +23,7 @@ export function createOiFeatureController({
   function handlePayload(payload) {
     const favoritesChanged = favorites.pruneInactive(payload.active_symbols);
     rankingData.setRows(payload.rows, priceFeed.getPrices());
+    rankingData.setDominanceHistory(payload.oi_dominance_history);
     dashboardStatus.renderPayload(payload);
     requestRankingView({
       replaceRows: rankingData.getRows(),

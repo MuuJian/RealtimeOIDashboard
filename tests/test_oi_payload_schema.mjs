@@ -9,6 +9,7 @@ function payloadWithSymbol(symbol) {
     active_symbols: [symbol],
     total_symbols: 1,
     market_cap_loaded_symbols: 0,
+    oi_dominance_history: [],
     rows: [],
   };
 }
@@ -31,4 +32,21 @@ test("OI payload symbols require uppercase ASCII letters and digits", () => {
   ]) {
     assert.equal(isOiPayload(payloadWithSymbol(symbol)), false, symbol);
   }
+});
+
+test("OI dominance history contains BTC, ETH and OTHER shares", () => {
+  const payload = payloadWithSymbol("BTCUSDT");
+  payload.oi_dominance_history = [{
+    timestamp: 1,
+    btc: 40,
+    eth: 30,
+    other: 30,
+    btcValue: 400,
+    ethValue: 300,
+    otherValue: 300,
+  }];
+
+  assert.equal(isOiPayload(payload), true);
+  payload.oi_dominance_history[0].other = 31;
+  assert.equal(isOiPayload(payload), false);
 });

@@ -14,6 +14,109 @@ from realtime_oi_dashboard.infrastructure.binance.futures_client import (
 
 
 class OiHistoryServiceTests(unittest.TestCase):
+    def test_aggregates_cached_notional_into_dominance_history(self):
+        now_ms = 2_000_000_000_000
+        values = {
+            "BTCUSDT": 40,
+            "ETHUSDT": 30,
+            "SOLUSDT": 10,
+            "XRPUSDT": 20,
+        }
+
+        def fetch_history(symbol):
+            return [
+                {
+                    "timestamp": now_ms - 7 * 24 * HOUR_MS,
+                    "sumOpenInterest": "1",
+                    "sumOpenInterestValue": str(values[symbol] / 2),
+                },
+                {
+                    "timestamp": now_ms - 24 * HOUR_MS,
+                    "sumOpenInterest": "1",
+                    "sumOpenInterestValue": str(values[symbol]),
+                },
+            ]
+
+        service = OiHistoryService(fetch_history, lambda *_args: None)
+        with patch(
+            "realtime_oi_dashboard.application.oi.history.time.monotonic",
+            return_value=0,
+        ):
+            for symbol in values:
+                service.get_changes(symbol, 1, 1, now_ms)
+
+        history = service.get_dominance_history()
+
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history[-1]["btc"], 40)
+        self.assertEqual(history[-1]["eth"], 30)
+        self.assertEqual(history[-1]["other"], 30)
+        self.assertEqual(history[-1]["btcValue"], 40)
+
+    def test_hourly_history_is_downsampled_for_the_seven_day_chart(self):
+        now_ms = 2_000_001_600_000
+
+        def fetch_history(symbol):
+            multiplier = {
+                "BTCUSDT": 4,
+                "ETHUSDT": 3,
+                "SOLUSDT": 2,
+            }[symbol]
+            return [
+                {
+                    "timestamp": now_ms - (168 - index) * HOUR_MS,
+                    "sumOpenInterest": "1",
+                    "sumOpenInterestValue": str(multiplier * (100 + index)),
+                }
+                for index in range(169)
+            ]
+
+        service = OiHistoryService(fetch_history, lambda *_args: None)
+        with patch(
+            "realtime_oi_dashboard.application.oi.history.time.monotonic",
+            return_value=0,
+        ):
+            for symbol in ("BTCUSDT", "ETHUSDT", "SOLUSDT"):
+                service.get_changes(symbol, 1, 1, now_ms)
+
+        history = service.get_dominance_history()
+
+        self.assertGreaterEqual(len(history), 42)
+        self.assertLessEqual(len(history), 43)
+        self.assertEqual(set(history[-1]), {
+            "timestamp",
+            "btc",
+            "eth",
+            "other",
+            "btcValue",
+            "ethValue",
+            "otherValue",
+        })
+
+    def test_binance_history_request_keeps_the_original_seven_day_window(self):
+        client = BinanceFuturesClient.__new__(BinanceFuturesClient)
+        client.oi_hist_url = "https://example.test/openInterestHist"
+        requests = []
+
+        def request_json(url, **kwargs):
+            requests.append((url, kwargs))
+            return []
+
+        client.request_json = request_json
+
+        self.assertEqual(client._fetch_oi_history("BTCUSDT"), [])
+        self.assertEqual(requests, [(
+            client.oi_hist_url,
+            {
+                "params": {
+                    "symbol": "BTCUSDT",
+                    "period": "1h",
+                    "limit": 169,
+                },
+                "timeout": 10,
+            },
+        )])
+
     def test_cache_duration_is_not_configurable(self):
         self.assertNotIn(
             "cache_seconds",
