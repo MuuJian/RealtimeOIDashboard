@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
+from math import isfinite
 from urllib.parse import urlparse
 
 
 DEFAULT_WEIGHT_PER_MINUTE = 1_800.0
+INVALID_CAPACITY_ERROR = (
+    "weight_per_minute must be a finite positive number"
+)
 
 
 class BinanceWeightBudget:
@@ -18,7 +23,16 @@ class BinanceWeightBudget:
         monotonic=time.monotonic,
         sleep=time.sleep,
     ) -> None:
-        self._capacity = float(weight_per_minute)
+        if isinstance(weight_per_minute, bool):
+            raise ValueError(INVALID_CAPACITY_ERROR)
+        try:
+            capacity = float(weight_per_minute)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(INVALID_CAPACITY_ERROR) from exc
+        if not isfinite(capacity) or capacity <= 0:
+            raise ValueError(INVALID_CAPACITY_ERROR)
+
+        self._capacity = capacity
         self._refill_per_second = self._capacity / 60.0
         self._tokens = self._capacity
         self._monotonic = monotonic
@@ -26,11 +40,25 @@ class BinanceWeightBudget:
         self._updated_at = monotonic()
         self._lock = threading.Lock()
 
-    def acquire(self, url: str) -> None:
+    def acquire(
+        self,
+        url: str,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+        sleep: Callable[[float], None] | None = None,
+    ) -> None:
         weight = request_weight(url)
         if weight <= 0:
             return
+        if weight > self._capacity:
+            raise ValueError(
+                f"request weight {weight:g} exceeds budget capacity "
+                f"{self._capacity:g}"
+            )
+        wait = self._sleep if sleep is None else sleep
         while True:
+            if check_cancelled is not None:
+                check_cancelled()
             with self._lock:
                 now = self._monotonic()
                 elapsed = max(now - self._updated_at, 0.0)
@@ -43,7 +71,9 @@ class BinanceWeightBudget:
                     self._tokens -= weight
                     return
                 wait_for = (weight - self._tokens) / self._refill_per_second
-            self._sleep(min(wait_for, 1.0))
+            if check_cancelled is not None:
+                check_cancelled()
+            wait(min(wait_for, 1.0))
 
 
 def request_weight(url: str) -> float:
