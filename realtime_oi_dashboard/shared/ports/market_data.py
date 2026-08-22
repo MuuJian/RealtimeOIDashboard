@@ -11,5 +11,5 @@ class BinanceMarketDataSource(Protocol):
     def get_tickers(self) -> list:
         """Return the USD-M 24-hour ticker payload."""
 
-    def get_exchange_info(self) -> dict:
+    def get_exchange_info(self, *, force_refresh: bool = False) -> dict:
         """Return the USD-M exchange-info payload."""

@@ -37,7 +37,7 @@ class SymbolRefresherTests(unittest.TestCase):
     def test_success_updates_symbols_and_reports_change_details(self):
         callbacks = []
         symbols = make_symbols(20)
-        refresher = self.refresher(lambda: symbols)
+        refresher = self.refresher(lambda **_kwargs: symbols)
 
         changed = refresher.refresh_if_due(callbacks.append)
 
@@ -51,7 +51,7 @@ class SymbolRefresherTests(unittest.TestCase):
         requests = []
         symbols = make_symbols(20)
         refresher = self.refresher(
-            lambda: requests.append(True) or symbols,
+            lambda **_kwargs: requests.append(True) or symbols,
         )
         refresher.refresh_if_due(lambda _refresh: None)
 
@@ -61,7 +61,7 @@ class SymbolRefresherTests(unittest.TestCase):
         self.assertEqual(requests, [True])
 
     def test_failed_refresh_keeps_existing_symbols_and_sets_retry(self):
-        def fail():
+        def fail(**_kwargs):
             raise ValueError("temporary failure")
 
         refresher = self.refresher(fail)
@@ -82,7 +82,13 @@ class SymbolRefresherTests(unittest.TestCase):
             reduced,
             reduced,
         ])
-        refresher = self.refresher(lambda: next(responses), refresh_interval=0)
+        force_refreshes = []
+
+        def fetch(**kwargs):
+            force_refreshes.append(kwargs.get("force_refresh", False))
+            return next(responses)
+
+        refresher = self.refresher(fetch, refresh_interval=0)
         refresher.symbols = existing
         refresher.known_symbols = set(existing)
 
@@ -94,9 +100,12 @@ class SymbolRefresherTests(unittest.TestCase):
         self.assertTrue(second)
         self.assertEqual(refresher.symbols, reduced)
         self.assertEqual(len(self.errors), 1)
+        self.assertEqual(force_refreshes, [False, True])
 
     def test_initial_failure_is_not_hidden(self):
-        refresher = self.refresher(lambda: (_ for _ in ()).throw(ValueError("down")))
+        refresher = self.refresher(
+            lambda **_kwargs: (_ for _ in ()).throw(ValueError("down"))
+        )
 
         with self.assertRaisesRegex(ValueError, "down"):
             refresher.refresh_if_due(lambda _refresh: None)

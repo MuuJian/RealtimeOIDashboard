@@ -60,6 +60,7 @@ class CoinGeckoMarketCapClient:
         except (OSError, ValueError, RecursionError) as exc:
             self._records = {}
             self._record_error("marketCapCache", exc)
+        self._active_symbols: frozenset[str] | None = None
 
     def get(self, active_symbols: set[str]) -> dict[str, dict[str, float]]:
         """Return last-known values without performing network I/O."""
@@ -152,6 +153,16 @@ class CoinGeckoMarketCapClient:
         source_records = _source_records(response)
         persistence_error = None
         with self._lock:
+            allowed_symbols = (
+                self._active_symbols
+                if self._active_symbols is not None
+                else frozenset(active_symbols)
+            )
+            market_caps = {
+                symbol: item
+                for symbol, item in market_caps.items()
+                if symbol in allowed_symbols
+            }
             merged_records = dict(self._records)
             for symbol, item in market_caps.items():
                 incoming_record = {
@@ -223,6 +234,7 @@ class CoinGeckoMarketCapClient:
         """Remove confirmed inactive symbols from memory and the JSON file."""
         persistence_error = None
         with self._lock:
+            self._active_symbols = frozenset(active_symbols)
             retained = {
                 symbol: record
                 for symbol, record in self._records.items()

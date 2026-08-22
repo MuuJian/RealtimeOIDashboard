@@ -34,7 +34,7 @@ class DirectBinanceMarketData:
             attempts=self._ticker_attempts,
         )
 
-    def get_exchange_info(self) -> dict:
+    def get_exchange_info(self, *, force_refresh: bool = False) -> dict:
         return self._request_json(
             EXCHANGE_INFO_URL,
             timeout=12,

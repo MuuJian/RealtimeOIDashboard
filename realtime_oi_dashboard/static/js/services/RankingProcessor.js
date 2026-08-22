@@ -37,12 +37,13 @@ export function createRankingProcessor() {
       return Promise.resolve().then(() => computeLocalView(view));
     }
 
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       const job = {
         requestId,
         replaceRows,
         patchRows,
         view,
+        rejecters: [reject],
         resolvers: [resolve],
       };
       if (inFlight) {
@@ -73,18 +74,19 @@ export function createRankingProcessor() {
     worker?.terminate();
     worker = null;
     if (inFlight) {
-      const view = computeLocalView(inFlight.view);
-      for (const resolve of inFlight.resolvers) resolve(view);
+      settleLocally(inFlight);
       inFlight = null;
     }
     if (queued) {
-      const view = computeLocalView(queued.view);
-      for (const resolve of queued.resolvers) resolve(view);
+      settleLocally(queued);
       queued = null;
     }
   }
 
   function queueLatest(job) {
+    const rejecters = queued
+      ? [...queued.rejecters, ...job.rejecters]
+      : job.rejecters;
     const resolvers = queued
       ? [...queued.resolvers, ...job.resolvers]
       : job.resolvers;
@@ -93,6 +95,7 @@ export function createRankingProcessor() {
       replaceRows: null,
       patchRows: [],
       view: job.view,
+      rejecters,
       resolvers,
     };
   }
@@ -138,19 +141,28 @@ export function createRankingProcessor() {
     );
   }
 
+  function settleLocally(job) {
+    let view;
+    try {
+      view = computeLocalView(job.view);
+    } catch (error) {
+      for (const reject of job.rejecters) reject(error);
+      return;
+    }
+    for (const resolve of job.resolvers) resolve(view);
+  }
+
   function dispose() {
     if (disposed) return;
     disposed = true;
     worker?.terminate();
     worker = null;
     if (inFlight) {
-      const view = computeLocalView(inFlight.view);
-      for (const resolve of inFlight.resolvers) resolve(view);
+      settleLocally(inFlight);
       inFlight = null;
     }
     if (queued) {
-      const view = computeLocalView(queued.view);
-      for (const resolve of queued.resolvers) resolve(view);
+      settleLocally(queued);
       queued = null;
     }
     rowsBySymbol.clear();

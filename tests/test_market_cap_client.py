@@ -1,3 +1,4 @@
+import threading
 import tempfile
 import unittest
 from pathlib import Path
@@ -237,6 +238,42 @@ class CoinGeckoMarketCapClientTests(unittest.TestCase):
             load_market_cap_file(self.path),
             {"BTCUSDT": {"marketCap": 1_000.0}},
         )
+
+    def test_in_flight_page_cannot_restore_confirmed_inactive_symbol(self):
+        request_started = threading.Event()
+        release_request = threading.Event()
+
+        def request_json(*_args, **_kwargs):
+            request_started.set()
+            release_request.wait(timeout=2)
+            return [{"symbol": "old", "market_cap": 50.0}]
+
+        client = CoinGeckoMarketCapClient(
+            request_json,
+            self.waits.append,
+            lambda key, error: self.errors.append((key, str(error))),
+            cache_seconds=3_600,
+            store_path=self.path,
+            record_progress=self.progress.append,
+        )
+        client.retain_symbols({"OLDUSDT"})
+        refresh_results = []
+        worker = threading.Thread(
+            target=lambda: refresh_results.append(
+                client.refresh_page(1, {"OLDUSDT"})
+            )
+        )
+        worker.start()
+        self.assertTrue(request_started.wait(timeout=2))
+
+        client.retain_symbols({"BTCUSDT"})
+        release_request.set()
+        worker.join(timeout=2)
+
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(refresh_results, [0])
+        self.assertEqual(client.get({"OLDUSDT"}), {})
+        self.assertEqual(load_market_cap_file(self.path), {})
 
     def test_background_round_spaces_pages_and_stops_cleanly(self):
         requested_pages = []

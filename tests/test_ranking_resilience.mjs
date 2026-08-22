@@ -35,6 +35,41 @@ test("fallback ranking errors reject asynchronously", async () => {
   }
 });
 
+test("worker failure rejects when the local fallback also fails", async () => {
+  const previousWorker = globalThis.Worker;
+  let worker = null;
+
+  class FailingWorker {
+    constructor() {
+      worker = this;
+    }
+
+    postMessage() {}
+
+    terminate() {}
+  }
+
+  globalThis.Worker = FailingWorker;
+  const processor = createRankingProcessor();
+  try {
+    const request = processor.request({
+      replaceRows: [],
+      filters: null,
+      sort: {},
+      favorites: new Set(),
+      signalFilters: {},
+    });
+
+    assert.ok(worker);
+    assert.doesNotThrow(() => worker.onerror({ preventDefault() {} }));
+    await assert.rejects(request, TypeError);
+  } finally {
+    processor.dispose();
+    if (previousWorker === undefined) delete globalThis.Worker;
+    else globalThis.Worker = previousWorker;
+  }
+});
+
 test("ignores an obsolete ranking failure", async () => {
   const requests = [];
   const errors = [];

@@ -13,6 +13,8 @@ from realtime_oi_dashboard.domain.market_data import (
     MAX_SYMBOL_REMOVAL_FRACTION,
     MIN_EXPECTED_ACTIVE_SYMBOLS,
 )
+from realtime_oi_dashboard.domain.parsing import optional_float
+from realtime_oi_dashboard.domain.symbols import is_valid_binance_symbol
 from realtime_oi_dashboard.infrastructure.binance.market_data import (
     EXCHANGE_INFO_URL,
     TICKER_24H_URL,
@@ -68,15 +70,15 @@ class _SharedResource:
         self._retry_error = None
         self._retry_error_until = 0.0
 
-    def get(self):
-        cached = self._fresh_value()
+    def get(self, *, force_refresh: bool = False):
+        cached = None if force_refresh else self._fresh_value()
         if cached is not None:
             return cached
 
         # Only one caller performs an expired resource refresh. Waiters check
         # the cache again after acquiring the lock and reuse its result.
         with self._refresh_lock:
-            cached = self._fresh_value()
+            cached = None if force_refresh else self._fresh_value()
             if cached is not None:
                 return cached
 
@@ -95,6 +97,10 @@ class _SharedResource:
             except PollingStopped:
                 raise
             except Exception as exc:
+                # Forced refreshes independently confirm large symbol removals.
+                # A stale fallback must not look like a second confirmation.
+                if force_refresh:
+                    raise
                 fallback = self._fallback_value()
                 if fallback is not None:
                     return fallback
@@ -244,10 +250,10 @@ class CachedBinanceMarketData:
         self._raise_if_stopped()
         return self._tickers.get()
 
-    def get_exchange_info(self) -> dict:
+    def get_exchange_info(self, *, force_refresh: bool = False) -> dict:
         self._raise_if_closed()
         self._raise_if_stopped()
-        return self._exchange_info.get()
+        return self._exchange_info.get(force_refresh=force_refresh)
 
     def close(self) -> None:
         self.stop()
@@ -306,20 +312,25 @@ def _ticker_symbols(value: object) -> set[str]:
         item["symbol"]
         for item in value
         if isinstance(item, dict)
-        and isinstance(item.get("symbol"), str)
-        and bool(item["symbol"])
+        and is_valid_binance_symbol(item.get("symbol"))
+        and (price := optional_float(item.get("lastPrice"))) is not None
+        and price > 0
     }
 
 
 def _is_exchange_info_payload(value: object) -> bool:
     if not isinstance(value, dict) or not isinstance(value.get("symbols"), list):
         return False
-    return any(
-        isinstance(item, dict)
-        and isinstance(item.get("symbol"), str)
-        and bool(item["symbol"])
+    active_symbols = {
+        item["symbol"]
         for item in value["symbols"]
-    )
+        if isinstance(item, dict)
+        and is_valid_binance_symbol(item.get("symbol"))
+        and item.get("quoteAsset") == "USDT"
+        and item.get("status") == "TRADING"
+        and item.get("contractType") == "PERPETUAL"
+    }
+    return len(active_symbols) >= MIN_EXPECTED_ACTIVE_SYMBOLS
 
 
 def _positive_seconds(name: str, value: object) -> float:

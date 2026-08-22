@@ -17,6 +17,7 @@ from realtime_oi_dashboard.domain.oi.history_points import (
     HOUR_MS,
     calculate_change_percent,
     history_open_interest_point,
+    history_point_is_usable,
     history_point_price,
     history_point_value,
     parse_oi_history_points,
@@ -80,14 +81,17 @@ class OiHistoryService:
         symbol: str,
         current_timestamp_ms: int,
     ) -> _Baselines:
+        target_24h_ms, target_7d_ms = _target_timestamps(current_timestamp_ms)
         cached = self._get_cached(symbol)
         if (
             cached is not None
             and cached.is_fresh(time.monotonic())
-        ):
-            target_24h_ms, target_7d_ms = _target_timestamps(
-                current_timestamp_ms
+            and _cached_points_cover_targets(
+                cached,
+                target_24h_ms,
+                target_7d_ms,
             )
+        ):
             return _Baselines(
                 target_24h_ms=target_24h_ms,
                 target_7d_ms=target_7d_ms,
@@ -119,7 +123,6 @@ class OiHistoryService:
                 OI_HISTORY_RETRY_SECONDS,
             )
 
-        target_24h_ms, target_7d_ms = _target_timestamps(current_timestamp_ms)
         if history_points is not None:
             past_24h_point = self._find_point(
                 symbol,
@@ -229,4 +232,18 @@ def _target_timestamps(current_timestamp_ms: int) -> tuple[int, int]:
     return (
         current_timestamp_ms - 24 * HOUR_MS,
         current_timestamp_ms - 7 * 24 * HOUR_MS,
+    )
+
+
+def _cached_points_cover_targets(
+    cached: OiHistoryCacheEntry,
+    target_24h_ms: int,
+    target_7d_ms: int,
+) -> bool:
+    return all(
+        point is None or history_point_is_usable(point, target_timestamp_ms)
+        for point, target_timestamp_ms in (
+            (cached.past_24h_point, target_24h_ms),
+            (cached.past_7d_point, target_7d_ms),
+        )
     )

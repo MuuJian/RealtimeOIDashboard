@@ -62,7 +62,9 @@ class SymbolRefresher:
 
         symbols = None
         try:
-            symbols = self.fetch_symbols()
+            with self.lock:
+                force_refresh = self.pending_confirmation is not None
+            symbols = self.fetch_symbols(force_refresh=force_refresh)
             with self.lock:
                 confirmed_large_removal = (
                     tuple(symbols) == self.pending_confirmation

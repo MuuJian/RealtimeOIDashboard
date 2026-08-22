@@ -163,8 +163,8 @@ class OIPoller:
     def recent_errors(self):
         return self.error_log.recent()
 
-    def get_active_symbols(self):
-        return self.binance.get_active_symbols()
+    def get_active_symbols(self, *, force_refresh=False):
+        return self.binance.get_active_symbols(force_refresh=force_refresh)
 
     def _raise_if_stopped(self):
         if self.stop_event.is_set():
