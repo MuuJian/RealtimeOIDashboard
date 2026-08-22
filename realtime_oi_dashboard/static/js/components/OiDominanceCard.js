@@ -10,7 +10,7 @@ export function renderOiDominance(elements, rows) {
   for (const group of dominance.groups) {
     const segment = segments.get(group.key);
     if (segment) {
-      segment.style.width = `${group.percent}%`;
+      segment.setAttribute("d", areaPath(dominance.points, group.key));
       segment.title = dominance.total > 0
         ? `${group.label}：${formatShare(group.percent)} · ${formatCurrency(group.value)}`
         : "暫無資料";
@@ -23,11 +23,9 @@ export function renderOiDominance(elements, rows) {
       dominance.total > 0 ? formatShare(group.percent) : "-",
       changedValues,
     );
-    updateText(
-      item.querySelector("[data-oi-dominance-value]"),
-      dominance.total > 0 ? formatCurrency(group.value) : "-",
-      changedValues,
-    );
+    item.title = dominance.total > 0
+      ? `${group.label}：${formatCurrency(group.value)}`
+      : "暫無資料";
   }
 
   if (elements.oiDominanceBar) {
@@ -42,6 +40,36 @@ export function renderOiDominance(elements, rows) {
   }
 
   return changedValues;
+}
+
+function areaPath(points, key) {
+  const width = 320;
+  const height = 76;
+  const xValues = [0, width / 2, width];
+  const stackOrder = ["other", "sol", "eth", "btc"];
+  const groupIndex = stackOrder.indexOf(key);
+  const lower = points.map(point => stackOrder
+    .slice(0, groupIndex)
+    .reduce((sum, stackKey) => sum + groupPercent(point, stackKey), 0));
+  const upper = points.map((point, index) => (
+    lower[index] + groupPercent(point, key)
+  ));
+  const y = percent => height - Math.max(0, Math.min(percent, 100)) / 100 * height;
+
+  const upperLine = xValues
+    .map((x, index) => `${index ? "L" : "M"} ${x} ${y(upper[index])}`)
+    .join(" ");
+  const lowerLine = xValues
+    .map((_, reverseIndex) => {
+      const index = xValues.length - 1 - reverseIndex;
+      return `L ${xValues[index]} ${y(lower[index])}`;
+    })
+    .join(" ");
+  return `${upperLine} ${lowerLine} Z`;
+}
+
+function groupPercent(point, key) {
+  return point.groups.find(group => group.key === key)?.percent || 0;
 }
 
 function keyedElements(elements) {
