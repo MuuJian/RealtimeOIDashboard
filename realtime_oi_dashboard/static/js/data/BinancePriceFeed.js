@@ -30,9 +30,7 @@ export function createBinancePriceFeed() {
 
     const previousSocket = socket;
     socket = null;
-    if (previousSocket && previousSocket.readyState < WebSocket.CLOSING) {
-      previousSocket.close();
-    }
+    closeSocketQuietly(previousSocket);
     clearLivePricesAndNotify();
 
     let nextSocket;
@@ -45,9 +43,13 @@ export function createBinancePriceFeed() {
     }
     socket = nextSocket;
     setStatus("connecting");
+    armStaleTimer(nextSocket);
 
     nextSocket.onopen = () => {
-      if (socket !== nextSocket || stopped) return;
+      if (socket !== nextSocket || stopped) {
+        closeSocketQuietly(nextSocket);
+        return;
+      }
       setStatus("live");
       armStaleTimer(nextSocket);
     };
@@ -85,7 +87,11 @@ export function createBinancePriceFeed() {
     nextSocket.onerror = () => {
       if (socket !== nextSocket || stopped) return;
       setStatus("error");
-      nextSocket.close();
+      if (nextSocket.readyState === WebSocket.CONNECTING) {
+        abandonConnectingSocket(nextSocket);
+        return;
+      }
+      closeSocketQuietly(nextSocket);
     };
   }
 
@@ -98,9 +104,7 @@ export function createBinancePriceFeed() {
 
     const currentSocket = socket;
     socket = null;
-    if (currentSocket && currentSocket.readyState < WebSocket.CLOSING) {
-      currentSocket.close();
-    }
+    closeSocketQuietly(currentSocket);
     clearLivePricesAndNotify();
     setStatus("paused");
   }
@@ -136,8 +140,21 @@ export function createBinancePriceFeed() {
       staleTimer = 0;
       if (socket !== currentSocket || stopped) return;
       setStatus("error");
-      currentSocket.close();
+      if (currentSocket.readyState === WebSocket.CONNECTING) {
+        abandonConnectingSocket(currentSocket);
+        return;
+      }
+      closeSocketQuietly(currentSocket);
     }, TICKER_STALE_TIMEOUT_MS);
+  }
+
+  function abandonConnectingSocket(currentSocket) {
+    if (socket !== currentSocket) return;
+    socket = null;
+    clearStaleTimer();
+    closeSocketQuietly(currentSocket);
+    clearLivePricesAndNotify();
+    scheduleReconnect();
   }
 
   function clearStaleTimer() {
@@ -205,4 +222,14 @@ function tickerChanged(previous, nextTicker) {
     || previous.volume24h !== nextTicker.volume24h
     || previous.priceChangePercent !== nextTicker.priceChangePercent
   );
+}
+
+function closeSocketQuietly(socket) {
+  if (!socket || socket.readyState >= WebSocket.CLOSING) return;
+  try {
+    socket.close();
+  } catch {
+    // Browsers may reject close() while the handshake is still CONNECTING.
+    // Its eventual onopen handler will detect that it is obsolete and retry.
+  }
 }
