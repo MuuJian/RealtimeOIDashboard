@@ -253,6 +253,50 @@ class BinanceRestCacheTests(unittest.TestCase):
         self.assertEqual(client.calls.count(EXCHANGE_INFO_URL), 3)
         self.assertEqual(len(errors), 1)
 
+    def test_failed_forced_refresh_does_not_confirm_large_symbol_removal(self):
+        cache, client, clock = self.create_cache()
+        client.exchange_info = exchange_info_payload(30)
+        stop_event = threading.Event()
+        oi_client = BinanceFuturesClient(
+            stop_event,
+            lambda *_args: None,
+            funding_cache_seconds=3600,
+            http_client=FakeHttpClient(),
+            shared_rest_cache=cache,
+        )
+        errors = []
+        refresher = SymbolRefresher(
+            oi_client.get_active_symbols,
+            lambda symbol, error: errors.append((symbol, str(error))),
+            stop_event,
+            threading.RLock(),
+            refresh_interval=900,
+            monotonic=clock,
+        )
+        refresher.refresh_if_due(lambda _refresh: None)
+
+        client.exchange_info = exchange_info_payload(20)
+        clock.value = 900
+        first_confirmation = refresher.refresh_if_due(lambda _refresh: None)
+
+        client.error = ConnectionError("confirmation request failed")
+        clock.value = refresher.retry_at
+        failed_confirmation = refresher.refresh_if_due(lambda _refresh: None)
+
+        self.assertFalse(first_confirmation)
+        self.assertFalse(failed_confirmation)
+        self.assertEqual(len(refresher.symbols), 30)
+        self.assertEqual(client.calls.count(EXCHANGE_INFO_URL), 3)
+        self.assertEqual(len(errors), 2)
+
+        client.error = None
+        clock.value = refresher.retry_at
+        confirmed = refresher.refresh_if_due(lambda _refresh: None)
+
+        self.assertTrue(confirmed)
+        self.assertEqual(len(refresher.symbols), 20)
+        self.assertEqual(client.calls.count(EXCHANGE_INFO_URL), 4)
+
     def test_concurrent_failed_misses_share_one_request_error(self):
         client = FakeHttpClient()
         client.error = ConnectionError("temporary failure")

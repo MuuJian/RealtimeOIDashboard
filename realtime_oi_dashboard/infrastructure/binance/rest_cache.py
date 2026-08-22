@@ -97,6 +97,11 @@ class _SharedResource:
             except PollingStopped:
                 raise
             except Exception as exc:
+                # A forced refresh is used to independently confirm a large
+                # symbol removal. Returning the previous response here would
+                # make a failed request look like a second confirmation.
+                if force_refresh:
+                    raise
                 fallback = self._fallback_value()
                 if fallback is not None:
                     return fallback
