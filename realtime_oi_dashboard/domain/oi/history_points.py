@@ -53,14 +53,14 @@ def history_open_interest_point(history_points, target_timestamp_ms, label):
 
 def history_point_value(point, target_timestamp_ms):
     """Return a cached history value only while its source remains in range."""
-    if not _history_point_is_usable(point, target_timestamp_ms):
+    if not history_point_is_usable(point, target_timestamp_ms):
         return None
     return point[1]
 
 
 def history_point_price(point, target_timestamp_ms):
     """Return the implied historical price while its source remains in range."""
-    if not _history_point_is_usable(point, target_timestamp_ms):
+    if not history_point_is_usable(point, target_timestamp_ms):
         return None
     return point[2]
 
@@ -72,7 +72,8 @@ def calculate_change_percent(current_value, previous_value):
     return change_percent if isfinite(change_percent) else None
 
 
-def _history_point_is_usable(point, target_timestamp_ms):
+def history_point_is_usable(point, target_timestamp_ms):
+    """Report whether a cached point still covers an exchange-time target."""
     if point is None:
         return False
     timestamp_ms = point[0]
