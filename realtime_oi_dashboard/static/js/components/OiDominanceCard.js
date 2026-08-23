@@ -20,6 +20,11 @@ export function renderOiDominance(elements, rows, history) {
 
     const item = items.get(group.key);
     if (!item) continue;
+    updateText(
+      item.querySelector("[data-oi-dominance-percent]"),
+      dominance.total > 0 ? formatShare(group.percent) : "-",
+      changedValues,
+    );
     item.title = dominance.total > 0
       ? `${group.label}：${formatShare(group.percent)} · ${formatCurrency(group.value)}`
       : "暫無資料";
@@ -135,4 +140,10 @@ function keyedElements(elements) {
 
 function formatShare(value) {
   return `${value.toFixed(1)}%`;
+}
+
+function updateText(element, value, changedValues) {
+  if (!element || element.textContent === value) return;
+  element.textContent = value;
+  changedValues.push(element);
 }
