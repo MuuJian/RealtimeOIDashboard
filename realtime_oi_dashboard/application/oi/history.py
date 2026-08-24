@@ -28,6 +28,7 @@ from realtime_oi_dashboard.domain.parsing import optional_float
 OI_HISTORY_CACHE_SECONDS = 60 * 60
 OI_HISTORY_RETRY_SECONDS = 60
 DOMINANCE_CHART_INTERVAL_MS = 4 * HOUR_MS
+DOMINANCE_HISTORY_RETENTION_MS = 7 * 24 * HOUR_MS
 DOMINANCE_GROUPS = ("btc", "eth", "other")
 DOMINANCE_SYMBOLS = {
     "BTCUSDT": "btc",
@@ -263,8 +264,26 @@ class OiHistoryService:
                 * DOMINANCE_CHART_INTERVAL_MS
             )
             values_by_interval[chart_timestamp] = value
-        series = tuple(sorted(values_by_interval.items()))
+        if not values_by_interval:
+            self._record_error(
+                symbol,
+                ValueError(
+                    "OI history response contains no valid notional values"
+                ),
+            )
+            return
         with self._lock:
+            retained_values = dict(self._value_series.get(symbol, ()))
+            retained_values.update(values_by_interval)
+            newest_timestamp = max(retained_values)
+            cutoff_timestamp = (
+                newest_timestamp - DOMINANCE_HISTORY_RETENTION_MS
+            )
+            series = tuple(
+                (timestamp_ms, value)
+                for timestamp_ms, value in sorted(retained_values.items())
+                if timestamp_ms >= cutoff_timestamp
+            )
             if self._value_series.get(symbol) == series:
                 return
             self._value_series[symbol] = series

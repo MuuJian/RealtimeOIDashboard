@@ -2,6 +2,7 @@ import unittest
 
 from realtime_oi_dashboard.domain.oi.history_points import (
     HISTORY_BASELINE_TOLERANCE_MS,
+    MAX_SAFE_INTEGER,
     calculate_change_percent,
     history_open_interest_point,
     history_point_price,
@@ -18,6 +19,10 @@ class ParseOiHistoryPointsTests(unittest.TestCase):
             {"timestamp": 0, "sumOpenInterest": "0"},
             {"timestamp": "100", "sumOpenInterest": "1"},
             {"timestamp": "not-a-number", "sumOpenInterest": "2"},
+            {
+                "timestamp": MAX_SAFE_INTEGER + 1,
+                "sumOpenInterest": "4",
+            },
         ]
 
         points = parse_oi_history_points(response)
