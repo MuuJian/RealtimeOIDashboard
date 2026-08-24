@@ -13,6 +13,7 @@ from realtime_oi_dashboard.infrastructure.storage.market_cache import MarketCach
 from realtime_oi_dashboard.domain.market_data import (
     incomplete_funding_symbols,
     merge_funding_cache,
+    parse_active_symbols,
     parse_funding_rates,
     parse_market_tickers,
 )
@@ -23,7 +24,6 @@ from realtime_oi_dashboard.infrastructure.binance.market_data import (
     resolve_market_data_source,
 )
 from realtime_oi_dashboard.domain.parsing import optional_float, optional_int
-from realtime_oi_dashboard.domain.symbols import is_valid_binance_symbol
 
 
 PARTIAL_RESPONSE_RETRY_SECONDS = 60
@@ -105,23 +105,7 @@ class BinanceFuturesClient:
     def get_active_symbols(self, *, force_refresh: bool = False) -> list[str]:
         data = self.market_data.get_exchange_info(force_refresh=force_refresh)
         self._raise_if_stopped()
-        if not isinstance(data, dict) or not isinstance(data.get("symbols"), list):
-            raise ValueError("unexpected exchange-info response")
-
-        symbols = sorted(
-            {
-                item["symbol"]
-                for item in data.get("symbols", [])
-                if isinstance(item, dict)
-                and is_valid_binance_symbol(item.get("symbol"))
-                and item.get("quoteAsset") == "USDT"
-                and item.get("status") == "TRADING"
-                and item.get("contractType") == "PERPETUAL"
-            }
-        )
-        if not symbols:
-            raise ValueError("exchange-info response contains no active symbols")
-        return symbols
+        return parse_active_symbols(data)
 
     def get_market_tickers(
         self,

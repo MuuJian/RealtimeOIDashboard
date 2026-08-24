@@ -324,6 +324,39 @@ class BinanceRestCacheTests(unittest.TestCase):
         self.assertIs(throttled, cached)
         self.assertEqual(client.calls.count(EXCHANGE_INFO_URL), 2)
 
+    def test_duplicate_exchange_info_symbol_keeps_last_good_response(self):
+        cache, client, clock = self.create_cache()
+        cached = cache.get_exchange_info()
+        client.exchange_info = exchange_info_payload()
+        duplicate = dict(client.exchange_info["symbols"][0])
+        duplicate["status"] = "BREAK"
+        client.exchange_info["symbols"].append(duplicate)
+        clock.value = 900
+
+        fallback = cache.get_exchange_info()
+
+        self.assertIs(fallback, cached)
+        self.assertEqual(client.calls.count(EXCHANGE_INFO_URL), 2)
+
+    def test_direct_exchange_info_parser_rejects_duplicate_symbols(self):
+        stop_event = threading.Event()
+        http_client = FakeHttpClient()
+        duplicate = dict(http_client.exchange_info["symbols"][0])
+        duplicate["status"] = "BREAK"
+        http_client.exchange_info["symbols"].append(duplicate)
+        oi_client = BinanceFuturesClient(
+            stop_event,
+            lambda *_args: None,
+            funding_cache_seconds=3600,
+            http_client=http_client,
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "duplicate exchange-info symbol",
+        ):
+            oi_client.get_active_symbols()
+
     def test_large_symbol_removal_confirmation_forces_a_second_request(self):
         cache, client, clock = self.create_cache()
         client.exchange_info = exchange_info_payload(30)

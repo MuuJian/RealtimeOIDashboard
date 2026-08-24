@@ -12,6 +12,7 @@ from realtime_oi_dashboard.domain.errors import PollingStopped
 from realtime_oi_dashboard.domain.market_data import (
     MAX_SYMBOL_REMOVAL_FRACTION,
     MIN_EXPECTED_ACTIVE_SYMBOLS,
+    parse_active_symbols,
 )
 from realtime_oi_dashboard.domain.parsing import optional_float
 from realtime_oi_dashboard.domain.symbols import is_valid_binance_symbol
@@ -335,17 +336,10 @@ def _ticker_response_symbols(value: object) -> list[str]:
 
 
 def _is_exchange_info_payload(value: object) -> bool:
-    if not isinstance(value, dict) or not isinstance(value.get("symbols"), list):
+    try:
+        active_symbols = parse_active_symbols(value)
+    except ValueError:
         return False
-    active_symbols = {
-        item["symbol"]
-        for item in value["symbols"]
-        if isinstance(item, dict)
-        and is_valid_binance_symbol(item.get("symbol"))
-        and item.get("quoteAsset") == "USDT"
-        and item.get("status") == "TRADING"
-        and item.get("contractType") == "PERPETUAL"
-    }
     return len(active_symbols) >= MIN_EXPECTED_ACTIVE_SYMBOLS
 
 
