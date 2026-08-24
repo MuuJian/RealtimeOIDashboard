@@ -1,6 +1,7 @@
 export const OI_API_SCHEMA_VERSION = 7;
 
 const ISO_TIMESTAMP_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:Z|[+-](?:0\d|1[0-4]):[0-5]\d)$/;
+const DOMINANCE_SHARE_TOLERANCE = 0.01;
 const MAX_RECENT_ERRORS = 10;
 
 const OPTIONAL_NUMBER_FIELDS = [
@@ -59,19 +60,34 @@ export function isOiPayload(payload) {
 function isOiDominanceHistory(value) {
   return Array.isArray(value)
     && value.length <= 200
-    && value.every((point, index) => (
-      point
-      && typeof point === "object"
-      && isTimestamp(point.timestamp)
-      && (index === 0 || point.timestamp > value[index - 1].timestamp)
-      && [point.btc, point.eth, point.other].every(
-        share => isNonNegativeNumber(share) && share <= 100,
-      )
-      && [point.btcValue, point.ethValue, point.otherValue]
-        .every(isNonNegativeNumber)
-      && Math.abs(
-        point.btc + point.eth + point.other - 100
-      ) < 0.01
+    && value.every((point, index) => isOiDominancePoint(
+      point,
+      index === 0 ? null : value[index - 1],
+    ));
+}
+
+function isOiDominancePoint(point, previousPoint) {
+  if (
+    !point
+    || typeof point !== "object"
+    || !isTimestamp(point.timestamp)
+    || (previousPoint && point.timestamp <= previousPoint.timestamp)
+  ) return false;
+
+  const shares = [point.btc, point.eth, point.other];
+  const values = [point.btcValue, point.ethValue, point.otherValue];
+  if (
+    !shares.every(share => isNonNegativeNumber(share) && share <= 100)
+    || !values.every(isNonNegativeNumber)
+  ) return false;
+
+  const totalValue = values.reduce((sum, value) => sum + value, 0);
+  return totalValue > 0
+    && Math.abs(shares.reduce((sum, share) => sum + share, 0) - 100)
+      < DOMINANCE_SHARE_TOLERANCE
+    && shares.every((share, index) => (
+      Math.abs(share - values[index] / totalValue * 100)
+      < DOMINANCE_SHARE_TOLERANCE
     ));
 }
 

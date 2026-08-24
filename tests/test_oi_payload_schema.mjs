@@ -54,6 +54,38 @@ test("OI dominance history contains BTC, ETH and OTHER shares", () => {
   assert.equal(isOiPayload(payload), false);
 });
 
+test("OI dominance shares match their notional values", () => {
+  const payload = payloadWithSymbol("BTCUSDT");
+  payload.oi_dominance_history = [{
+    timestamp: 1,
+    btc: 40,
+    eth: 30,
+    other: 30,
+    btcValue: 400,
+    ethValue: 300,
+    otherValue: 300,
+  }];
+
+  payload.oi_dominance_history[0].btcValue = 800;
+  assert.equal(isOiPayload(payload), false);
+
+  payload.oi_dominance_history[0] = {
+    timestamp: 1,
+    btc: 33.33,
+    eth: 33.33,
+    other: 33.34,
+    btcValue: 1,
+    ethValue: 1,
+    otherValue: 1,
+  };
+  assert.equal(isOiPayload(payload), true);
+
+  payload.oi_dominance_history[0].btcValue = 0;
+  payload.oi_dominance_history[0].ethValue = 0;
+  payload.oi_dominance_history[0].otherValue = 0;
+  assert.equal(isOiPayload(payload), false);
+});
+
 test("OI payload rejects duplicate active symbols", () => {
   const payload = payloadWithSymbol("BTCUSDT");
   payload.active_symbols.push("BTCUSDT");
