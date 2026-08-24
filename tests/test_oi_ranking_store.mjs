@@ -43,3 +43,16 @@ test("recomputes top movers after live ticker updates", () => {
   assert.equal(store.getStats().topIncrease.symbol, "BBBUSDT");
   assert.equal(store.getStats().topIncrease.priceChangePercent, 20);
 });
+
+test("tracks the complete active symbol count across row clearing", () => {
+  const store = createOiRankingStore();
+  store.setRows([
+    row("AAAUSDT", 10),
+    row("BBBUSDT", 5),
+  ], new Map(), 3);
+
+  assert.equal(store.getTotalSymbols(), 3);
+
+  store.setRows([], new Map());
+  assert.equal(store.getTotalSymbols(), 3);
+});

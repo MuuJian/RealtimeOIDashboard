@@ -43,6 +43,7 @@ export function createDashboardRenderer({
             elements,
             rankingData.getRows(),
             rankingData.getDominanceHistory(),
+            rankingData.getTotalSymbols(),
           ),
           ...renderStatCards(elements, rankingData.getStats()),
         ],

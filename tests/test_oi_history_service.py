@@ -53,6 +53,90 @@ class OiHistoryServiceTests(unittest.TestCase):
         self.assertEqual(history[-1]["other"], 30)
         self.assertEqual(history[-1]["btcValue"], 40)
 
+    def test_waits_for_every_active_symbol_before_publishing_dominance(self):
+        now_ms = 2_000_000_000_000
+        values = {
+            "BTCUSDT": 40,
+            "ETHUSDT": 30,
+            "SOLUSDT": 20,
+            "XRPUSDT": 10,
+        }
+        service = OiHistoryService(
+            lambda symbol: _history_response(now_ms, values[symbol]),
+            lambda *_args: None,
+        )
+        service.retain_symbols(set(values))
+
+        with patch(
+            "realtime_oi_dashboard.application.oi.history.time.monotonic",
+            return_value=0,
+        ):
+            for symbol in ("BTCUSDT", "ETHUSDT", "SOLUSDT"):
+                service.get_changes(symbol, 1, 1, now_ms)
+            self.assertEqual(service.get_dominance_history(), [])
+
+            service.get_changes("XRPUSDT", 1, 1, now_ms)
+
+        self.assertEqual(len(service.get_dominance_history()), 2)
+
+    def test_new_active_symbol_invalidates_published_dominance_until_loaded(self):
+        now_ms = 2_000_000_000_000
+        values = {
+            "BTCUSDT": 40,
+            "ETHUSDT": 30,
+            "SOLUSDT": 30,
+            "NEWUSDT": 10,
+        }
+        service = OiHistoryService(
+            lambda symbol: _history_response(now_ms, values[symbol]),
+            lambda *_args: None,
+        )
+        initial_symbols = {"BTCUSDT", "ETHUSDT", "SOLUSDT"}
+        service.retain_symbols(initial_symbols)
+
+        with patch(
+            "realtime_oi_dashboard.application.oi.history.time.monotonic",
+            return_value=0,
+        ):
+            for symbol in initial_symbols:
+                service.get_changes(symbol, 1, 1, now_ms)
+            self.assertEqual(len(service.get_dominance_history()), 2)
+
+            service.retain_symbols(initial_symbols | {"NEWUSDT"})
+            self.assertEqual(service.get_dominance_history(), [])
+
+            service.get_changes("NEWUSDT", 1, 1, now_ms)
+
+        self.assertEqual(len(service.get_dominance_history()), 2)
+
+    def test_dominance_uses_only_buckets_covered_by_every_active_symbol(self):
+        now_ms = 2_000_000_000_000
+        responses = {
+            "BTCUSDT": _history_response(now_ms, 40),
+            "ETHUSDT": _history_response(now_ms, 30),
+            "SOLUSDT": _history_response(now_ms, 20),
+            "XRPUSDT": _history_response(now_ms, 10)[-1:],
+        }
+        service = OiHistoryService(
+            lambda symbol: responses[symbol],
+            lambda *_args: None,
+        )
+        service.retain_symbols(set(responses))
+
+        with patch(
+            "realtime_oi_dashboard.application.oi.history.time.monotonic",
+            return_value=0,
+        ):
+            for symbol in responses:
+                service.get_changes(symbol, 1, 1, now_ms)
+
+        history = service.get_dominance_history()
+        self.assertEqual(len(history), 1)
+        self.assertEqual(
+            history[0]["timestamp"],
+            (now_ms - 24 * HOUR_MS) // (4 * HOUR_MS) * (4 * HOUR_MS),
+        )
+
     def test_hourly_history_is_downsampled_for_the_seven_day_chart(self):
         now_ms = 2_000_001_600_000
 

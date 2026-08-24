@@ -7,8 +7,16 @@ const PRIMARY_SYMBOLS = new Map(
   PRIMARY_MARKETS.map(market => [market.symbol, market.key]),
 );
 
-export function buildOiDominance(rows, history = []) {
-  const current = buildPoint(rows, "now");
+export function buildOiDominance(
+  rows,
+  history = [],
+  totalSymbols = Array.isArray(rows) ? rows.length : 0,
+) {
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const hasCompleteCurrent = Number.isSafeInteger(totalSymbols)
+    && totalSymbols > 0
+    && sourceRows.length === totalSymbols;
+  const current = buildPoint(hasCompleteCurrent ? sourceRows : [], "now");
   const historicalPoints = history.map(historyPoint);
   const chartPoints = current.total > 0
     ? [

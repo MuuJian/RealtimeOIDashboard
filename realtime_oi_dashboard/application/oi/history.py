@@ -49,6 +49,7 @@ class OiHistoryService:
         self._lock = threading.Lock()
         self._cache: dict[str, OiHistoryCacheEntry] = {}
         self._value_series: dict[str, tuple[tuple[int, float], ...]] = {}
+        self._active_symbols: frozenset[str] | None = None
         self._dominance_history_cache: tuple[dict[str, float | int], ...] = ()
         self._dominance_history_dirty = True
 
@@ -221,6 +222,11 @@ class OiHistoryService:
 
     def retain_symbols(self, active_symbols: set[str]) -> None:
         with self._lock:
+            next_active_symbols = frozenset(active_symbols)
+            active_symbols_changed = (
+                next_active_symbols != self._active_symbols
+            )
+            self._active_symbols = next_active_symbols
             self._cache = {
                 symbol: item
                 for symbol, item in self._cache.items()
@@ -231,7 +237,7 @@ class OiHistoryService:
                 for symbol, series in self._value_series.items()
                 if symbol in active_symbols
             }
-            if retained_series != self._value_series:
+            if active_symbols_changed or retained_series != self._value_series:
                 self._value_series = retained_series
                 self._dominance_history_dirty = True
 
@@ -247,7 +253,10 @@ class OiHistoryService:
         with self._lock:
             if self._dominance_history_dirty:
                 self._dominance_history_cache = tuple(
-                    _aggregate_dominance_history(self._value_series)
+                    _aggregate_dominance_history(
+                        self._value_series,
+                        self._active_symbols,
+                    )
                 )
                 self._dominance_history_dirty = False
             return [dict(point) for point in self._dominance_history_cache]
@@ -298,8 +307,15 @@ class _Baselines:
     past_7d_point: HistoryPoint | None
 
 
-def _aggregate_dominance_history(value_series):
+def _aggregate_dominance_history(value_series, active_symbols=None):
+    if active_symbols is not None and (
+        not active_symbols
+        or not active_symbols.issubset(value_series)
+    ):
+        return []
+
     totals_by_interval = {}
+    symbols_by_interval = {}
     for symbol, series in value_series.items():
         group = DOMINANCE_SYMBOLS.get(symbol, "other")
         for timestamp_ms, value in series:
@@ -308,9 +324,15 @@ def _aggregate_dominance_history(value_series):
                 {key: 0.0 for key in DOMINANCE_GROUPS},
             )
             totals[group] += value
+            symbols_by_interval.setdefault(timestamp_ms, set()).add(symbol)
 
     result = []
     for timestamp_ms in sorted(totals_by_interval):
+        if (
+            active_symbols is not None
+            and symbols_by_interval[timestamp_ms] != active_symbols
+        ):
+            continue
         totals = totals_by_interval[timestamp_ms]
         if any(totals[key] <= 0 for key in DOMINANCE_GROUPS):
             continue

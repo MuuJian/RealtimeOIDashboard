@@ -8,8 +8,8 @@ import {
 
 const tooltipStates = new WeakMap();
 
-export function renderOiDominance(elements, rows, history) {
-  const dominance = buildOiDominance(rows, history);
+export function renderOiDominance(elements, rows, history, totalSymbols) {
+  const dominance = buildOiDominance(rows, history, totalSymbols);
   const segments = keyedElements(elements.oiDominanceSegments);
   const items = keyedElements(elements.oiDominanceItems);
   const changedValues = [];

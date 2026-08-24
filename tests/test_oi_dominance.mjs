@@ -125,6 +125,16 @@ test("positions dominance points by elapsed time", () => {
   assert.equal(dominancePointIndexAtRatio(points, 0.7), 2);
 });
 
+test("does not publish current dominance from a partial symbol universe", () => {
+  const result = buildOiDominance([
+    currentRow("BTCUSDT", 100),
+    currentRow("ETHUSDT", 100),
+  ], [], 3);
+
+  assert.equal(result.total, 0);
+  assert.equal(dominanceAriaLabel(result), "OI 市場佔比暫無資料");
+});
+
 function currentRow(symbol, currentOiValue) {
   return {
     symbol,
