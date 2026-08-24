@@ -111,6 +111,8 @@ test("OI payload rows are unique active symbols", () => {
 test("OI row value matches open interest times price", () => {
   const payload = payloadWithSymbol("BTCUSDT");
   const row = validRow("BTCUSDT");
+  row.price7dBaseline = null;
+  row.price7dChangePercent = null;
   payload.rows = [row];
 
   row.currentOiValue = 999;
@@ -124,6 +126,34 @@ test("OI row value matches open interest times price", () => {
   row.currentOi = 0;
   row.currentOiValue = 0;
   assert.equal(isOiPayload(payload), true);
+});
+
+test("OI row validates 7d price and funding time", () => {
+  const payload = payloadWithSymbol("BTCUSDT");
+  const row = validRow("BTCUSDT");
+  row.price7dBaseline = 80;
+  row.price7dChangePercent = 25;
+  payload.rows = [row];
+  assert.equal(isOiPayload(payload), true);
+
+  row.price7dChangePercent = 24;
+  assert.equal(isOiPayload(payload), false);
+
+  row.price7dChangePercent = 25;
+  row.nextFundingTime = row.oiUpdatedAt;
+  assert.equal(isOiPayload(payload), false);
+
+  row.nextFundingTime = null;
+  row.price7dBaseline = null;
+  row.price7dChangePercent = null;
+  assert.equal(isOiPayload(payload), true);
+
+  delete row.nextFundingTime;
+  assert.equal(isOiPayload(payload), false);
+
+  row.nextFundingTime = null;
+  row.price7dChangePercent = 0;
+  assert.equal(isOiPayload(payload), false);
 });
 
 test("OI payload validates dashboard status metadata", () => {
@@ -161,7 +191,7 @@ function validRow(symbol) {
     symbol,
     price: 100,
     priceChangePercent: 1,
-    price7dChangePercent: 2,
+    price7dChangePercent: 25,
     fundingRatePercent: 0.01,
     currentOi: 10,
     currentOiValue: 1_000,
@@ -170,7 +200,7 @@ function validRow(symbol) {
     marketCap: 10_000,
     volume24h: 2_000,
     oiUpdatedAt: 1_700_000_000_000,
-    price7dBaseline: 90,
+    price7dBaseline: 80,
     nextFundingTime: 1_700_000_100_000,
   };
 }

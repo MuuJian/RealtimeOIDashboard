@@ -108,12 +108,28 @@ export function isOiRow(item) {
     || !isTimestamp(item.oiUpdatedAt)
     || !Object.hasOwn(item, "price7dBaseline")
     || !isOptionalPositiveNumber(item.price7dBaseline)
+    || !Object.hasOwn(item, "nextFundingTime")
     || !isOptionalTimestamp(item.nextFundingTime)
+    || (
+      item.nextFundingTime !== null
+      && item.nextFundingTime <= item.oiUpdatedAt
+    )
   ) return false;
 
   return OPTIONAL_NUMBER_FIELDS.every(
     field => Object.hasOwn(item, field) && isOptionalNumber(item[field]),
-  );
+  ) && isConsistentPrice7dChange(item);
+}
+
+function isConsistentPrice7dChange(item) {
+  if (item.price7dBaseline === null) {
+    return item.price7dChangePercent === null;
+  }
+  if (!isFiniteNumber(item.price7dChangePercent)) return false;
+  const expectedChange = (item.price - item.price7dBaseline)
+    / item.price7dBaseline
+    * 100;
+  return numbersNearlyEqual(item.price7dChangePercent, expectedChange);
 }
 
 function isSymbol(value) {
