@@ -290,6 +290,57 @@ class OiHistoryServiceTests(unittest.TestCase):
         self.assertEqual(service.get_dominance_history(), initial_history)
         self.assertEqual(errors, [])
 
+    def test_duplicate_history_timestamp_preserves_last_good_data(self):
+        now_ms = 2_000_000_000_000
+        duplicate_history = _history_response(now_ms, 40)
+        duplicate_timestamp_ms = duplicate_history[-1]["timestamp"]
+        duplicate_history.append({
+            "timestamp": duplicate_timestamp_ms,
+            "sumOpenInterest": "10",
+            "sumOpenInterestValue": "999",
+        })
+        btc_responses = iter([
+            _history_response(now_ms, 40),
+            duplicate_history,
+        ])
+        errors = []
+
+        def fetch_history(symbol):
+            if symbol == "BTCUSDT":
+                return next(btc_responses)
+            return _history_response(
+                now_ms,
+                {"ETHUSDT": 30, "SOLUSDT": 30}[symbol],
+            )
+
+        service = OiHistoryService(
+            fetch_history,
+            lambda symbol, error: errors.append((symbol, str(error))),
+        )
+        with patch(
+            "realtime_oi_dashboard.application.oi.history.time.monotonic",
+            return_value=0,
+        ) as monotonic:
+            initial_changes = service.get_changes("BTCUSDT", 2, 1, now_ms)
+            for symbol in ("ETHUSDT", "SOLUSDT"):
+                service.get_changes(symbol, 1, 1, now_ms)
+            initial_history = service.get_dominance_history()
+
+            monotonic.return_value = 3_600
+            refreshed_changes = service.get_changes(
+                "BTCUSDT",
+                2,
+                1,
+                now_ms,
+            )
+
+        self.assertEqual(refreshed_changes, initial_changes)
+        self.assertEqual(service.get_dominance_history(), initial_history)
+        self.assertEqual(errors, [(
+            "BTCUSDT",
+            f"duplicate OI history timestamp: {duplicate_timestamp_ms}",
+        )])
+
     def test_binance_history_request_keeps_the_original_seven_day_window(self):
         client = BinanceFuturesClient.__new__(BinanceFuturesClient)
         client.oi_hist_url = "https://example.test/openInterestHist"

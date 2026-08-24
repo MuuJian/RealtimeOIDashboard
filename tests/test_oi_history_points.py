@@ -33,6 +33,15 @@ class ParseOiHistoryPointsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unexpected OI history response"):
             parse_oi_history_points({"timestamp": 1})
 
+    def test_rejects_duplicate_timestamps(self):
+        response = [
+            {"timestamp": 100, "sumOpenInterest": "1"},
+            {"timestamp": "100", "sumOpenInterest": "2"},
+        ]
+
+        with self.assertRaisesRegex(ValueError, "duplicate OI history timestamp"):
+            parse_oi_history_points(response)
+
 
 class HistoryOpenInterestPointTests(unittest.TestCase):
     def test_selects_latest_point_at_or_before_target(self):
