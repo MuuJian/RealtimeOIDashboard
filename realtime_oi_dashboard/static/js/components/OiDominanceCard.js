@@ -1,5 +1,10 @@
 import { formatCurrency, formatUtc8DateTime } from "../utils/format.js";
 import { buildOiDominance } from "../utils/oiDominance.js";
+import {
+  dominanceAriaLabel,
+  dominancePointIndexAtRatio,
+  dominancePointPositions,
+} from "../utils/oiDominanceChart.js";
 
 const tooltipStates = new WeakMap();
 
@@ -35,11 +40,7 @@ export function renderOiDominance(elements, rows, history) {
   if (elements.oiDominanceBar) {
     elements.oiDominanceBar.setAttribute(
       "aria-label",
-      dominance.total > 0
-        ? dominance.groups
-          .map(group => `${group.label} ${formatShare(group.percent)}`)
-          .join("，")
-        : "OI 市場佔比暫無資料",
+      dominanceAriaLabel(dominance),
     );
   }
 
@@ -74,7 +75,7 @@ function showTooltip(
 ) {
   const rect = chart.getBoundingClientRect();
   const ratio = Math.max(0, Math.min((clientX - rect.left) / rect.width, 1));
-  const index = Math.round(ratio * (points.length - 1));
+  const index = dominancePointIndexAtRatio(points, ratio);
   const point = points[index];
   const pixelX = ratio * rect.width;
   const tooltipWidth = 190;
@@ -100,9 +101,8 @@ function showTooltip(
 function areaPath(points, key) {
   const width = 320;
   const height = 76;
-  const xValues = points.map((_, index) => (
-    points.length === 1 ? 0 : index / (points.length - 1) * width
-  ));
+  const xValues = dominancePointPositions(points)
+    .map(position => position * width);
   const stackOrder = ["other", "eth", "btc"];
   const groupIndex = stackOrder.indexOf(key);
   const lower = points.map(point => stackOrder

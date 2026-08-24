@@ -10,9 +10,15 @@ const PRIMARY_SYMBOLS = new Map(
 export function buildOiDominance(rows, history = []) {
   const current = buildPoint(rows, "now");
   const historicalPoints = history.map(historyPoint);
-  const points = historicalPoints.length
-    ? [...historicalPoints, current]
-    : [current, current];
+  const chartPoints = current.total > 0
+    ? [
+      ...historicalPoints.filter(point => point.timestamp < current.timestamp),
+      current,
+    ]
+    : historicalPoints;
+  const points = chartPoints.length > 1
+    ? chartPoints
+    : [chartPoints[0] || current, chartPoints[0] || current];
   return { ...current, points };
 }
 
