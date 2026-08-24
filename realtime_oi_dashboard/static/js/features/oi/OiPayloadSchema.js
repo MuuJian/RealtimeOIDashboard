@@ -11,7 +11,6 @@ const OPTIONAL_NUMBER_FIELDS = [
   "fundingRatePercent",
   "oi24hChangePercent",
   "oi7dChangePercent",
-  "marketCap",
 ];
 
 export function assertOiPayload(payload) {
@@ -104,7 +103,10 @@ export function isOiRow(item) {
       item.currentOiValue,
       item.currentOi * item.price,
     )
+    || !Object.hasOwn(item, "volume24h")
     || !isOptionalNonNegativeNumber(item.volume24h)
+    || !Object.hasOwn(item, "marketCap")
+    || !isOptionalPositiveNumber(item.marketCap)
     || !isTimestamp(item.oiUpdatedAt)
     || !Object.hasOwn(item, "price7dBaseline")
     || !isOptionalPositiveNumber(item.price7dBaseline)

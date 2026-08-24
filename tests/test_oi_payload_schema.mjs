@@ -156,6 +156,31 @@ test("OI row validates 7d price and funding time", () => {
   assert.equal(isOiPayload(payload), false);
 });
 
+test("OI row optional metrics stay explicit and bounded", () => {
+  const payload = payloadWithSymbol("BTCUSDT");
+  const row = validRow("BTCUSDT");
+  payload.rows = [row];
+  assert.equal(isOiPayload(payload), true);
+
+  delete row.volume24h;
+  assert.equal(isOiPayload(payload), false);
+
+  row.volume24h = null;
+  assert.equal(isOiPayload(payload), true);
+
+  row.marketCap = -1;
+  assert.equal(isOiPayload(payload), false);
+
+  row.marketCap = 0;
+  assert.equal(isOiPayload(payload), false);
+
+  row.marketCap = null;
+  assert.equal(isOiPayload(payload), true);
+
+  delete row.marketCap;
+  assert.equal(isOiPayload(payload), false);
+});
+
 test("OI payload validates dashboard status metadata", () => {
   const valid = payloadWithSymbol("BTCUSDT");
   valid.saved_at = "2026-08-24T12:00:00+08:00";
