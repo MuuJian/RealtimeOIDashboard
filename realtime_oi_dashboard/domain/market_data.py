@@ -18,14 +18,21 @@ def parse_market_tickers(response, active_symbols):
         raise ValueError("unexpected ticker response")
 
     tickers = {}
+    seen_symbols = set()
     for item in response:
         if not isinstance(item, dict):
             continue
         symbol = item.get("symbol")
-        price = optional_float(item.get("lastPrice"))
-        if not is_valid_binance_symbol(symbol) or price is None or price <= 0:
+        if not is_valid_binance_symbol(symbol):
             continue
         if active_symbols and symbol not in active_symbols:
+            continue
+        if symbol in seen_symbols:
+            raise ValueError(f"duplicate ticker symbol: {symbol}")
+        seen_symbols.add(symbol)
+
+        price = optional_float(item.get("lastPrice"))
+        if price is None or price <= 0:
             continue
 
         volume_24h = optional_float(item.get("quoteVolume"))

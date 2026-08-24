@@ -189,6 +189,37 @@ class BinanceRestCacheTests(unittest.TestCase):
         self.assertEqual(len(fallback), 20)
         self.assertEqual(client.calls.count(TICKER_URL), 2)
 
+    def test_duplicate_ticker_symbol_keeps_last_good_response(self):
+        cache, client, clock = self.create_cache()
+        cached = cache.get_tickers()
+        client.tickers = ticker_payload() + [{
+            "symbol": "BTCUSDT",
+            "lastPrice": "999",
+        }]
+        clock.value = 10
+
+        fallback = cache.get_tickers()
+
+        self.assertIs(fallback, cached)
+        self.assertEqual(client.calls.count(TICKER_URL), 2)
+
+    def test_direct_ticker_parser_rejects_duplicate_symbols(self):
+        stop_event = threading.Event()
+        http_client = FakeHttpClient()
+        http_client.tickers.append({
+            "symbol": "BTCUSDT",
+            "lastPrice": "999",
+        })
+        oi_client = BinanceFuturesClient(
+            stop_event,
+            lambda *_args: None,
+            funding_cache_seconds=3600,
+            http_client=http_client,
+        )
+
+        with self.assertRaisesRegex(ValueError, "duplicate ticker symbol"):
+            oi_client.get_market_tickers({"BTCUSDT"})
+
     def test_non_ascii_or_lowercase_symbols_do_not_satisfy_response_size(self):
         cache, client, _ = self.create_cache()
         client.tickers = [

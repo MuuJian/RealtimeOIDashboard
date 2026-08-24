@@ -292,7 +292,11 @@ class CachedBinanceMarketData:
 
 
 def _is_ticker_payload(value: object) -> bool:
-    return len(_ticker_symbols(value)) >= MIN_EXPECTED_ACTIVE_SYMBOLS
+    response_symbols = _ticker_response_symbols(value)
+    return (
+        len(response_symbols) == len(set(response_symbols))
+        and len(_ticker_symbols(value)) >= MIN_EXPECTED_ACTIVE_SYMBOLS
+    )
 
 
 def _ticker_transition_is_valid(value: object, previous: object | None) -> bool:
@@ -317,6 +321,17 @@ def _ticker_symbols(value: object) -> set[str]:
         and (price := optional_float(item.get("lastPrice"))) is not None
         and price > 0
     }
+
+
+def _ticker_response_symbols(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [
+        item["symbol"]
+        for item in value
+        if isinstance(item, dict)
+        and is_valid_binance_symbol(item.get("symbol"))
+    ]
 
 
 def _is_exchange_info_payload(value: object) -> bool:
