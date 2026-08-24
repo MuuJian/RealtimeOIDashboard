@@ -114,9 +114,13 @@ class OiHistoryService:
         history_points = None
         retry_in = None
         try:
-            history_points = parse_oi_history_points(
-                self._fetch_history(symbol)
-            )
+            history_points = [
+                point
+                for point in parse_oi_history_points(
+                    self._fetch_history(symbol)
+                )
+                if point[0] <= current_timestamp_ms
+            ]
             if not history_points:
                 raise ValueError("OI history response contains no valid points")
         except PollingStopped:

@@ -251,6 +251,45 @@ class OiHistoryServiceTests(unittest.TestCase):
 
         self.assertEqual(service.get_dominance_history(), initial_history)
 
+    def test_future_history_outlier_does_not_poison_dominance_series(self):
+        now_ms = 2_000_000_000_000
+        future_timestamp_ms = now_ms + 365 * 24 * HOUR_MS
+        btc_responses = iter([
+            _history_response(now_ms, 40),
+            _history_response(now_ms, 40) + [{
+                "timestamp": future_timestamp_ms,
+                "sumOpenInterest": "1",
+                "sumOpenInterestValue": "999",
+            }],
+        ])
+        errors = []
+
+        def fetch_history(symbol):
+            if symbol == "BTCUSDT":
+                return next(btc_responses)
+            return _history_response(
+                now_ms,
+                {"ETHUSDT": 30, "SOLUSDT": 30}[symbol],
+            )
+
+        service = OiHistoryService(
+            fetch_history,
+            lambda symbol, error: errors.append((symbol, str(error))),
+        )
+        with patch(
+            "realtime_oi_dashboard.application.oi.history.time.monotonic",
+            return_value=0,
+        ) as monotonic:
+            for symbol in ("BTCUSDT", "ETHUSDT", "SOLUSDT"):
+                service.get_changes(symbol, 1, 1, now_ms)
+            initial_history = service.get_dominance_history()
+
+            monotonic.return_value = 3_600
+            service.get_changes("BTCUSDT", 1, 1, now_ms)
+
+        self.assertEqual(service.get_dominance_history(), initial_history)
+        self.assertEqual(errors, [])
+
     def test_binance_history_request_keeps_the_original_seven_day_window(self):
         client = BinanceFuturesClient.__new__(BinanceFuturesClient)
         client.oi_hist_url = "https://example.test/openInterestHist"
