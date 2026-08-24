@@ -83,6 +83,7 @@ def parse_funding_rates(response, active_symbols, now_ms):
 
     funding_rates = {}
     next_funding_times = []
+    seen_symbols = set()
     for item in response:
         if not isinstance(item, dict):
             continue
@@ -91,6 +92,9 @@ def parse_funding_rates(response, active_symbols, now_ms):
             continue
         if active_symbols and symbol not in active_symbols:
             continue
+        if symbol in seen_symbols:
+            raise ValueError(f"duplicate funding-rate symbol: {symbol}")
+        seen_symbols.add(symbol)
 
         funding_rate_percent = optional_float(
             item.get("lastFundingRate"),

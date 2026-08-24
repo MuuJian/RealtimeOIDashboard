@@ -16,6 +16,7 @@ from realtime_oi_dashboard.infrastructure.binance.rest_cache import (
 
 
 OPEN_INTEREST_URL = "https://fapi.binance.com/fapi/v1/openInterest"
+FUNDING_URL = "https://fapi.binance.com/fapi/v1/premiumIndex"
 
 
 def ticker_payload():
@@ -69,6 +70,11 @@ class FakeHttpClient:
             "openInterest": "123.45",
             "time": 1_700_000_123_456,
         }
+        self.funding = [{
+            "symbol": "BTCUSDT",
+            "lastFundingRate": "0.001",
+            "nextFundingTime": 2_000_000,
+        }]
         self.calls = []
         self.error = None
         self.request_started = None
@@ -87,6 +93,8 @@ class FakeHttpClient:
             return self.exchange_info
         if url == OPEN_INTEREST_URL:
             return self.open_interest
+        if url == FUNDING_URL:
+            return self.funding
         raise AssertionError(f"unexpected URL: {url}")
 
 
@@ -219,6 +227,45 @@ class BinanceRestCacheTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "duplicate ticker symbol"):
             oi_client.get_market_tickers({"BTCUSDT"})
+
+    def test_duplicate_funding_symbol_keeps_last_good_cache(self):
+        stop_event = threading.Event()
+        http_client = FakeHttpClient()
+        errors = []
+        oi_client = BinanceFuturesClient(
+            stop_event,
+            lambda symbol, error: errors.append((symbol, str(error))),
+            funding_cache_seconds=1,
+            http_client=http_client,
+        )
+
+        with (
+            patch(
+                "realtime_oi_dashboard.infrastructure.binance."
+                "futures_client.time.time",
+                return_value=1_000,
+            ),
+            patch(
+                "realtime_oi_dashboard.infrastructure.binance."
+                "futures_client.time.monotonic",
+                side_effect=[0, 0, 1_005, 1_005],
+            ),
+        ):
+            cached = oi_client.get_funding_rates({"BTCUSDT"})
+            http_client.funding.append({
+                "symbol": "BTCUSDT",
+                "lastFundingRate": "0.009",
+                "nextFundingTime": 3_000_000,
+            })
+
+            fallback = oi_client.get_funding_rates({"BTCUSDT"})
+
+        self.assertIs(fallback, cached)
+        self.assertEqual(fallback["BTCUSDT"]["fundingRatePercent"], 0.1)
+        self.assertEqual(errors, [(
+            "funding",
+            "duplicate funding-rate symbol: BTCUSDT",
+        )])
 
     def test_non_ascii_or_lowercase_symbols_do_not_satisfy_response_size(self):
         cache, client, _ = self.create_cache()
