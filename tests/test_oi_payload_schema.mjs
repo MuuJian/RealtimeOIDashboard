@@ -108,6 +108,24 @@ test("OI payload rows are unique active symbols", () => {
   assert.equal(isOiPayload(payload), false);
 });
 
+test("OI row value matches open interest times price", () => {
+  const payload = payloadWithSymbol("BTCUSDT");
+  const row = validRow("BTCUSDT");
+  payload.rows = [row];
+
+  row.currentOiValue = 999;
+  assert.equal(isOiPayload(payload), false);
+
+  row.price = 0.1;
+  row.currentOi = 0.2;
+  row.currentOiValue = 0.020000000000000004;
+  assert.equal(isOiPayload(payload), true);
+
+  row.currentOi = 0;
+  row.currentOiValue = 0;
+  assert.equal(isOiPayload(payload), true);
+});
+
 test("OI payload validates dashboard status metadata", () => {
   const valid = payloadWithSymbol("BTCUSDT");
   valid.saved_at = "2026-08-24T12:00:00+08:00";

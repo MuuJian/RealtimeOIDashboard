@@ -3,6 +3,7 @@ export const OI_API_SCHEMA_VERSION = 7;
 const ISO_TIMESTAMP_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:Z|[+-](?:0\d|1[0-4]):[0-5]\d)$/;
 const DOMINANCE_SHARE_TOLERANCE = 0.01;
 const MAX_RECENT_ERRORS = 10;
+const NUMBER_MATCH_TOLERANCE = Number.EPSILON * 8;
 
 const OPTIONAL_NUMBER_FIELDS = [
   "priceChangePercent",
@@ -99,6 +100,10 @@ export function isOiRow(item) {
     || !isPositiveNumber(item.price)
     || !isNonNegativeNumber(item.currentOi)
     || !isNonNegativeNumber(item.currentOiValue)
+    || !numbersNearlyEqual(
+      item.currentOiValue,
+      item.currentOi * item.price,
+    )
     || !isOptionalNonNegativeNumber(item.volume24h)
     || !isTimestamp(item.oiUpdatedAt)
     || !Object.hasOwn(item, "price7dBaseline")
@@ -176,4 +181,10 @@ function isTimestamp(value) {
 
 function isFiniteNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function numbersNearlyEqual(left, right) {
+  if (!isFiniteNumber(left) || !isFiniteNumber(right)) return false;
+  const scale = Math.max(1, Math.abs(left), Math.abs(right));
+  return Math.abs(left - right) <= scale * NUMBER_MATCH_TOLERANCE;
 }
