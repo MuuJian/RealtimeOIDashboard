@@ -28,6 +28,8 @@ from realtime_oi_dashboard.domain.symbols import is_valid_binance_symbol
 
 PARTIAL_RESPONSE_RETRY_SECONDS = 60
 MARKET_CACHE_STALE_GRACE_SECONDS = 15 * 60
+OPEN_INTEREST_MAX_AGE_MS = 15 * 60 * 1000
+OPEN_INTEREST_FUTURE_SKEW_MS = 60 * 1000
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,6 +235,7 @@ class BinanceFuturesClient:
             params={"symbol": symbol},
             timeout=8,
         )
+        received_at_ms = int(time.time() * 1000)
         value = (
             optional_float(data.get("openInterest"))
             if isinstance(data, dict)
@@ -251,6 +254,8 @@ class BinanceFuturesClient:
             or timestamp_ms is None
             or timestamp_ms <= 0
             or timestamp_ms > MAX_SAFE_INTEGER
+            or timestamp_ms < received_at_ms - OPEN_INTEREST_MAX_AGE_MS
+            or timestamp_ms > received_at_ms + OPEN_INTEREST_FUTURE_SKEW_MS
         ):
             raise ValueError("unexpected open-interest response")
         return OpenInterestSnapshot(value=value, timestamp_ms=timestamp_ms)

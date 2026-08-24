@@ -1,5 +1,6 @@
 import threading
 import unittest
+from unittest.mock import patch
 
 from realtime_oi_dashboard.application.oi.symbol_refresher import SymbolRefresher
 from realtime_oi_dashboard.domain.errors import PollingStopped
@@ -381,7 +382,12 @@ class BinanceRestCacheTests(unittest.TestCase):
             http_client=http_client,
         )
 
-        snapshot = oi_client.get_open_interest("BTCUSDT")
+        with patch(
+            "realtime_oi_dashboard.infrastructure.binance.futures_client."
+            "time.time",
+            return_value=1_700_000_123.456,
+        ):
+            snapshot = oi_client.get_open_interest("BTCUSDT")
 
         self.assertEqual(snapshot.value, 123.45)
         self.assertEqual(snapshot.timestamp_ms, 1_700_000_123_456)
@@ -402,6 +408,35 @@ class BinanceRestCacheTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "open-interest response"):
             oi_client.get_open_interest("BTCUSDT")
+
+    def test_current_oi_rejects_timestamp_outside_freshness_window(self):
+        now_ms = 1_700_000_123_456
+        invalid_timestamps = (
+            now_ms - 15 * 60 * 1_000 - 1,
+            now_ms + 60 * 1_000 + 1,
+        )
+
+        for timestamp_ms in invalid_timestamps:
+            with self.subTest(timestamp_ms=timestamp_ms):
+                stop_event = threading.Event()
+                http_client = FakeHttpClient()
+                http_client.open_interest["time"] = timestamp_ms
+                oi_client = BinanceFuturesClient(
+                    stop_event,
+                    lambda *_args: None,
+                    funding_cache_seconds=3600,
+                    http_client=http_client,
+                )
+
+                with patch(
+                    "realtime_oi_dashboard.infrastructure.binance."
+                    "futures_client.time.time",
+                    return_value=now_ms / 1_000,
+                ), self.assertRaisesRegex(
+                    ValueError,
+                    "open-interest response",
+                ):
+                    oi_client.get_open_interest("BTCUSDT")
 
     def test_current_oi_rejects_response_for_another_symbol(self):
         stop_event = threading.Event()
