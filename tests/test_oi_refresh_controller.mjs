@@ -10,6 +10,9 @@ const validPayload = {
   market_cap_loaded_symbols: 0,
   oi_dominance_history: [],
   rows: [],
+  saved_at: null,
+  error: null,
+  recent_errors: [],
 };
 
 function tick() {

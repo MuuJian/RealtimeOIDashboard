@@ -11,6 +11,9 @@ function payloadWithSymbol(symbol) {
     market_cap_loaded_symbols: 0,
     oi_dominance_history: [],
     rows: [],
+    saved_at: null,
+    error: null,
+    recent_errors: [],
   };
 }
 
@@ -71,6 +74,36 @@ test("OI payload rows are unique active symbols", () => {
 
   payload.rows = [validRow("ETHUSDT")];
   assert.equal(isOiPayload(payload), false);
+});
+
+test("OI payload validates dashboard status metadata", () => {
+  const valid = payloadWithSymbol("BTCUSDT");
+  valid.saved_at = "2026-08-24T12:00:00+08:00";
+  valid.error = "temporary";
+  valid.recent_errors = [{
+    symbol: "exchangeInfo",
+    error: "temporary",
+  }];
+  assert.equal(isOiPayload(valid), true);
+
+  for (const mutate of [
+    payload => { delete payload.saved_at; },
+    payload => { payload.saved_at = "not-a-timestamp"; },
+    payload => { payload.saved_at = "2026-02-30T12:00:00+08:00"; },
+    payload => { payload.error = {}; },
+    payload => { payload.recent_errors = "temporary"; },
+    payload => { payload.recent_errors = [{ symbol: "BTCUSDT", error: 1 }]; },
+    payload => {
+      payload.recent_errors = Array.from(
+        { length: 11 },
+        () => ({ symbol: "BTCUSDT", error: "temporary" }),
+      );
+    },
+  ]) {
+    const payload = payloadWithSymbol("BTCUSDT");
+    mutate(payload);
+    assert.equal(isOiPayload(payload), false);
+  }
 });
 
 function validRow(symbol) {

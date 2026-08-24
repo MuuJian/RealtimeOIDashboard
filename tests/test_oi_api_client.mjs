@@ -10,6 +10,9 @@ const validPayload = {
   market_cap_loaded_symbols: 0,
   oi_dominance_history: [],
   rows: [],
+  saved_at: null,
+  error: null,
+  recent_errors: [],
 };
 
 test("does not return an OI snapshot cancelled during response parsing", async () => {

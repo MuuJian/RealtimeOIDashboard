@@ -1,5 +1,8 @@
 export const OI_API_SCHEMA_VERSION = 7;
 
+const ISO_TIMESTAMP_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:Z|[+-](?:0\d|1[0-4]):[0-5]\d)$/;
+const MAX_RECENT_ERRORS = 10;
+
 const OPTIONAL_NUMBER_FIELDS = [
   "priceChangePercent",
   "price7dChangePercent",
@@ -31,6 +34,11 @@ export function isOiPayload(payload) {
     || !isOiDominanceHistory(payload.oi_dominance_history)
     || !payload.active_symbols.every(isSymbol)
     || !Array.isArray(payload.rows)
+    || !Object.hasOwn(payload, "saved_at")
+    || !isOptionalSavedAt(payload.saved_at)
+    || !Object.hasOwn(payload, "error")
+    || !isOptionalString(payload.error)
+    || !isRecentErrors(payload.recent_errors)
   ) return false;
 
   const activeSymbols = new Set(payload.active_symbols);
@@ -114,6 +122,36 @@ function isOptionalPositiveNumber(value) {
 
 function isOptionalTimestamp(value) {
   return value == null || isTimestamp(value);
+}
+
+function isOptionalSavedAt(value) {
+  if (value === null) return true;
+  if (typeof value !== "string") return false;
+  const match = ISO_TIMESTAMP_PATTERN.exec(value);
+  if (!match || !Number.isFinite(Date.parse(value))) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const calendar = new Date(0);
+  calendar.setUTCFullYear(year, month, 0);
+  return day <= calendar.getUTCDate();
+}
+
+function isOptionalString(value) {
+  return value === null || typeof value === "string";
+}
+
+function isRecentErrors(value) {
+  return Array.isArray(value)
+    && value.length <= MAX_RECENT_ERRORS
+    && value.every(item => (
+      item
+      && typeof item === "object"
+      && typeof item.symbol === "string"
+      && item.symbol.length > 0
+      && typeof item.error === "string"
+    ));
 }
 
 function isTimestamp(value) {
