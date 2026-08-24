@@ -50,3 +50,44 @@ test("OI dominance history contains BTC, ETH and OTHER shares", () => {
   payload.oi_dominance_history[0].other = 31;
   assert.equal(isOiPayload(payload), false);
 });
+
+test("OI payload rejects duplicate active symbols", () => {
+  const payload = payloadWithSymbol("BTCUSDT");
+  payload.active_symbols.push("BTCUSDT");
+  payload.total_symbols = 2;
+
+  assert.equal(isOiPayload(payload), false);
+});
+
+test("OI payload rows are unique active symbols", () => {
+  const payload = payloadWithSymbol("BTCUSDT");
+  const row = validRow("BTCUSDT");
+
+  payload.rows = [row];
+  assert.equal(isOiPayload(payload), true);
+
+  payload.rows = [row, { ...row }];
+  assert.equal(isOiPayload(payload), false);
+
+  payload.rows = [validRow("ETHUSDT")];
+  assert.equal(isOiPayload(payload), false);
+});
+
+function validRow(symbol) {
+  return {
+    symbol,
+    price: 100,
+    priceChangePercent: 1,
+    price7dChangePercent: 2,
+    fundingRatePercent: 0.01,
+    currentOi: 10,
+    currentOiValue: 1_000,
+    oi24hChangePercent: 3,
+    oi7dChangePercent: 4,
+    marketCap: 10_000,
+    volume24h: 2_000,
+    oiUpdatedAt: 1_700_000_000_000,
+    price7dBaseline: 90,
+    nextFundingTime: 1_700_000_100_000,
+  };
+}

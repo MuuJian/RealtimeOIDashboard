@@ -20,19 +20,32 @@ export function assertOiPayload(payload) {
 }
 
 export function isOiPayload(payload) {
-  return Boolean(
-    payload
-    && Array.isArray(payload.active_symbols)
-    && Number.isSafeInteger(payload.total_symbols)
-    && payload.total_symbols === payload.active_symbols.length
-    && Number.isSafeInteger(payload.market_cap_loaded_symbols)
-    && payload.market_cap_loaded_symbols >= 0
-    && payload.market_cap_loaded_symbols <= payload.total_symbols
-    && isOiDominanceHistory(payload.oi_dominance_history)
-    && payload.active_symbols.every(isSymbol)
-    && Array.isArray(payload.rows)
-    && payload.rows.every(isOiRow),
-  );
+  if (
+    !payload
+    || !Array.isArray(payload.active_symbols)
+    || !Number.isSafeInteger(payload.total_symbols)
+    || payload.total_symbols !== payload.active_symbols.length
+    || !Number.isSafeInteger(payload.market_cap_loaded_symbols)
+    || payload.market_cap_loaded_symbols < 0
+    || payload.market_cap_loaded_symbols > payload.total_symbols
+    || !isOiDominanceHistory(payload.oi_dominance_history)
+    || !payload.active_symbols.every(isSymbol)
+    || !Array.isArray(payload.rows)
+  ) return false;
+
+  const activeSymbols = new Set(payload.active_symbols);
+  if (activeSymbols.size !== payload.active_symbols.length) return false;
+
+  const rowSymbols = new Set();
+  for (const row of payload.rows) {
+    if (
+      !isOiRow(row)
+      || !activeSymbols.has(row.symbol)
+      || rowSymbols.has(row.symbol)
+    ) return false;
+    rowSymbols.add(row.symbol);
+  }
+  return true;
 }
 
 function isOiDominanceHistory(value) {
