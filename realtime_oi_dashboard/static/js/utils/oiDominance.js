@@ -72,12 +72,13 @@ function buildPoint(rows, period) {
 }
 
 function latestTimestamp(rows) {
-  return (rows || []).reduce((latest, row) => {
+  const latest = (rows || []).reduce((latestTimestamp, row) => {
     const timestamp = Number(row?.oiUpdatedAt);
-    return Number.isSafeInteger(timestamp) && timestamp > latest
+    return Number.isSafeInteger(timestamp) && timestamp > latestTimestamp
       ? timestamp
-      : latest;
-  }, Date.now());
+      : latestTimestamp;
+  }, 0);
+  return latest || Date.now();
 }
 
 function oiValueAt(row, period) {

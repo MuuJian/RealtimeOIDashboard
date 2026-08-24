@@ -57,6 +57,17 @@ test("uses the complete historical series for the chart", () => {
   assert.equal(result.points[0].groups[0].value, 300);
 });
 
+test("anchors the current chart point to the latest exchange OI timestamp", () => {
+  const result = buildOiDominance([
+    { ...currentRow("BTCUSDT", 100), oiUpdatedAt: 1_700_000_000_000 },
+    { ...currentRow("ETHUSDT", 100), oiUpdatedAt: 1_700_000_100_000 },
+    { ...currentRow("SOLUSDT", 100), oiUpdatedAt: "invalid" },
+  ]);
+
+  assert.equal(result.timestamp, 1_700_000_100_000);
+  assert.equal(result.points.at(-1).timestamp, 1_700_000_100_000);
+});
+
 function currentRow(symbol, currentOiValue) {
   return {
     symbol,
