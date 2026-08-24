@@ -53,6 +53,48 @@ class OiHistoryServiceTests(unittest.TestCase):
         self.assertEqual(history[-1]["other"], 30)
         self.assertEqual(history[-1]["btcValue"], 40)
 
+    def test_dominance_skips_only_buckets_whose_group_totals_overflow(self):
+        now_ms = 2_000_000_000_000
+        normal_values = {
+            "BTCUSDT": 40,
+            "ETHUSDT": 30,
+            "SOLUSDT": 10,
+            "XRPUSDT": 20,
+        }
+
+        def fetch_history(symbol):
+            return [
+                {
+                    "timestamp": now_ms - 7 * 24 * HOUR_MS,
+                    "sumOpenInterest": "1",
+                    "sumOpenInterestValue": str(normal_values[symbol]),
+                },
+                {
+                    "timestamp": now_ms - 24 * HOUR_MS,
+                    "sumOpenInterest": "1",
+                    "sumOpenInterestValue": "1e308",
+                },
+            ]
+
+        service = OiHistoryService(fetch_history, lambda *_args: None)
+        service.retain_symbols(set(normal_values))
+        with patch(
+            "realtime_oi_dashboard.application.oi.history.time.monotonic",
+            return_value=0,
+        ):
+            for symbol in normal_values:
+                service.get_changes(symbol, 1, 1, now_ms)
+
+        history = service.get_dominance_history()
+
+        self.assertEqual(len(history), 1)
+        self.assertEqual(
+            history[0]["timestamp"],
+            (now_ms - 7 * 24 * HOUR_MS)
+            // (4 * HOUR_MS)
+            * (4 * HOUR_MS),
+        )
+
     def test_waits_for_every_active_symbol_before_publishing_dominance(self):
         now_ms = 2_000_000_000_000
         values = {

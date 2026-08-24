@@ -6,6 +6,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from math import isfinite
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
 from realtime_oi_dashboard.infrastructure.storage.oi_history_cache import (
@@ -338,10 +339,13 @@ def _aggregate_dominance_history(value_series, active_symbols=None):
         ):
             continue
         totals = totals_by_interval[timestamp_ms]
-        if any(totals[key] <= 0 for key in DOMINANCE_GROUPS):
+        if any(
+            not isfinite(totals[key]) or totals[key] <= 0
+            for key in DOMINANCE_GROUPS
+        ):
             continue
         total = sum(totals.values())
-        if total <= 0:
+        if not isfinite(total) or total <= 0:
             continue
         result.append({
             "timestamp": timestamp_ms,
