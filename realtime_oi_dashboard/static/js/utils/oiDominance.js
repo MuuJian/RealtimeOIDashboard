@@ -65,12 +65,20 @@ function buildPoint(rows, period) {
     values.set(key, values.get(key) + value);
   }
 
-  const total = [...values.values()].reduce((sum, value) => sum + value, 0);
+  const groupValues = [...values.values()];
+  const aggregateTotal = groupValues.reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+  const aggregateIsUsable = groupValues.every(Number.isFinite)
+    && Number.isFinite(aggregateTotal)
+    && aggregateTotal > 0;
+  const total = aggregateIsUsable ? aggregateTotal : 0;
   const groups = [
     ...PRIMARY_MARKETS.map(({ key, label }) => ({ key, label })),
     { key: "other", label: "OTHER" },
   ].map(group => {
-    const value = values.get(group.key);
+    const value = aggregateIsUsable ? values.get(group.key) : 0;
     return {
       ...group,
       value,

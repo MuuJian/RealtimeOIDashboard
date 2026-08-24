@@ -44,6 +44,20 @@ test("ignores invalid and non-positive OI values", () => {
   assert.deepEqual(result.groups.map(group => group.percent), [0, 0, 0]);
 });
 
+test("does not publish current dominance when finite rows overflow in aggregate", () => {
+  const result = buildOiDominance([
+    currentRow("BTCUSDT", 1e308),
+    currentRow("ETHUSDT", 1e308),
+    currentRow("SOLUSDT", 1e308),
+    currentRow("XRPUSDT", 1e308),
+  ], [], 4);
+
+  assert.equal(result.total, 0);
+  assert.deepEqual(result.groups.map(group => group.value), [0, 0, 0]);
+  assert.deepEqual(result.groups.map(group => group.percent), [0, 0, 0]);
+  assert.equal(dominanceAriaLabel(result), "OI 市場佔比暫無資料");
+});
+
 test("uses the complete historical series for the chart", () => {
   const history = Array.from({ length: 12 }, (_, index) => ({
     timestamp: index + 1,
