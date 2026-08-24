@@ -403,6 +403,20 @@ class BinanceRestCacheTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "open-interest response"):
             oi_client.get_open_interest("BTCUSDT")
 
+    def test_current_oi_rejects_response_for_another_symbol(self):
+        stop_event = threading.Event()
+        http_client = FakeHttpClient()
+        http_client.open_interest["symbol"] = "ETHUSDT"
+        oi_client = BinanceFuturesClient(
+            stop_event,
+            lambda *_args: None,
+            funding_cache_seconds=3600,
+            http_client=http_client,
+        )
+
+        with self.assertRaisesRegex(ValueError, "open-interest response"):
+            oi_client.get_open_interest("BTCUSDT")
+
     def test_current_oi_rejects_timestamp_above_javascript_safe_integer(self):
         stop_event = threading.Event()
         http_client = FakeHttpClient()

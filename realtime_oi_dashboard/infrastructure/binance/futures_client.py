@@ -244,7 +244,9 @@ class BinanceFuturesClient:
             else None
         )
         if (
-            value is None
+            not isinstance(data, dict)
+            or data.get("symbol") != symbol
+            or value is None
             or value < 0
             or timestamp_ms is None
             or timestamp_ms <= 0
