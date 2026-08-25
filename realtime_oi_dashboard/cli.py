@@ -9,6 +9,7 @@ from math import isfinite
 from realtime_oi_dashboard.infrastructure.coingecko.client import (
     DEFAULT_MARKET_CAP_REFRESH_SECONDS,
 )
+from realtime_oi_dashboard.profile import FULL_PROFILE, PROFILE_NAMES
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -50,6 +51,12 @@ def parse_args(argv=None):
         "0.0.0.0" if platform_port else DEFAULT_HOST
     )
     parser.add_argument("--host", default=default_host)
+    parser.add_argument(
+        "--profile",
+        choices=PROFILE_NAMES,
+        default=os.environ.get("DASHBOARD_PROFILE", FULL_PROFILE),
+        help="runtime feature profile (full or stable)",
+    )
     parser.add_argument(
         "--port",
         type=port_number,

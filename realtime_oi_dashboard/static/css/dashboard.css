@@ -6,3 +6,73 @@
 @import url("./motion-responsive.css");
 @import url("./signal-scan.css");
 @import url("./oi-alerts.css");
+
+html[data-dashboard-profile="stable"] [data-full-only],
+html[data-dashboard-profile="stable"] [data-cvd-only] {
+  display: none !important;
+}
+
+html[data-dashboard-profile="stable"] .oi-table {
+  min-width: 1586px;
+}
+
+html[data-dashboard-profile="stable"] .oi-table th:nth-child(1),
+html[data-dashboard-profile="stable"] .oi-table td:nth-child(1) { width: 46px; }
+html[data-dashboard-profile="stable"] .oi-table th:nth-child(2),
+html[data-dashboard-profile="stable"] .oi-table td:nth-child(2) { width: 160px; }
+html[data-dashboard-profile="stable"] .oi-table th:nth-child(3),
+html[data-dashboard-profile="stable"] .oi-table td:nth-child(3) { width: 130px; }
+html[data-dashboard-profile="stable"] .oi-table th:nth-child(4),
+html[data-dashboard-profile="stable"] .oi-table td:nth-child(4) { width: 120px; }
+html[data-dashboard-profile="stable"] .oi-table th:nth-child(5),
+html[data-dashboard-profile="stable"] .oi-table td:nth-child(5) { width: 135px; }
+html[data-dashboard-profile="stable"] .oi-table th:nth-child(6),
+html[data-dashboard-profile="stable"] .oi-table td:nth-child(6) { width: 130px; }
+html[data-dashboard-profile="stable"] .oi-table th:nth-child(7),
+html[data-dashboard-profile="stable"] .oi-table td:nth-child(7) { width: 130px; }
+html[data-dashboard-profile="stable"] .oi-table th:nth-child(8),
+html[data-dashboard-profile="stable"] .oi-table td:nth-child(8) { width: 135px; }
+html[data-dashboard-profile="stable"] .oi-table th:nth-child(9),
+html[data-dashboard-profile="stable"] .oi-table td:nth-child(9) { width: 145px; }
+html[data-dashboard-profile="stable"] .oi-table th:nth-child(10),
+html[data-dashboard-profile="stable"] .oi-table td:nth-child(10) { width: 120px; }
+html[data-dashboard-profile="stable"] .oi-table th:nth-child(11),
+html[data-dashboard-profile="stable"] .oi-table td:nth-child(11) { width: 120px; }
+html[data-dashboard-profile="stable"] .oi-table th:nth-child(12),
+html[data-dashboard-profile="stable"] .oi-table td:nth-child(12) { width: 125px; }
+html[data-dashboard-profile="stable"] .oi-table th:nth-child(13),
+html[data-dashboard-profile="stable"] .oi-table td:nth-child(13) { width: 90px; }
+
+@media (min-width: 1592px) {
+  html[data-dashboard-profile="stable"] .oi-table { min-width: 100%; }
+  html[data-dashboard-profile="stable"] .oi-table th:nth-child(1),
+  html[data-dashboard-profile="stable"] .oi-table td:nth-child(1) { width: 2.9%; }
+  html[data-dashboard-profile="stable"] .oi-table th:nth-child(2),
+  html[data-dashboard-profile="stable"] .oi-table td:nth-child(2) { width: 10.1%; }
+  html[data-dashboard-profile="stable"] .oi-table th:nth-child(3),
+  html[data-dashboard-profile="stable"] .oi-table td:nth-child(3) { width: 8.2%; }
+  html[data-dashboard-profile="stable"] .oi-table th:nth-child(4),
+  html[data-dashboard-profile="stable"] .oi-table td:nth-child(4) { width: 7.6%; }
+  html[data-dashboard-profile="stable"] .oi-table th:nth-child(5),
+  html[data-dashboard-profile="stable"] .oi-table td:nth-child(5) { width: 8.5%; }
+  html[data-dashboard-profile="stable"] .oi-table th:nth-child(6),
+  html[data-dashboard-profile="stable"] .oi-table td:nth-child(6) { width: 8.2%; }
+  html[data-dashboard-profile="stable"] .oi-table th:nth-child(7),
+  html[data-dashboard-profile="stable"] .oi-table td:nth-child(7) { width: 8.2%; }
+  html[data-dashboard-profile="stable"] .oi-table th:nth-child(8),
+  html[data-dashboard-profile="stable"] .oi-table td:nth-child(8) { width: 8.5%; }
+  html[data-dashboard-profile="stable"] .oi-table th:nth-child(9),
+  html[data-dashboard-profile="stable"] .oi-table td:nth-child(9) { width: 9.1%; }
+  html[data-dashboard-profile="stable"] .oi-table th:nth-child(10),
+  html[data-dashboard-profile="stable"] .oi-table td:nth-child(10) { width: 7.6%; }
+  html[data-dashboard-profile="stable"] .oi-table th:nth-child(11),
+  html[data-dashboard-profile="stable"] .oi-table td:nth-child(11) { width: 7.6%; }
+  html[data-dashboard-profile="stable"] .oi-table th:nth-child(12),
+  html[data-dashboard-profile="stable"] .oi-table td:nth-child(12) { width: 7.9%; }
+  html[data-dashboard-profile="stable"] .oi-table th:nth-child(13),
+  html[data-dashboard-profile="stable"] .oi-table td:nth-child(13) { width: 5.7%; }
+}
+
+@media (max-width: 640px) {
+  html[data-dashboard-profile="stable"] .oi-table { min-width: 100%; }
+}

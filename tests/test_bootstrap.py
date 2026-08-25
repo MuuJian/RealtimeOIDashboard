@@ -1,7 +1,7 @@
 import io
 import unittest
 from contextlib import redirect_stdout
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from realtime_oi_dashboard import bootstrap
 from realtime_oi_dashboard.application.background_service import BackgroundPollerService
@@ -213,12 +213,52 @@ class MainTests(unittest.TestCase):
             args,
             cvd_state_provider=cvd_service,
             shared_rest_cache=shared_cache,
+            alert_service=ANY,
         )
         run_dashboard.assert_called_once_with(
             args,
             oi_service,
             signal_service,
             cvd_service,
+            shared_cache,
+        )
+
+    def test_stable_profile_constructs_only_the_oi_service(self):
+        args = FakeArgs()
+        args.profile = "stable"
+        oi_service = FakeService()
+        shared_cache = FakeSharedCache()
+
+        with patch.object(bootstrap, "parse_args", return_value=args), patch.object(
+            bootstrap, "create_shared_rest_cache", return_value=shared_cache
+        ), patch.object(
+            bootstrap, "create_cvd_service"
+        ) as create_cvd_service, patch.object(
+            bootstrap, "create_oi_alert_service"
+        ) as create_alert_service, patch.object(
+            bootstrap, "create_signal_scan_service"
+        ) as create_signal_service, patch.object(
+            bootstrap, "create_oi_service", return_value=oi_service
+        ) as create_oi_service, patch.object(
+            bootstrap, "run_dashboard", return_value=0
+        ) as run_dashboard:
+            result = bootstrap.main([])
+
+        self.assertEqual(result, 0)
+        create_cvd_service.assert_not_called()
+        create_alert_service.assert_not_called()
+        create_signal_service.assert_not_called()
+        create_oi_service.assert_called_once_with(
+            args,
+            cvd_state_provider=None,
+            shared_rest_cache=shared_cache,
+            alert_service=None,
+        )
+        run_dashboard.assert_called_once_with(
+            args,
+            oi_service,
+            None,
+            None,
             shared_cache,
         )
 

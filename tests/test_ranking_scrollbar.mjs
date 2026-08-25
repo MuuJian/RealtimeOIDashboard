@@ -16,6 +16,13 @@ const cellCss = readFileSync(
   ),
   "utf8",
 );
+const dashboardCss = readFileSync(
+  new URL(
+    "../realtime_oi_dashboard/static/css/dashboard.css",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
 test("OI ranking exposes a desktop scrollbar and hides it on mobile", () => {
   assert.match(
@@ -49,5 +56,20 @@ test("OI ranking exposes a desktop scrollbar and hides it on mobile", () => {
   assert.match(
     css,
     /@media \(max-width:\s*640px\)[\s\S]*?\.oi-table\s*\{[^}]*min-width:\s*100%;[\s\S]*?\.ranking-horizontal-scroll\s*\{[^}]*display:\s*none;/,
+  );
+});
+
+test("stable profile keeps the optimized 13-column OI table", () => {
+  assert.match(
+    dashboardCss,
+    /data-dashboard-profile="stable"[^}]*\.oi-table\s*\{[^}]*min-width:\s*1586px;/s,
+  );
+  assert.match(
+    dashboardCss,
+    /@media \(min-width:\s*1592px\)[\s\S]*?data-dashboard-profile="stable"[^}]*\.oi-table\s*\{\s*min-width:\s*100%;/,
+  );
+  assert.match(
+    dashboardCss,
+    /data-dashboard-profile="stable"[^}]*\.oi-table td:nth-child\(13\)\s*\{\s*width:\s*90px;/,
   );
 });

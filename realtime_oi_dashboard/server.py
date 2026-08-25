@@ -18,6 +18,7 @@ from realtime_oi_dashboard.application.background_service import (
 from realtime_oi_dashboard.application.oi.poller import timestamp
 from realtime_oi_dashboard.domain.oi_alerts.model import validate_alert_config
 from realtime_oi_dashboard.web import DashboardRequestHandler
+from realtime_oi_dashboard.profile import DashboardProfile, resolve_profile
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -36,11 +37,13 @@ class DashboardHTTPServer(ThreadingHTTPServer):
         oi_state_provider,
         signal_scan_state_provider=None,
         oi_alert_provider=None,
+        profile: DashboardProfile | None = None,
     ) -> None:
         super().__init__(server_address, request_handler_class)
         self.oi_state_provider = oi_state_provider
         self.signal_scan_state_provider = signal_scan_state_provider
         self.oi_alert_provider = oi_alert_provider
+        self.profile = profile or resolve_profile(None)
 
     def handle_error(self, request, client_address) -> None:
         _, error, _ = sys.exc_info()
@@ -77,15 +80,24 @@ class DashboardHandler(DashboardRequestHandler):
         if parsed.path == "/readyz":
             self.send_readiness()
             return
+        if parsed.path == "/runtime-config.js":
+            self.send_runtime_config()
+            return
         if self.send_dashboard_asset(parsed.path):
             return
         if parsed.path == "/api/oi":
             self.send_oi_state()
             return
         if parsed.path == "/api/signal-scan":
+            if not self.feature_enabled("signal_scan_enabled"):
+                self.send_error(404)
+                return
             self.send_signal_scan_state()
             return
         if parsed.path == "/api/oi-alerts":
+            if not self.feature_enabled("oi_alerts_enabled"):
+                self.send_error(404)
+                return
             self.send_oi_alert_state()
             return
         self.send_error(404)
@@ -100,6 +112,9 @@ class DashboardHandler(DashboardRequestHandler):
             "/api/oi-alerts/config",
             "/api/oi-alerts/test-message",
         }:
+            self.send_error(404)
+            return
+        if not self.feature_enabled("oi_alerts_enabled"):
             self.send_error(404)
             return
         try:
@@ -153,6 +168,24 @@ class DashboardHandler(DashboardRequestHandler):
         except Exception as exc:
             print(f"{timestamp()} failed to serve OI state: {exc}")
             self.send_json({"error": "OI state unavailable"}, status=503)
+
+    def feature_enabled(self, attribute: str) -> bool:
+        profile = getattr(self.server, "profile", resolve_profile(None))
+        return bool(getattr(profile, attribute, False))
+
+    def send_runtime_config(self) -> None:
+        profile = getattr(self.server, "profile", resolve_profile(None))
+        config = json.dumps(profile.public_config(), separators=(",", ":"))
+        body = (
+            "globalThis.__REALTIME_OI_DASHBOARD_CONFIG__=" + config + ";"
+            "document.documentElement.dataset.dashboardProfile="
+            f"{json.dumps(profile.name)};"
+        ).encode("utf-8")
+        self._send_body(
+            body,
+            content_type="application/javascript; charset=utf-8",
+            cache_control="no-store",
+        )
 
     def send_signal_scan_state(self):
         provider = getattr(self.server, "signal_scan_state_provider", None)
@@ -258,14 +291,15 @@ class DashboardHandler(DashboardRequestHandler):
         ready = oi_state is not None
         payload = {
             "status": "ready" if ready else "not_ready",
-            "components": {
-                "oi": oi_summary,
-                "signalScan": _signal_scan_readiness(
-                    getattr(self.server, "signal_scan_state_provider", None)
-                ),
-                "cvd": _cvd_readiness(oi_state),
-            },
+            "components": {"oi": oi_summary},
         }
+        profile = getattr(self.server, "profile", resolve_profile(None))
+        if profile.signal_scan_enabled:
+            payload["components"]["signalScan"] = _signal_scan_readiness(
+                getattr(self.server, "signal_scan_state_provider", None)
+            )
+        if profile.cvd_enabled:
+            payload["components"]["cvd"] = _cvd_readiness(oi_state)
         self.send_json(payload, status=200 if ready else 503)
 
 
@@ -578,6 +612,7 @@ def create_dashboard_server(
     oi_state_provider,
     signal_scan_state_provider=None,
     oi_alert_provider=None,
+    profile=None,
 ):
     return DashboardHTTPServer(
         (host, port),
@@ -585,4 +620,5 @@ def create_dashboard_server(
         oi_state_provider=oi_state_provider,
         signal_scan_state_provider=signal_scan_state_provider,
         oi_alert_provider=oi_alert_provider,
+        profile=profile,
     )

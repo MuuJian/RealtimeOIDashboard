@@ -22,6 +22,7 @@ export function createDashboardRenderer({
   getHighOi7dRows,
   getHeatMax,
   getSignalFilters,
+  includeCvd = true,
 }) {
   function render({
     full,
@@ -78,6 +79,7 @@ export function createDashboardRenderer({
       favorites: favorites.getSet(),
       hasSourceRows: rankingData.getRows().length > 0,
       heatMax: getHeatMax(),
+      includeCvd,
     };
   }
 

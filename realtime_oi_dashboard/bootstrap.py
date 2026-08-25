@@ -6,25 +6,26 @@ from realtime_oi_dashboard.application.background_service import (
     BackgroundPollerService,
 )
 from realtime_oi_dashboard.application.oi.poller import DATA_DIR, OIPoller, timestamp
-from realtime_oi_dashboard.application.oi_alerts.service import OiAlertService
-from realtime_oi_dashboard.application.signal_scan.poller import SignalScanPoller
 from realtime_oi_dashboard.cli import parse_args
 from realtime_oi_dashboard.infrastructure.binance.rest_cache import (
     BinanceRestCache,
 )
 from realtime_oi_dashboard.infrastructure.storage.oi_alerts import AlertStateRepository
 from realtime_oi_dashboard.server import create_dashboard_server
+from realtime_oi_dashboard.profile import resolve_profile
 from realtime_oi_dashboard.shared.runtime.services import ServiceGroup
 
 
 SHUTDOWN_TIMEOUT_SECONDS = 15
+_DEFAULT_ALERT_SERVICE = object()
 
 
 def main(argv=None):
     args = parse_args(argv)
+    profile = resolve_profile(getattr(args, "profile", None))
     shared_rest_cache = create_shared_rest_cache()
     cvd_service = None
-    if getattr(args, "cvd_enabled", True):
+    if profile.cvd_enabled and getattr(args, "cvd_enabled", True):
         try:
             cvd_service = create_cvd_service(
                 args,
@@ -33,25 +34,28 @@ def main(argv=None):
         except Exception as exc:
             print(f"{timestamp()} CVD unavailable; continuing with OI dashboard: {exc}")
     try:
+        alert_service = create_oi_alert_service() if profile.oi_alerts_enabled else None
         oi_service = create_oi_service(
             args,
             cvd_state_provider=cvd_service,
             shared_rest_cache=shared_rest_cache,
+            alert_service=alert_service,
         )
     except BaseException:
         _close_shared_rest_cache(shared_rest_cache)
         raise
-    try:
-        signal_scan_service = create_signal_scan_service(
-            args,
-            shared_rest_cache=shared_rest_cache,
-        )
-    except Exception as exc:
-        print(
-            f"{timestamp()} signal scan unavailable; "
-            f"continuing with the OI dashboard: {exc}"
-        )
-        signal_scan_service = None
+    signal_scan_service = None
+    if profile.signal_scan_enabled:
+        try:
+            signal_scan_service = create_signal_scan_service(
+                args,
+                shared_rest_cache=shared_rest_cache,
+            )
+        except Exception as exc:
+            print(
+                f"{timestamp()} signal scan unavailable; "
+                f"continuing with the OI dashboard: {exc}"
+            )
     return run_dashboard(
         args,
         oi_service,
@@ -70,7 +74,10 @@ def create_oi_service(
     *,
     cvd_state_provider=None,
     shared_rest_cache=None,
+    alert_service=_DEFAULT_ALERT_SERVICE,
 ):
+    if alert_service is _DEFAULT_ALERT_SERVICE:
+        alert_service = create_oi_alert_service()
     poller = OIPoller(
         batch_size=args.oi_batch_size,
         batch_delay=args.oi_batch_delay,
@@ -79,7 +86,7 @@ def create_oi_service(
         market_cap_cache_seconds=args.market_cap_cache_seconds,
         cvd_state_provider=cvd_state_provider,
         shared_rest_cache=shared_rest_cache,
-        alert_service=create_oi_alert_service(),
+        alert_service=alert_service,
     )
     return BackgroundPollerService(
         poller,
@@ -90,6 +97,8 @@ def create_oi_service(
 
 def create_oi_alert_service():
     """Build alert delivery from server-side environment configuration only."""
+    from realtime_oi_dashboard.application.oi_alerts.service import OiAlertService
+
     return OiAlertService(AlertStateRepository(DATA_DIR / "oi-alerts.json"))
 
 
@@ -133,6 +142,8 @@ def create_cvd_service(args, *, shared_rest_cache=None):
 
 
 def create_signal_scan_service(args, *, shared_rest_cache=None):
+    from realtime_oi_dashboard.application.signal_scan.poller import SignalScanPoller
+
     poller = SignalScanPoller(
         interval_seconds=args.signal_scan_interval,
         shared_rest_cache=shared_rest_cache,
@@ -150,7 +161,9 @@ def run_dashboard(
     signal_scan_service,
     cvd_service=None,
     shared_rest_cache=None,
+    profile=None,
 ):
+    profile = profile or resolve_profile(getattr(args, "profile", None))
     services = ServiceGroup(
         oi=("OI poller", oi_service),
         signal_scan=("signal scan poller", signal_scan_service),
@@ -163,6 +176,7 @@ def run_dashboard(
             oi_state_provider=oi_service,
             signal_scan_state_provider=signal_scan_service,
             oi_alert_provider=oi_service,
+            profile=profile,
         )
     except OSError as exc:
         print(f"無法啟動面板: {exc}")

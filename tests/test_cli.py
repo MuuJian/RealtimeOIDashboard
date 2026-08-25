@@ -15,6 +15,7 @@ class ParseArgsTests(unittest.TestCase):
         self.assertEqual(args.host, "127.0.0.1")
         self.assertEqual(args.port, 8777)
         self.assertEqual(args.market_cap_cache_seconds, 3_600)
+        self.assertEqual(args.profile, "full")
         self.assertFalse(hasattr(args, "oi_history_cache_seconds"))
         self.assertFalse(hasattr(args, "ticker_cache_seconds"))
         self.assertFalse(hasattr(args, "snapshot_save_interval"))
@@ -51,6 +52,15 @@ class ParseArgsTests(unittest.TestCase):
 
         self.assertEqual(args.host, "localhost")
         self.assertEqual(args.port, 8877)
+
+    def test_profile_environment_and_cli_override(self):
+        with patch.dict(os.environ, {"DASHBOARD_PROFILE": "stable"}, clear=True):
+            self.assertEqual(parse_args([]).profile, "stable")
+            self.assertEqual(parse_args(["--profile", "full"]).profile, "full")
+
+    def test_invalid_profile_is_rejected(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parse_args(["--profile", "unknown"])
 
     def test_invalid_port_is_rejected(self):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):

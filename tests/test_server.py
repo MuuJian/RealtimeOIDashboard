@@ -8,6 +8,7 @@ from realtime_oi_dashboard.application.background_service import (
     BackgroundServiceStopped,
 )
 from realtime_oi_dashboard.server import create_dashboard_server
+from realtime_oi_dashboard.profile import resolve_profile
 
 
 class FakeStateProvider:
@@ -145,6 +146,68 @@ class DashboardServerTests(unittest.TestCase):
             signal_payload,
             {**self.signal_provider.state, "feature_window_minutes": None},
         )
+
+    def test_runtime_config_exposes_the_full_profile(self):
+        connection = HTTPConnection(
+            "127.0.0.1", self.server.server_address[1], timeout=5
+        )
+        try:
+            connection.request("GET", "/runtime-config.js")
+            response = connection.getresponse()
+            body = response.read().decode("utf-8")
+        finally:
+            connection.close()
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.getheader("Cache-Control"), "no-store")
+        self.assertIn('"profile":"full"', body)
+        self.assertIn('"cvd":true', body)
+
+    def test_stable_profile_exposes_only_oi_routes(self):
+        stable_server = create_dashboard_server(
+            "127.0.0.1",
+            0,
+            oi_state_provider=self.oi_provider,
+            signal_scan_state_provider=self.signal_provider,
+            oi_alert_provider=self.alert_provider,
+            profile=resolve_profile("stable"),
+        )
+        thread = threading.Thread(target=stable_server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            statuses = {}
+            for path, method in (
+                ("/api/oi", "GET"),
+                ("/api/signal-scan", "GET"),
+                ("/api/oi-alerts", "GET"),
+                ("/api/oi-alerts/config", "PUT"),
+                ("/api/oi-alerts/test-message", "POST"),
+            ):
+                connection = HTTPConnection(
+                    "127.0.0.1", stable_server.server_address[1], timeout=5
+                )
+                try:
+                    headers = {"Content-Type": "application/json"}
+                    body = b"{}" if method != "GET" else None
+                    connection.request(method, path, body=body, headers=headers)
+                    response = connection.getresponse()
+                    statuses[path] = response.status
+                    response.read()
+                finally:
+                    connection.close()
+        finally:
+            stable_server.shutdown()
+            thread.join(timeout=5)
+            stable_server.server_close()
+
+        self.assertEqual(statuses["/api/oi"], 200)
+        for path in (
+            "/api/signal-scan",
+            "/api/oi-alerts",
+            "/api/oi-alerts/config",
+            "/api/oi-alerts/test-message",
+        ):
+            self.assertEqual(statuses[path], 404)
 
     def test_stopped_provider_preserves_existing_503_response(self):
         self.server.signal_scan_state_provider = FakeStateProvider(

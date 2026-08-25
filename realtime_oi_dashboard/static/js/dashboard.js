@@ -23,8 +23,10 @@ import { createSignalScanPanel } from "./features/signal-scan/SignalScanPanel.js
 import { createSignalScanRefreshController } from "./features/signal-scan/SignalScanRefreshController.js";
 import { createOiAlertsPanel } from "./features/oi-alerts/OiAlertsPanel.js";
 import { createOiAlertsRefreshController } from "./features/oi-alerts/OiAlertsRefreshController.js";
+import { getRuntimeProfile } from "./config/RuntimeProfile.js";
 
 const lifecycleController = new AbortController();
+const runtimeProfile = getRuntimeProfile();
 const elements = getDashboardElements();
 const dashboardStatus = createDashboardStatus({
   title: elements.statusTitle,
@@ -42,6 +44,9 @@ const filters = useTableFilters({
   minVolume: Number(elements.volumeFilter.value),
 });
 const sort = useTableSort({ storageKey: "oiTableSortV2" });
+if (!runtimeProfile.features.cvd && sort.getState().sortKey === "cvd15mRatio") {
+  sort.setSort("currentOiValue", "desc");
+}
 const motionEffects = createMotionEffects();
 const priceFeed = createBinancePriceFeed();
 const rankingProcessor = createRankingProcessor();
@@ -67,51 +72,57 @@ const marketTooltip = createMarketTooltip({
   getRowBySymbol: rankingData.getRow,
 });
 
-const signalScanPanel = createSignalScanPanel({
-  bullsBody: elements.signalScanBullsBody,
-  bearsBody: elements.signalScanBearsBody,
-  spikesBody: elements.signalScanSpikesBody,
-  statusEl: elements.signalScanStatus,
-  onCreateAlert: symbol => {
-    oiAlertsPanel.addSymbol(symbol);
-    activateTab("oiAlerts");
-  },
-});
+let oiAlertsPanel = null;
+let oiAlertsRefresh = createInactiveRefreshController();
+if (runtimeProfile.features.oiAlerts) {
+  oiAlertsPanel = createOiAlertsPanel({
+    elements: {
+      statusElement: elements.oiAlertsStatus,
+      signalLabelsElement: elements.oiAlertsSignalLabels,
+      enabledInput: elements.oiAlertsEnabled,
+      scaleEnabledInput: elements.oiAlertsScaleEnabled,
+      symbolsInput: elements.oiAlertsSymbols,
+      windowMinutesInput: elements.oiAlertsWindowMinutes,
+      minOiChangeInput: elements.oiAlertsMinOiChange,
+      minPriceChangeInput: elements.oiAlertsMinPriceChange,
+      cooldownMinutesInput: elements.oiAlertsCooldownMinutes,
+      requireCvdInput: elements.oiAlertsRequireCvd,
+      threshold75Input: elements.oiAlertThreshold75,
+      threshold100Input: elements.oiAlertThreshold100,
+      threshold150Input: elements.oiAlertThreshold150,
+      saveButton: elements.oiAlertsSave,
+      testButton: elements.oiAlertsTestMessage,
+      activeBody: elements.oiAlertsActiveBody,
+      eventsBody: elements.oiAlertsEventsBody,
+      activeSortButtons: elements.oiAlertsActiveSortButtons,
+      eventsSortButtons: elements.oiAlertsEventsSortButtons,
+    },
+  });
+  oiAlertsRefresh = createOiAlertsRefreshController({
+    onPayload: payload => oiAlertsPanel.render(payload),
+    onError: error => oiAlertsPanel.renderError(error),
+  });
+  oiAlertsPanel.bind(lifecycleController.signal);
+}
 
-const signalScanRefresh = createSignalScanRefreshController({
-  onPayload: payload => signalScanPanel.render(payload),
-  onError: error => signalScanPanel.renderError(error),
-});
-
-const oiAlertsPanel = createOiAlertsPanel({
-  elements: {
-    statusElement: elements.oiAlertsStatus,
-    signalLabelsElement: elements.oiAlertsSignalLabels,
-    enabledInput: elements.oiAlertsEnabled,
-    scaleEnabledInput: elements.oiAlertsScaleEnabled,
-    symbolsInput: elements.oiAlertsSymbols,
-    windowMinutesInput: elements.oiAlertsWindowMinutes,
-    minOiChangeInput: elements.oiAlertsMinOiChange,
-    minPriceChangeInput: elements.oiAlertsMinPriceChange,
-    cooldownMinutesInput: elements.oiAlertsCooldownMinutes,
-    requireCvdInput: elements.oiAlertsRequireCvd,
-    threshold75Input: elements.oiAlertThreshold75,
-    threshold100Input: elements.oiAlertThreshold100,
-    threshold150Input: elements.oiAlertThreshold150,
-    saveButton: elements.oiAlertsSave,
-    testButton: elements.oiAlertsTestMessage,
-    activeBody: elements.oiAlertsActiveBody,
-    eventsBody: elements.oiAlertsEventsBody,
-    activeSortButtons: elements.oiAlertsActiveSortButtons,
-    eventsSortButtons: elements.oiAlertsEventsSortButtons,
-  },
-});
-
-const oiAlertsRefresh = createOiAlertsRefreshController({
-  onPayload: payload => oiAlertsPanel.render(payload),
-  onError: error => oiAlertsPanel.renderError(error),
-});
-oiAlertsPanel.bind(lifecycleController.signal);
+let signalScanRefresh = createInactiveRefreshController();
+if (runtimeProfile.features.signalScan) {
+  const signalScanPanel = createSignalScanPanel({
+    bullsBody: elements.signalScanBullsBody,
+    bearsBody: elements.signalScanBearsBody,
+    spikesBody: elements.signalScanSpikesBody,
+    statusEl: elements.signalScanStatus,
+    onCreateAlert: symbol => {
+      if (!oiAlertsPanel) return;
+      oiAlertsPanel.addSymbol(symbol);
+      activateTab("oiAlerts");
+    },
+  });
+  signalScanRefresh = createSignalScanRefreshController({
+    onPayload: payload => signalScanPanel.render(payload),
+    onError: error => signalScanPanel.renderError(error),
+  });
+}
 
 const filterBar = createFilterBar({
   elements,
@@ -141,6 +152,7 @@ const dashboardRenderer = createDashboardRenderer({
   getHighOi7dRows: () => rankingView.getHighOi7dRows(),
   getHeatMax: () => rankingView.getHeatMax(),
   getSignalFilters,
+  includeCvd: runtimeProfile.features.cvd,
 });
 const uiScheduler = createUiRenderScheduler(dashboardRenderer.render);
 const scheduleUiRender = uiScheduler.schedule;
@@ -208,12 +220,16 @@ elements.rankBody.addEventListener("click", event => {
 elements.tabOi.addEventListener("click", () => activateTab("oi"), {
   signal: lifecycleController.signal,
 });
-elements.tabSignalScan.addEventListener("click", () => activateTab("signalScan"), {
-  signal: lifecycleController.signal,
-});
-elements.tabOiAlerts.addEventListener("click", () => activateTab("oiAlerts"), {
-  signal: lifecycleController.signal,
-});
+if (runtimeProfile.features.signalScan) {
+  elements.tabSignalScan.addEventListener("click", () => activateTab("signalScan"), {
+    signal: lifecycleController.signal,
+  });
+}
+if (runtimeProfile.features.oiAlerts) {
+  elements.tabOiAlerts.addEventListener("click", () => activateTab("oiAlerts"), {
+    signal: lifecycleController.signal,
+  });
+}
 
 scheduleUiRender({
   controls: true,
@@ -275,10 +291,22 @@ function activateTab(name) {
     oiAlerts: { button: elements.tabOiAlerts, page: elements.oiAlertsPage },
   };
   for (const [tabName, tab] of Object.entries(tabs)) {
+    if (
+      (tabName === "signalScan" && !runtimeProfile.features.signalScan)
+      || (tabName === "oiAlerts" && !runtimeProfile.features.oiAlerts)
+    ) continue;
     const selected = tabName === name;
     tab.page.hidden = !selected;
     tab.button.classList.toggle("active", selected);
     tab.button.setAttribute("aria-selected", String(selected));
   }
   liveUpdates.setSelectedPage(name);
+}
+
+function createInactiveRefreshController() {
+  return Object.freeze({
+    dispose() {},
+    start() {},
+    stop() {},
+  });
 }
