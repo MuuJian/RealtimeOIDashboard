@@ -19,12 +19,34 @@ npm ci
 
 ## 启动
 
+`main` 同时支持 `full` 和 `stable` 两种运行配置，默认使用 `full`。
+
+完整版本会启用 OI、CVD、Signal Scan 和 OI Alerts：
+
 ```bash
-.venv/bin/python main.py
+.venv/bin/python main.py --profile full
 ```
+
+稳定版本只启用 OI，不会启动 CVD、Signal Scan 和 OI Alerts，对应页面和 API 也不会开放：
+
+```bash
+.venv/bin/python main.py --profile stable
+```
+
+不填写 `--profile` 时等同于 `--profile full`。
+
 ```
 http://127.0.0.1:8777
 ```
+
+部署时也可以通过环境变量选择配置：
+
+```bash
+DASHBOARD_PROFILE=stable .venv/bin/python main.py
+```
+
+完整版本对应 `DASHBOARD_PROFILE=full`。命令行的 `--profile` 会覆盖环境变量。
+
 ### 用手机访问本地面板
 
 手机和电脑连接同一个网络，然后这样启动：
@@ -44,6 +66,7 @@ http://192.168.xxx.xxx:8777
 
 | 参数 | 默认值 | 作用 |
 |---|---:|---|
+| `--profile` | `full` | `full` 启用完整功能；`stable` 只启用 OI。也可以通过 `DASHBOARD_PROFILE` 环境变量设置。 |
 | `--host` | `127.0.0.1` | 面板监听地址。只在当前电脑访问时保持默认；需要让同一网络里的手机访问时使用 `0.0.0.0`。 |
 | `--port` | `8777` | 面板使用的端口。端口被其他程序占用时可以更换。 |
 | `--oi-batch-size` | `25` | 每批更新的合约数量。调小会降低单批请求量，但完成全部更新需要更久。 |
