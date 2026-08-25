@@ -21,31 +21,17 @@ npm ci
 
 `main` 同时支持 `full` 和 `stable` 两种运行配置，默认使用 `full`。
 
-完整版本会启用 OI、CVD、Signal Scan 和 OI Alerts：
+完整版本会启用 OI、CVD、Signal Scan 和 OI Alerts，稳定版本只启用 OI:
 
 ```bash
-.venv/bin/python main.py --profile full
-```
-
-稳定版本只启用 OI，不会启动 CVD、Signal Scan 和 OI Alerts，对应页面和 API 也不会开放：
-
-```bash
-.venv/bin/python main.py --profile stable
-```
-
-不填写 `--profile` 时等同于 `--profile full`。
-
-```
-http://127.0.0.1:8777
+.venv/bin/python main.py --profile full/stable
 ```
 
 部署时也可以通过环境变量选择配置：
 
 ```bash
-DASHBOARD_PROFILE=stable .venv/bin/python main.py
+DASHBOARD_PROFILE=stable/full
 ```
-
-完整版本对应 `DASHBOARD_PROFILE=full`。命令行的 `--profile` 会覆盖环境变量。
 
 ### 用手机访问本地面板
 
