@@ -13,19 +13,55 @@ MIN_EXPECTED_ACTIVE_SYMBOLS = 20
 MAX_SYMBOL_REMOVAL_FRACTION = 0.2
 
 
+def parse_active_symbols(response):
+    if (
+        not isinstance(response, dict)
+        or not isinstance(response.get("symbols"), list)
+    ):
+        raise ValueError("unexpected exchange-info response")
+
+    seen_symbols = set()
+    active_symbols = []
+    for item in response["symbols"]:
+        if not isinstance(item, dict):
+            continue
+        symbol = item.get("symbol")
+        if not is_valid_binance_symbol(symbol):
+            continue
+        if symbol in seen_symbols:
+            raise ValueError(f"duplicate exchange-info symbol: {symbol}")
+        seen_symbols.add(symbol)
+        if (
+            item.get("quoteAsset") == "USDT"
+            and item.get("status") == "TRADING"
+            and item.get("contractType") == "PERPETUAL"
+        ):
+            active_symbols.append(symbol)
+
+    if not active_symbols:
+        raise ValueError("exchange-info response contains no active symbols")
+    return sorted(active_symbols)
+
+
 def parse_market_tickers(response, active_symbols):
     if not isinstance(response, list):
         raise ValueError("unexpected ticker response")
 
     tickers = {}
+    seen_symbols = set()
     for item in response:
         if not isinstance(item, dict):
             continue
         symbol = item.get("symbol")
-        price = optional_float(item.get("lastPrice"))
-        if not is_valid_binance_symbol(symbol) or price is None or price <= 0:
+        if not is_valid_binance_symbol(symbol):
             continue
         if active_symbols and symbol not in active_symbols:
+            continue
+        if symbol in seen_symbols:
+            raise ValueError(f"duplicate ticker symbol: {symbol}")
+        seen_symbols.add(symbol)
+        price = optional_float(item.get("lastPrice"))
+        if price is None or price <= 0:
             continue
 
         volume_24h = optional_float(item.get("quoteVolume"))
@@ -76,6 +112,7 @@ def parse_funding_rates(response, active_symbols, now_ms):
 
     funding_rates = {}
     next_funding_times = []
+    seen_symbols = set()
     for item in response:
         if not isinstance(item, dict):
             continue
@@ -84,6 +121,9 @@ def parse_funding_rates(response, active_symbols, now_ms):
             continue
         if active_symbols and symbol not in active_symbols:
             continue
+        if symbol in seen_symbols:
+            raise ValueError(f"duplicate funding-rate symbol: {symbol}")
+        seen_symbols.add(symbol)
 
         funding_rate_percent = optional_float(
             item.get("lastFundingRate"),

@@ -53,6 +53,125 @@ class OiHistoryServiceTests(unittest.TestCase):
         self.assertEqual(history[-1]["other"], 30)
         self.assertEqual(history[-1]["btcValue"], 40)
 
+    def test_dominance_skips_only_buckets_whose_group_totals_overflow(self):
+        now_ms = 2_000_000_000_000
+        values = {
+            "BTCUSDT": 40,
+            "ETHUSDT": 30,
+            "SOLUSDT": 10,
+            "XRPUSDT": 20,
+        }
+
+        def fetch_history(symbol):
+            return [
+                {
+                    "timestamp": now_ms - 7 * 24 * HOUR_MS,
+                    "sumOpenInterest": "1",
+                    "sumOpenInterestValue": str(values[symbol]),
+                },
+                {
+                    "timestamp": now_ms - 24 * HOUR_MS,
+                    "sumOpenInterest": "1",
+                    "sumOpenInterestValue": "1e308",
+                },
+            ]
+
+        service = OiHistoryService(fetch_history, lambda *_args: None)
+        service.retain_symbols(set(values))
+        with patch(
+            "realtime_oi_dashboard.application.oi.history.time.monotonic",
+            return_value=0,
+        ):
+            for symbol in values:
+                service.get_changes(symbol, 1, 1, now_ms)
+
+        history = service.get_dominance_history()
+        self.assertEqual(len(history), 1)
+
+    def test_waits_for_every_active_symbol_before_publishing_dominance(self):
+        now_ms = 2_000_000_000_000
+        values = {
+            "BTCUSDT": 40,
+            "ETHUSDT": 30,
+            "SOLUSDT": 20,
+            "XRPUSDT": 10,
+        }
+        service = OiHistoryService(
+            lambda symbol: _history_response(now_ms, values[symbol]),
+            lambda *_args: None,
+        )
+        service.retain_symbols(set(values))
+
+        with patch(
+            "realtime_oi_dashboard.application.oi.history.time.monotonic",
+            return_value=0,
+        ):
+            for symbol in ("BTCUSDT", "ETHUSDT", "SOLUSDT"):
+                service.get_changes(symbol, 1, 1, now_ms)
+            self.assertEqual(service.get_dominance_history(), [])
+            service.get_changes("XRPUSDT", 1, 1, now_ms)
+
+        self.assertEqual(len(service.get_dominance_history()), 2)
+
+    def test_partial_notional_refresh_preserves_dominance_history(self):
+        now_ms = 2_000_000_000_000
+        partial = _history_response(now_ms, 40, include_value=False)
+        partial[-1]["sumOpenInterestValue"] = "40"
+        btc_responses = iter([_history_response(now_ms, 40), partial])
+
+        def fetch_history(symbol):
+            if symbol == "BTCUSDT":
+                return next(btc_responses)
+            return _history_response(
+                now_ms,
+                {"ETHUSDT": 30, "SOLUSDT": 30}[symbol],
+            )
+
+        service = OiHistoryService(fetch_history, lambda *_args: None)
+        with patch(
+            "realtime_oi_dashboard.application.oi.history.time.monotonic",
+            return_value=0,
+        ) as monotonic:
+            for symbol in ("BTCUSDT", "ETHUSDT", "SOLUSDT"):
+                service.get_changes(symbol, 1, 1, now_ms)
+            initial_history = service.get_dominance_history()
+            monotonic.return_value = 3_600
+            service.get_changes("BTCUSDT", 1, 1, now_ms)
+
+        self.assertEqual(service.get_dominance_history(), initial_history)
+
+    def test_future_history_outlier_does_not_poison_dominance_series(self):
+        now_ms = 2_000_000_000_000
+        btc_responses = iter([
+            _history_response(now_ms, 40),
+            _history_response(now_ms, 40) + [{
+                "timestamp": now_ms + 365 * 24 * HOUR_MS,
+                "sumOpenInterest": "1",
+                "sumOpenInterestValue": "999",
+            }],
+        ])
+
+        def fetch_history(symbol):
+            if symbol == "BTCUSDT":
+                return next(btc_responses)
+            return _history_response(
+                now_ms,
+                {"ETHUSDT": 30, "SOLUSDT": 30}[symbol],
+            )
+
+        service = OiHistoryService(fetch_history, lambda *_args: None)
+        with patch(
+            "realtime_oi_dashboard.application.oi.history.time.monotonic",
+            return_value=0,
+        ) as monotonic:
+            for symbol in ("BTCUSDT", "ETHUSDT", "SOLUSDT"):
+                service.get_changes(symbol, 1, 1, now_ms)
+            initial_history = service.get_dominance_history()
+            monotonic.return_value = 3_600
+            service.get_changes("BTCUSDT", 1, 1, now_ms)
+
+        self.assertEqual(service.get_dominance_history(), initial_history)
+
     def test_hourly_history_is_downsampled_for_the_seven_day_chart(self):
         now_ms = 2_000_001_600_000
 
@@ -225,6 +344,23 @@ class OiHistoryServiceTests(unittest.TestCase):
         self.assertEqual(first["oi24hChangePercent"], 100)
         self.assertEqual(shifted["oi24hChangePercent"], 60)
         self.assertEqual(shifted["oi7dChangePercent"], 25)
+
+
+def _history_response(now_ms, value, *, include_value=True):
+    response = [
+        {
+            "timestamp": now_ms - 7 * 24 * HOUR_MS,
+            "sumOpenInterest": "1",
+        },
+        {
+            "timestamp": now_ms - 24 * HOUR_MS,
+            "sumOpenInterest": "1",
+        },
+    ]
+    if include_value:
+        for item in response:
+            item["sumOpenInterestValue"] = str(value)
+    return response
 
 
 if __name__ == "__main__":

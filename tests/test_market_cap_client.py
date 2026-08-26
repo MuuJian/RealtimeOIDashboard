@@ -364,6 +364,57 @@ class CoinGeckoMarketCapClientTests(unittest.TestCase):
         self.assertIn("failed pages: 1", self.progress[-1])
         self.assertIn("missing: ETHUSDT", self.progress[-1])
 
+    def test_background_loop_recovers_after_symbol_provider_failure(self):
+        provider_calls = 0
+        requested_pages = []
+
+        def active_symbols_provider():
+            nonlocal provider_calls
+            provider_calls += 1
+            if provider_calls == 1:
+                raise RuntimeError("symbol snapshot unavailable")
+            return {"BTCUSDT"}
+
+        def request_json(*_args, **kwargs):
+            requested_pages.append(kwargs["params"]["page"])
+            return []
+
+        def wait(delay):
+            self.waits.append(delay)
+            if len(self.waits) == 2:
+                raise PollingStopped()
+
+        client = CoinGeckoMarketCapClient(
+            request_json,
+            wait,
+            lambda key, error: self.errors.append((key, str(error))),
+            cache_seconds=3_600,
+            store_path=self.path,
+            record_progress=self.progress.append,
+        )
+
+        with (
+            patch(
+                "realtime_oi_dashboard.infrastructure.coingecko.client."
+                "COINGECKO_PAGE_COUNT",
+                1,
+            ),
+            patch(
+                "realtime_oi_dashboard.infrastructure.coingecko.client."
+                "time.monotonic",
+                side_effect=[100.0, 110.0],
+            ),
+        ):
+            client.run_forever(active_symbols_provider)
+
+        self.assertEqual(provider_calls, 2)
+        self.assertEqual(requested_pages, [1])
+        self.assertEqual(self.waits, [60, 3_590])
+        self.assertEqual(
+            self.errors,
+            [("marketCap", "symbol snapshot unavailable")],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

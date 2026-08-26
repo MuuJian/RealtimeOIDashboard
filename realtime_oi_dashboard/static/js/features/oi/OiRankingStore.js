@@ -19,8 +19,13 @@ export function createOiRankingStore() {
   let rows = [];
   let stats = buildOiStats(rows);
   let dominanceHistory = [];
+  let totalSymbols = 0;
 
-  function setRows(nextRows, priceMap) {
+  function setRows(nextRows, priceMap, nextTotalSymbols) {
+    if (
+      Number.isSafeInteger(nextTotalSymbols)
+      && nextTotalSymbols >= nextRows.length
+    ) totalSymbols = nextTotalSymbols;
     const seen = new Set();
 
     for (const item of nextRows) {
@@ -80,6 +85,9 @@ export function createOiRankingStore() {
     },
     getDominanceHistory() {
       return dominanceHistory;
+    },
+    getTotalSymbols() {
+      return totalSymbols;
     },
   };
 }

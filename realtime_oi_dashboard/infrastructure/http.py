@@ -29,6 +29,13 @@ NON_RETRYABLE_REQUEST_ERRORS = (
 )
 
 
+class _DefaultBeforeRequest:
+    __slots__ = ()
+
+
+_DEFAULT_BEFORE_REQUEST = _DefaultBeforeRequest()
+
+
 class JsonHttpClient:
     """Thread-safe JSON client with one requests session per worker thread."""
 
@@ -38,8 +45,8 @@ class JsonHttpClient:
         session_factory: Callable[[], requests.Session] = requests.Session,
         sleep: Callable[[float], None] = time.sleep,
         check_cancelled: Callable[[], None] | None = None,
-        before_request: Callable[[str], None] | None = (
-            GLOBAL_BINANCE_WEIGHT_BUDGET.acquire
+        before_request: Callable[[str], None] | None | _DefaultBeforeRequest = (
+            _DEFAULT_BEFORE_REQUEST
         ),
         retry_base_delay: float = 1.0,
     ) -> None:
@@ -88,8 +95,7 @@ class JsonHttpClient:
         last_error: Exception | None = None
         for attempt in range(1, attempts + 1):
             self._raise_if_cancelled()
-            if self._before_request is not None:
-                self._before_request(url)
+            self._acquire_request_budget(url)
             self._raise_if_cancelled()
             try:
                 response = self._session().get(url, params=params, timeout=timeout)
@@ -120,6 +126,16 @@ class JsonHttpClient:
     def _raise_if_cancelled(self) -> None:
         if self._check_cancelled is not None:
             self._check_cancelled()
+
+    def _acquire_request_budget(self, url: str) -> None:
+        if self._before_request is _DEFAULT_BEFORE_REQUEST:
+            GLOBAL_BINANCE_WEIGHT_BUDGET.acquire(
+                url,
+                check_cancelled=self._raise_if_cancelled,
+                sleep=self._sleep,
+            )
+        elif self._before_request is not None:
+            self._before_request(url)
 
     def _session(self) -> requests.Session:
         with self._sessions_lock:

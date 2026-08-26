@@ -15,7 +15,7 @@ function row(symbol, priceChangePercent) {
     price7dBaseline: 90,
     nextFundingTime: null,
     priceChangePercent,
-    price7dChangePercent: 10,
+    price7dChangePercent: (100 - 90) / 90 * 100,
     fundingRatePercent: 0.01,
     oi24hChangePercent: 1,
     oi7dChangePercent: 2,

@@ -1,5 +1,6 @@
 import threading
 import unittest
+from unittest.mock import patch
 
 from realtime_oi_dashboard.application.cvd.poller import CvdPoller
 from realtime_oi_dashboard.application.oi.symbol_refresher import SymbolRefresher
@@ -19,6 +20,7 @@ from realtime_oi_dashboard.infrastructure.binance.rest_cache import (
 
 
 OPEN_INTEREST_URL = "https://fapi.binance.com/fapi/v1/openInterest"
+FUNDING_URL = "https://fapi.binance.com/fapi/v1/premiumIndex"
 
 
 def ticker_payload():
@@ -72,6 +74,11 @@ class FakeHttpClient:
             "openInterest": "123.45",
             "time": 1_700_000_123_456,
         }
+        self.funding = [{
+            "symbol": "BTCUSDT",
+            "lastFundingRate": "0.001",
+            "nextFundingTime": 2_000_000,
+        }]
         self.calls = []
         self.error = None
         self.request_started = None
@@ -90,6 +97,8 @@ class FakeHttpClient:
             return self.exchange_info
         if url == OPEN_INTEREST_URL:
             return self.open_interest
+        if url == FUNDING_URL:
+            return self.funding
         raise AssertionError(f"unexpected URL: {url}")
 
 
@@ -192,6 +201,72 @@ class BinanceRestCacheTests(unittest.TestCase):
         self.assertEqual(len(fallback), 20)
         self.assertEqual(client.calls.count(TICKER_URL), 2)
 
+    def test_duplicate_ticker_symbol_keeps_last_good_response(self):
+        cache, client, clock = self.create_cache()
+        cached = cache.get_tickers()
+        client.tickers = ticker_payload() + [{
+            "symbol": "BTCUSDT",
+            "lastPrice": "999",
+        }]
+        clock.value = 10
+
+        fallback = cache.get_tickers()
+
+        self.assertIs(fallback, cached)
+        self.assertEqual(client.calls.count(TICKER_URL), 2)
+
+    def test_direct_ticker_parser_rejects_duplicate_symbols(self):
+        http_client = FakeHttpClient()
+        http_client.tickers.append({
+            "symbol": "BTCUSDT",
+            "lastPrice": "999",
+        })
+        oi_client = BinanceFuturesClient(
+            threading.Event(),
+            lambda *_args: None,
+            funding_cache_seconds=3600,
+            http_client=http_client,
+        )
+
+        with self.assertRaisesRegex(ValueError, "duplicate ticker symbol"):
+            oi_client.get_market_tickers({"BTCUSDT"})
+
+    def test_duplicate_funding_symbol_keeps_last_good_cache(self):
+        http_client = FakeHttpClient()
+        errors = []
+        oi_client = BinanceFuturesClient(
+            threading.Event(),
+            lambda symbol, error: errors.append((symbol, str(error))),
+            funding_cache_seconds=1,
+            http_client=http_client,
+        )
+
+        with (
+            patch(
+                "realtime_oi_dashboard.infrastructure.binance."
+                "futures_client.time.time",
+                return_value=1_000,
+            ),
+            patch(
+                "realtime_oi_dashboard.infrastructure.binance."
+                "futures_client.time.monotonic",
+                side_effect=[0, 0, 1_005, 1_005],
+            ),
+        ):
+            cached = oi_client.get_funding_rates({"BTCUSDT"})
+            http_client.funding.append({
+                "symbol": "BTCUSDT",
+                "lastFundingRate": "0.009",
+                "nextFundingTime": 3_000_000,
+            })
+            fallback = oi_client.get_funding_rates({"BTCUSDT"})
+
+        self.assertIs(fallback, cached)
+        self.assertEqual(errors, [(
+            "funding",
+            "duplicate funding-rate symbol: BTCUSDT",
+        )])
+
     def test_undersized_exchange_info_is_retried_instead_of_cached(self):
         cache, client, clock = self.create_cache()
         client.exchange_info = exchange_info_payload(1)
@@ -222,6 +297,35 @@ class BinanceRestCacheTests(unittest.TestCase):
         self.assertIs(fallback, cached)
         self.assertIs(throttled, cached)
         self.assertEqual(client.calls.count(EXCHANGE_INFO_URL), 2)
+
+    def test_duplicate_exchange_info_symbol_keeps_last_good_response(self):
+        cache, client, clock = self.create_cache()
+        cached = cache.get_exchange_info()
+        client.exchange_info = exchange_info_payload()
+        duplicate = dict(client.exchange_info["symbols"][0])
+        duplicate["status"] = "BREAK"
+        client.exchange_info["symbols"].append(duplicate)
+        clock.value = 900
+
+        fallback = cache.get_exchange_info()
+
+        self.assertIs(fallback, cached)
+        self.assertEqual(client.calls.count(EXCHANGE_INFO_URL), 2)
+
+    def test_direct_exchange_info_parser_rejects_duplicate_symbols(self):
+        http_client = FakeHttpClient()
+        duplicate = dict(http_client.exchange_info["symbols"][0])
+        duplicate["status"] = "BREAK"
+        http_client.exchange_info["symbols"].append(duplicate)
+        oi_client = BinanceFuturesClient(
+            threading.Event(),
+            lambda *_args: None,
+            funding_cache_seconds=3600,
+            http_client=http_client,
+        )
+
+        with self.assertRaisesRegex(ValueError, "duplicate exchange-info symbol"):
+            oi_client.get_active_symbols()
 
     def test_large_symbol_removal_confirmation_forces_a_second_request(self):
         cache, client, clock = self.create_cache()
@@ -375,7 +479,11 @@ class BinanceRestCacheTests(unittest.TestCase):
             http_client=http_client,
         )
 
-        snapshot = oi_client.get_open_interest("BTCUSDT")
+        with patch(
+            "realtime_oi_dashboard.infrastructure.binance.futures_client.time.time",
+            return_value=1_700_000_123.456,
+        ):
+            snapshot = oi_client.get_open_interest("BTCUSDT")
 
         self.assertEqual(snapshot.value, 123.45)
         self.assertEqual(snapshot.timestamp_ms, 1_700_000_123_456)
@@ -410,6 +518,41 @@ class BinanceRestCacheTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "open-interest response"):
             oi_client.get_open_interest("BTCUSDT")
+
+    def test_current_oi_rejects_response_for_another_symbol(self):
+        http_client = FakeHttpClient()
+        http_client.open_interest["symbol"] = "ETHUSDT"
+        oi_client = BinanceFuturesClient(
+            threading.Event(),
+            lambda *_args: None,
+            funding_cache_seconds=3600,
+            http_client=http_client,
+        )
+
+        with self.assertRaisesRegex(ValueError, "open-interest response"):
+            oi_client.get_open_interest("BTCUSDT")
+
+    def test_current_oi_rejects_timestamp_outside_freshness_window(self):
+        now_ms = 1_700_000_123_456
+        for timestamp_ms in (
+            now_ms - 15 * 60 * 1_000 - 1,
+            now_ms + 60 * 1_000 + 1,
+        ):
+            with self.subTest(timestamp_ms=timestamp_ms):
+                http_client = FakeHttpClient()
+                http_client.open_interest["time"] = timestamp_ms
+                oi_client = BinanceFuturesClient(
+                    threading.Event(),
+                    lambda *_args: None,
+                    funding_cache_seconds=3600,
+                    http_client=http_client,
+                )
+                with patch(
+                    "realtime_oi_dashboard.infrastructure.binance."
+                    "futures_client.time.time",
+                    return_value=now_ms / 1_000,
+                ), self.assertRaisesRegex(ValueError, "open-interest response"):
+                    oi_client.get_open_interest("BTCUSDT")
 
     def test_oi_observes_shared_ticker_refresh_without_a_second_ttl(self):
         cache, client, clock = self.create_cache()

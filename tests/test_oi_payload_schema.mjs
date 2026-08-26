@@ -11,6 +11,9 @@ function payloadWithSymbol(symbol) {
     market_cap_loaded_symbols: 0,
     oi_dominance_history: [],
     rows: [],
+    saved_at: null,
+    error: null,
+    recent_errors: [],
     cvd_meta: {
       serviceHealth: "unavailable",
       universeSymbols: 0,
@@ -39,6 +42,9 @@ test("accepts the CVD service warming state", () => {
     market_cap_loaded_symbols: 0,
     oi_dominance_history: [],
     rows: [],
+    saved_at: null,
+    error: null,
+    recent_errors: [],
     cvd_meta: {
       serviceHealth: "warming",
       universeSymbols: 500,
@@ -77,3 +83,93 @@ test("OI dominance history contains BTC, ETH and OTHER shares", () => {
   payload.oi_dominance_history[0].other = 31;
   assert.equal(isOiPayload(payload), false);
 });
+
+test("OI dominance shares match their notional values", () => {
+  const payload = payloadWithSymbol("BTCUSDT");
+  payload.oi_dominance_history = [{
+    timestamp: 1,
+    btc: 40,
+    eth: 30,
+    other: 30,
+    btcValue: 800,
+    ethValue: 300,
+    otherValue: 300,
+  }];
+
+  assert.equal(isOiPayload(payload), false);
+});
+
+test("OI payload rejects duplicate symbols and rows outside the universe", () => {
+  const payload = payloadWithSymbol("BTCUSDT");
+  payload.active_symbols.push("BTCUSDT");
+  payload.total_symbols = 2;
+  assert.equal(isOiPayload(payload), false);
+
+  const activePayload = payloadWithSymbol("BTCUSDT");
+  activePayload.rows = [validRow("ETHUSDT")];
+  assert.equal(isOiPayload(activePayload), false);
+
+  const row = validRow("BTCUSDT");
+  activePayload.rows = [row, { ...row }];
+  assert.equal(isOiPayload(activePayload), false);
+});
+
+test("OI row validates derived values, explicit metrics, and funding time", () => {
+  const payload = payloadWithSymbol("BTCUSDT");
+  const row = validRow("BTCUSDT");
+  payload.rows = [row];
+  assert.equal(isOiPayload(payload), true);
+
+  row.currentOiValue = 999;
+  assert.equal(isOiPayload(payload), false);
+  row.currentOiValue = 1_000;
+
+  row.price7dChangePercent = 24;
+  assert.equal(isOiPayload(payload), false);
+  row.price7dChangePercent = 25;
+
+  row.nextFundingTime = row.oiUpdatedAt;
+  assert.equal(isOiPayload(payload), false);
+  row.nextFundingTime = null;
+
+  delete row.marketCap;
+  assert.equal(isOiPayload(payload), false);
+});
+
+test("OI payload validates status metadata", () => {
+  const valid = payloadWithSymbol("BTCUSDT");
+  valid.saved_at = "2026-08-24T12:00:00+08:00";
+  valid.error = "temporary";
+  valid.recent_errors = [{ symbol: "exchangeInfo", error: "temporary" }];
+  assert.equal(isOiPayload(valid), true);
+
+  for (const mutate of [
+    payload => { delete payload.saved_at; },
+    payload => { payload.saved_at = "2026-02-30T12:00:00+08:00"; },
+    payload => { payload.error = {}; },
+    payload => { payload.recent_errors = "temporary"; },
+  ]) {
+    const payload = payloadWithSymbol("BTCUSDT");
+    mutate(payload);
+    assert.equal(isOiPayload(payload), false);
+  }
+});
+
+function validRow(symbol) {
+  return {
+    symbol,
+    price: 100,
+    priceChangePercent: 1,
+    price7dChangePercent: 25,
+    fundingRatePercent: 0.01,
+    currentOi: 10,
+    currentOiValue: 1_000,
+    oi24hChangePercent: 3,
+    oi7dChangePercent: 4,
+    marketCap: 10_000,
+    volume24h: 2_000,
+    oiUpdatedAt: 1_700_000_000_000,
+    price7dBaseline: 80,
+    nextFundingTime: 1_700_000_100_000,
+  };
+}

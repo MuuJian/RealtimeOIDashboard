@@ -12,6 +12,7 @@ from realtime_oi_dashboard.domain.errors import PollingStopped
 from realtime_oi_dashboard.domain.market_data import (
     MAX_SYMBOL_REMOVAL_FRACTION,
     MIN_EXPECTED_ACTIVE_SYMBOLS,
+    parse_active_symbols,
 )
 from realtime_oi_dashboard.domain.parsing import optional_float
 from realtime_oi_dashboard.domain.symbols import is_valid_binance_symbol
@@ -291,7 +292,11 @@ class CachedBinanceMarketData:
 
 
 def _is_ticker_payload(value: object) -> bool:
-    return len(_ticker_symbols(value)) >= MIN_EXPECTED_ACTIVE_SYMBOLS
+    response_symbols = _ticker_response_symbols(value)
+    return (
+        len(response_symbols) == len(set(response_symbols))
+        and len(_ticker_symbols(value)) >= MIN_EXPECTED_ACTIVE_SYMBOLS
+    )
 
 
 def _ticker_transition_is_valid(value: object, previous: object | None) -> bool:
@@ -318,18 +323,22 @@ def _ticker_symbols(value: object) -> set[str]:
     }
 
 
-def _is_exchange_info_payload(value: object) -> bool:
-    if not isinstance(value, dict) or not isinstance(value.get("symbols"), list):
-        return False
-    active_symbols = {
+def _ticker_response_symbols(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [
         item["symbol"]
-        for item in value["symbols"]
+        for item in value
         if isinstance(item, dict)
         and is_valid_binance_symbol(item.get("symbol"))
-        and item.get("quoteAsset") == "USDT"
-        and item.get("status") == "TRADING"
-        and item.get("contractType") == "PERPETUAL"
-    }
+    ]
+
+
+def _is_exchange_info_payload(value: object) -> bool:
+    try:
+        active_symbols = parse_active_symbols(value)
+    except ValueError:
+        return False
     return len(active_symbols) >= MIN_EXPECTED_ACTIVE_SYMBOLS
 
 

@@ -17,12 +17,20 @@ def parse_oi_history_points(response):
         raise ValueError("unexpected OI history response")
 
     history_points = []
+    seen_timestamps = set()
     for item in response:
         if not isinstance(item, dict):
             continue
         timestamp_ms = optional_int(item.get("timestamp"))
-        if timestamp_ms is None or timestamp_ms <= 0:
+        if (
+            timestamp_ms is None
+            or timestamp_ms <= 0
+            or timestamp_ms > MAX_SAFE_INTEGER
+        ):
             continue
+        if timestamp_ms in seen_timestamps:
+            raise ValueError(f"duplicate OI history timestamp: {timestamp_ms}")
+        seen_timestamps.add(timestamp_ms)
         history_points.append((timestamp_ms, item))
     history_points.sort(key=lambda point: point[0])
     return history_points

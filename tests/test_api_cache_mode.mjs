@@ -28,6 +28,9 @@ const oiPayload = {
     },
   },
   rows: [],
+  saved_at: null,
+  error: null,
+  recent_errors: [],
 };
 
 const signalPayload = {

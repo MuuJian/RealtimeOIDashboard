@@ -2,6 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildOiDominance } from "../realtime_oi_dashboard/static/js/utils/oiDominance.js";
+import {
+  dominanceAriaLabel,
+  dominancePointIndexAtRatio,
+  dominancePointPositions,
+} from "../realtime_oi_dashboard/static/js/utils/oiDominanceChart.js";
 
 test("groups current OI value into BTC, ETH and OTHER", () => {
   const result = buildOiDominance([
@@ -20,6 +25,10 @@ test("groups current OI value into BTC, ETH and OTHER", () => {
       { key: "eth", value: 50, percent: 25 },
       { key: "other", value: 50, percent: 25 },
     ],
+  );
+  assert.equal(
+    dominanceAriaLabel(result),
+    "OI 市場佔比當前：BTC 50.0%，ETH 25.0%，OTHER 25.0%",
   );
 });
 
@@ -57,6 +66,76 @@ test("uses the complete historical series for the chart", () => {
   assert.equal(result.points[0].groups[0].value, 300);
 });
 
+test("anchors the current chart point to the latest exchange OI timestamp", () => {
+  const result = buildOiDominance([
+    { ...currentRow("BTCUSDT", 100), oiUpdatedAt: 1_700_000_000_000 },
+    { ...currentRow("ETHUSDT", 100), oiUpdatedAt: 1_700_000_100_000 },
+  ]);
+
+  assert.equal(result.timestamp, 1_700_000_100_000);
+  assert.equal(result.points.at(-1).timestamp, 1_700_000_100_000);
+});
+
+test("does not append an empty current point to valid history", () => {
+  const result = buildOiDominance([], [
+    historyPoint(100, 40),
+    historyPoint(200, 45),
+  ]);
+
+  assert.equal(result.total, 0);
+  assert.deepEqual(result.points.map(point => point.timestamp), [100, 200]);
+  assert.equal(
+    dominanceAriaLabel(result),
+    "OI 市場佔比最近歷史：BTC 45.0%，ETH 30.0%，OTHER 25.0%",
+  );
+});
+
+test("keeps chart history strictly earlier than the current snapshot", () => {
+  const rows = [
+    { ...currentRow("BTCUSDT", 100), oiUpdatedAt: 200 },
+    { ...currentRow("ETHUSDT", 100), oiUpdatedAt: 200 },
+  ];
+  const result = buildOiDominance(rows, [
+    historyPoint(100, 40),
+    historyPoint(200, 45),
+    historyPoint(300, 50),
+  ]);
+
+  assert.deepEqual(result.points.map(point => point.timestamp), [100, 200]);
+});
+
+test("positions dominance points by elapsed time", () => {
+  const points = [
+    { timestamp: 100 },
+    { timestamp: 110 },
+    { timestamp: 200 },
+  ];
+
+  assert.deepEqual(dominancePointPositions(points), [0, 0.1, 1]);
+  assert.equal(dominancePointIndexAtRatio(points, 0.7), 2);
+});
+
+test("does not publish current dominance from a partial symbol universe", () => {
+  const result = buildOiDominance([
+    currentRow("BTCUSDT", 100),
+    currentRow("ETHUSDT", 100),
+  ], [], 3);
+
+  assert.equal(result.total, 0);
+  assert.equal(dominanceAriaLabel(result), "OI 市場佔比暫無資料");
+});
+
+test("invalidates a current dominance snapshot when group totals overflow", () => {
+  const result = buildOiDominance([
+    currentRow("BTCUSDT", 1e308),
+    currentRow("BTCUSD_250926", 1e308),
+    currentRow("ETHUSDT", 1),
+  ]);
+
+  assert.equal(result.total, 0);
+  assert.deepEqual(result.groups.map(group => group.value), [0, 0, 0]);
+});
+
 function currentRow(symbol, currentOiValue) {
   return {
     symbol,
@@ -67,5 +146,17 @@ function currentRow(symbol, currentOiValue) {
     priceChangePercent: 0,
     oi7dChangePercent: 0,
     price7dBaseline: 1,
+  };
+}
+
+function historyPoint(timestamp, btc) {
+  return {
+    timestamp,
+    btc,
+    eth: 30,
+    other: 70 - btc,
+    btcValue: btc,
+    ethValue: 30,
+    otherValue: 70 - btc,
   };
 }

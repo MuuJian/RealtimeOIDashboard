@@ -8,6 +8,8 @@ export function createDashboardStatus({
 }) {
   let clockTimer = null;
   let clockSuffix = "";
+  let clockAvailable = false;
+  let paused = false;
 
   function renderPayload(payload) {
     const loadedSymbols = payload.rows.length;
@@ -25,10 +27,16 @@ export function createDashboardStatus({
     const marketCapSymbols = payload.market_cap_loaded_symbols || 0;
     clockSuffix = `${errorText}${batchError}`;
     if (payload.saved_at && Number.isFinite(Date.parse(payload.saved_at))) {
+      clockAvailable = true;
       detail.title = `最近一次 OI 更新：${formatUtc8DateTime(savedAt)}`;
       renderClock();
-      startClock();
+      if (paused) {
+        stopClock();
+      } else {
+        startClock();
+      }
     } else {
+      clockAvailable = false;
       stopClock();
       detail.title = "";
       detail.textContent = `${savedAt}${clockSuffix}`;
@@ -46,6 +54,7 @@ export function createDashboardStatus({
   }
 
   function renderError(message, error) {
+    clockAvailable = false;
     stopClock();
     title.textContent = message;
     detail.title = "";
@@ -67,10 +76,24 @@ export function createDashboardStatus({
     detail.textContent = `${formatUtc8DateTime(new Date())}${clockSuffix}`;
   }
 
+  function setPaused(nextPaused) {
+    paused = Boolean(nextPaused);
+    if (paused || !clockAvailable) {
+      stopClock();
+      return;
+    }
+    renderClock();
+    startClock();
+  }
+
   return {
-    dispose: stopClock,
+    dispose() {
+      clockAvailable = false;
+      stopClock();
+    },
     renderConnectionError,
     renderPayload,
     renderRankingError,
+    setPaused,
   };
 }

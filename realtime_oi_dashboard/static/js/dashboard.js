@@ -255,6 +255,7 @@ function disposeResources() {
 function handlePageActiveChange(pageActive) {
   document.documentElement.classList.toggle("page-hidden", !pageActive);
   motionEffects.setPaused(!pageActive);
+  dashboardStatus.setPaused(!pageActive);
   liveUpdates.setPageActive(pageActive);
 }
 

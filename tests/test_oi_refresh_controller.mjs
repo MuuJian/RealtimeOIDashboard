@@ -27,6 +27,9 @@ const validPayload = {
     },
   },
   rows: [],
+  saved_at: null,
+  error: null,
+  recent_errors: [],
 };
 
 function tick() {

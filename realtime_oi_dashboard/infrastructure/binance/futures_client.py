@@ -13,6 +13,7 @@ from realtime_oi_dashboard.infrastructure.storage.market_cache import MarketCach
 from realtime_oi_dashboard.domain.market_data import (
     incomplete_funding_symbols,
     merge_funding_cache,
+    parse_active_symbols,
     parse_funding_rates,
     parse_market_tickers,
 )
@@ -23,11 +24,12 @@ from realtime_oi_dashboard.infrastructure.binance.market_data import (
     resolve_market_data_source,
 )
 from realtime_oi_dashboard.domain.parsing import optional_float, optional_int
-from realtime_oi_dashboard.domain.symbols import is_valid_binance_symbol
 
 
 PARTIAL_RESPONSE_RETRY_SECONDS = 60
 MARKET_CACHE_STALE_GRACE_SECONDS = 15 * 60
+OPEN_INTEREST_MAX_AGE_MS = 15 * 60 * 1000
+OPEN_INTEREST_FUTURE_SKEW_MS = 60 * 1000
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,23 +105,7 @@ class BinanceFuturesClient:
     def get_active_symbols(self, *, force_refresh: bool = False) -> list[str]:
         data = self.market_data.get_exchange_info(force_refresh=force_refresh)
         self._raise_if_stopped()
-        if not isinstance(data, dict) or not isinstance(data.get("symbols"), list):
-            raise ValueError("unexpected exchange-info response")
-
-        symbols = sorted(
-            {
-                item["symbol"]
-                for item in data.get("symbols", [])
-                if isinstance(item, dict)
-                and is_valid_binance_symbol(item.get("symbol"))
-                and item.get("quoteAsset") == "USDT"
-                and item.get("status") == "TRADING"
-                and item.get("contractType") == "PERPETUAL"
-            }
-        )
-        if not symbols:
-            raise ValueError("exchange-info response contains no active symbols")
-        return symbols
+        return parse_active_symbols(data)
 
     def get_market_tickers(
         self,
@@ -233,6 +219,7 @@ class BinanceFuturesClient:
             params={"symbol": symbol},
             timeout=8,
         )
+        received_at_ms = int(time.time() * 1000)
         value = (
             optional_float(data.get("openInterest"))
             if isinstance(data, dict)
@@ -244,11 +231,15 @@ class BinanceFuturesClient:
             else None
         )
         if (
-            value is None
+            not isinstance(data, dict)
+            or data.get("symbol") != symbol
+            or value is None
             or value < 0
             or timestamp_ms is None
             or timestamp_ms <= 0
             or timestamp_ms > MAX_SAFE_INTEGER
+            or timestamp_ms < received_at_ms - OPEN_INTEREST_MAX_AGE_MS
+            or timestamp_ms > received_at_ms + OPEN_INTEREST_FUTURE_SKEW_MS
         ):
             raise ValueError("unexpected open-interest response")
         return OpenInterestSnapshot(value=value, timestamp_ms=timestamp_ms)

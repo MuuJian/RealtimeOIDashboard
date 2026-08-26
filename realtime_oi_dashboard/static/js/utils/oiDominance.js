@@ -7,12 +7,26 @@ const PRIMARY_SYMBOLS = new Map(
   PRIMARY_MARKETS.map(market => [market.symbol, market.key]),
 );
 
-export function buildOiDominance(rows, history = []) {
-  const current = buildPoint(rows, "now");
+export function buildOiDominance(
+  rows,
+  history = [],
+  totalSymbols = Array.isArray(rows) ? rows.length : 0,
+) {
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const hasCompleteCurrent = Number.isSafeInteger(totalSymbols)
+    && totalSymbols > 0
+    && sourceRows.length === totalSymbols;
+  const current = buildPoint(hasCompleteCurrent ? sourceRows : [], "now");
   const historicalPoints = history.map(historyPoint);
-  const points = historicalPoints.length
-    ? [...historicalPoints, current]
-    : [current, current];
+  const chartPoints = current.total > 0
+    ? [
+      ...historicalPoints.filter(point => point.timestamp < current.timestamp),
+      current,
+    ]
+    : historicalPoints;
+  const points = chartPoints.length > 1
+    ? chartPoints
+    : [chartPoints[0] || current, chartPoints[0] || current];
   return { ...current, points };
 }
 
@@ -51,12 +65,17 @@ function buildPoint(rows, period) {
     values.set(key, values.get(key) + value);
   }
 
-  const total = [...values.values()].reduce((sum, value) => sum + value, 0);
+  const groupValues = [...values.values()];
+  const aggregateTotal = groupValues.reduce((sum, value) => sum + value, 0);
+  const aggregateIsUsable = groupValues.every(Number.isFinite)
+    && Number.isFinite(aggregateTotal)
+    && aggregateTotal > 0;
+  const total = aggregateIsUsable ? aggregateTotal : 0;
   const groups = [
     ...PRIMARY_MARKETS.map(({ key, label }) => ({ key, label })),
     { key: "other", label: "OTHER" },
   ].map(group => {
-    const value = values.get(group.key);
+    const value = aggregateIsUsable ? values.get(group.key) : 0;
     return {
       ...group,
       value,
@@ -72,12 +91,13 @@ function buildPoint(rows, period) {
 }
 
 function latestTimestamp(rows) {
-  return (rows || []).reduce((latest, row) => {
+  const latest = (rows || []).reduce((latestTimestamp, row) => {
     const timestamp = Number(row?.oiUpdatedAt);
-    return Number.isSafeInteger(timestamp) && timestamp > latest
+    return Number.isSafeInteger(timestamp) && timestamp > latestTimestamp
       ? timestamp
-      : latest;
-  }, Date.now());
+      : latestTimestamp;
+  }, 0);
+  return latest || Date.now();
 }
 
 function oiValueAt(row, period) {
