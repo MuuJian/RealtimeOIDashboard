@@ -114,6 +114,17 @@ test("OI payload rejects duplicate symbols and rows outside the universe", () =>
   assert.equal(isOiPayload(activePayload), false);
 });
 
+test("OI payload accepts Binance Unicode letter and number symbols", () => {
+  for (const symbol of ["币安人生USDT", "我踏马来了USDT", "龙虾USDT"]) {
+    const payload = payloadWithSymbol(symbol);
+    payload.rows = [validRow(symbol)];
+    assert.equal(isOiPayload(payload), true, symbol);
+  }
+
+  assert.equal(isOiPayload(payloadWithSymbol("btcusdt")), false);
+  assert.equal(isOiPayload(payloadWithSymbol("BTC-USDT")), false);
+});
+
 test("OI row validates derived values, explicit metrics, and funding time", () => {
   const payload = payloadWithSymbol("BTCUSDT");
   const row = validRow("BTCUSDT");

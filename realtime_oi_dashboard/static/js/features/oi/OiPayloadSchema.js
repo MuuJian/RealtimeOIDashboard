@@ -190,7 +190,8 @@ function isConsistentPrice7dChange(item) {
 
 function isSymbol(value) {
   return typeof value === "string"
-    && /^[A-Z0-9]+$/.test(value);
+    && /^[\p{L}\p{N}]+$/u.test(value)
+    && value === value.toUpperCase();
 }
 
 function isPositiveNumber(value) {
