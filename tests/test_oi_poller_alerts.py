@@ -585,6 +585,29 @@ class OIPollerAlertIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(poller.send_alert_test_message(), {"queued": True})
 
+    def test_explicit_none_disables_alerts_without_constructing_default_service(self):
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "realtime_oi_dashboard.application.oi.poller."
+            "_create_default_alert_service"
+        ) as create_default_alert_service:
+            poller = OIPoller(
+                market_cap_file=Path(directory) / "market-caps.json",
+                alert_service=None,
+            )
+
+        try:
+            create_default_alert_service.assert_not_called()
+            self.assertEqual(
+                poller.alert_service.observe_updates([], triggered_at="t"),
+                [],
+            )
+            self.assertEqual(poller.get_signal_features(), {})
+            self.assertFalse(poller.send_alert_test_message())
+            with self.assertRaisesRegex(RuntimeError, "disabled"):
+                poller.update_alert_config({"enabled": True})
+        finally:
+            poller.close()
+
 
 if __name__ == "__main__":
     unittest.main()

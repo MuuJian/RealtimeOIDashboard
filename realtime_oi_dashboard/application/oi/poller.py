@@ -23,8 +23,6 @@ from realtime_oi_dashboard.application.oi.presenter import DashboardPresenter
 from realtime_oi_dashboard.application.oi.runtime import DashboardRuntime
 from realtime_oi_dashboard.domain.oi.state import OiStateStore, OiUpdate
 from realtime_oi_dashboard.application.oi.symbol_refresher import SymbolRefresher
-from realtime_oi_dashboard.application.oi_alerts.service import OiAlertService
-from realtime_oi_dashboard.infrastructure.storage.oi_alerts import AlertStateRepository
 
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
@@ -34,6 +32,44 @@ EMPTY_BATCH_ERROR = "本批次沒有成功更新任何 OI 數據"
 CLOCK_RESET_ERROR = "檢測到系統休眠或時鐘跳變，正在重新獲取 OI 數據"
 STALE_ROWS_ERROR = "OI 數據已超過 15 分鐘，等待重新獲取"
 OI_API_SCHEMA_VERSION = 7
+_DEFAULT_ALERT_SERVICE = object()
+
+
+class _DisabledOiAlertService:
+    """No-op alert boundary used when the runtime profile disables alerts."""
+
+    def start(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+    def observe_updates(self, _updates, *, triggered_at) -> list:
+        return []
+
+    def retain_symbols(self, _symbols) -> None:
+        pass
+
+    def get_state(self, _rows) -> dict:
+        return {"disabled": True}
+
+    def update_config(self, _payload, _rows):
+        raise RuntimeError("OI alerts are disabled")
+
+    def send_test_message(self) -> bool:
+        return False
+
+    def get_features(self) -> dict:
+        return {}
+
+
+def _create_default_alert_service():
+    from realtime_oi_dashboard.application.oi_alerts.service import OiAlertService
+    from realtime_oi_dashboard.infrastructure.storage.oi_alerts import (
+        AlertStateRepository,
+    )
+
+    return OiAlertService(AlertStateRepository(DATA_DIR / "oi-alerts.json"))
 
 
 class OIPoller:
@@ -51,7 +87,7 @@ class OIPoller:
         http_client=None,
         cvd_state_provider=None,
         shared_rest_cache=None,
-        alert_service=None,
+        alert_service=_DEFAULT_ALERT_SERVICE,
     ):
         self.batch_size = _positive_int("batch_size", batch_size)
         self.batch_delay = _non_negative_seconds("batch_delay", batch_delay)
@@ -122,9 +158,11 @@ class OIPoller:
             max_age_seconds=ROW_MAX_AGE_SECONDS,
         )
         self.cvd_state_provider = cvd_state_provider
-        self.alert_service = alert_service or OiAlertService(
-            AlertStateRepository(DATA_DIR / "oi-alerts.json"),
-        )
+        if alert_service is _DEFAULT_ALERT_SERVICE:
+            alert_service = _create_default_alert_service()
+        elif alert_service is None:
+            alert_service = _DisabledOiAlertService()
+        self.alert_service = alert_service
         self.alert_service.start()
         self.state = {
             "saved_at": None,

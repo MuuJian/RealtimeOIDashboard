@@ -10,7 +10,6 @@ from realtime_oi_dashboard.cli import parse_args
 from realtime_oi_dashboard.infrastructure.binance.rest_cache import (
     BinanceRestCache,
 )
-from realtime_oi_dashboard.infrastructure.storage.oi_alerts import AlertStateRepository
 from realtime_oi_dashboard.server import create_dashboard_server
 from realtime_oi_dashboard.profile import resolve_profile
 from realtime_oi_dashboard.shared.runtime.services import ServiceGroup
@@ -98,6 +97,9 @@ def create_oi_service(
 def create_oi_alert_service():
     """Build alert delivery from server-side environment configuration only."""
     from realtime_oi_dashboard.application.oi_alerts.service import OiAlertService
+    from realtime_oi_dashboard.infrastructure.storage.oi_alerts import (
+        AlertStateRepository,
+    )
 
     return OiAlertService(AlertStateRepository(DATA_DIR / "oi-alerts.json"))
 
