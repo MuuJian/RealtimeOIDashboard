@@ -108,12 +108,12 @@ class DashboardPresenterTests(unittest.TestCase):
             store,
             StubClock(),
             cvd_state_provider=FakeCvdProvider({
-                "BTCUSDT": {
-                    "cvd15m": 120.0,
-                    "cvd15mRatio": 0.12,
-                    "cvdStatus": "buying",
-                    "cvdUpdatedAt": 999,
-                },
+                "BTCUSDT": cvd_row(
+                    cvd15m=120.0,
+                    cvd15mRatio=0.12,
+                    cvdStatus="buying",
+                    cvdUpdatedAt=999,
+                ),
             }),
         ).build({"saved_at": "now", "error": None}, ["BTCUSDT"])
 
@@ -145,12 +145,12 @@ class DashboardPresenterTests(unittest.TestCase):
             ),
         ])
         provider = FakeCvdProvider({
-            "BTCUSDT": {
-                "cvd15m": 50.0,
-                "cvd15mRatio": 0.2,
-                "cvdStatus": "buying",
-                "cvdHealth": "live",
-            },
+            "BTCUSDT": cvd_row(
+                cvd15m=50.0,
+                cvd15mRatio=0.2,
+                cvdStatus="buying",
+                cvdHealth="live",
+            ),
         })
         provider.error = "one shard failed"
 
@@ -163,14 +163,137 @@ class DashboardPresenterTests(unittest.TestCase):
         self.assertEqual(payload["rows"][0]["cvd15m"], 50.0)
         self.assertEqual(payload["rows"][0]["cvdHealth"], "live")
 
+    def test_malformed_cvd_rows_do_not_hide_healthy_oi_rows(self):
+        store = oi_store()
+        provider = FakeCvdProvider([])
+
+        payload = self.presenter(
+            store,
+            StubClock(),
+            cvd_state_provider=provider,
+        ).build({"saved_at": "now", "error": None}, ["BTCUSDT"])
+
+        self.assertEqual(payload["rows"][0]["symbol"], "BTCUSDT")
+        self.assertEqual(payload["rows"][0]["price"], 100.0)
+        self.assertEqual(payload["rows"][0]["cvdStatus"], "unavailable")
+
+    def test_cvd_snapshot_cannot_overwrite_oi_fields(self):
+        store = oi_store()
+        provider = FakeCvdProvider({
+            "BTCUSDT": {
+                **cvd_row(),
+                "symbol": "ETHUSDT",
+                "price": 1.0,
+                "currentOi": 0,
+            },
+        })
+
+        payload = self.presenter(
+            store,
+            StubClock(),
+            cvd_state_provider=provider,
+        ).build({"saved_at": "now", "error": None}, ["BTCUSDT"])
+
+        row = payload["rows"][0]
+        self.assertEqual(row["symbol"], "BTCUSDT")
+        self.assertEqual(row["price"], 100.0)
+        self.assertEqual(row["currentOi"], 10.0)
+        self.assertEqual(row["cvdStatus"], "buying")
+
+    def test_invalid_symbol_snapshot_degrades_only_cvd_fields(self):
+        store = oi_store()
+        provider = FakeCvdProvider({"BTCUSDT": ["invalid"]})
+
+        payload = self.presenter(
+            store,
+            StubClock(),
+            cvd_state_provider=provider,
+        ).build({"saved_at": "now", "error": None}, ["BTCUSDT"])
+
+        row = payload["rows"][0]
+        self.assertEqual(row["price"], 100.0)
+        self.assertEqual(row["cvdStatus"], "unavailable")
+
+    def test_invalid_cvd_meta_degrades_without_breaking_oi_payload(self):
+        store = oi_store()
+        provider = FakeCvdProvider({"BTCUSDT": cvd_row()})
+        provider.meta = cvd_meta(processingLagMs=float("inf"))
+
+        payload = self.presenter(
+            store,
+            StubClock(),
+            cvd_state_provider=provider,
+        ).build({"saved_at": "now", "error": None}, ["BTCUSDT"])
+
+        self.assertEqual(payload["rows"][0]["cvdStatus"], "buying")
+        self.assertEqual(payload["cvd_meta"]["serviceHealth"], "unavailable")
+        self.assertEqual(payload["cvd_meta"]["processingLagMs"], 0.0)
+
 
 class FakeCvdProvider:
     def __init__(self, rows):
         self.rows = rows
         self.error = None
+        self.meta = None
 
     def get_state(self):
-        return {"rows": self.rows, "error": self.error}
+        return {
+            "rows": self.rows,
+            "error": self.error,
+            "cvd_meta": self.meta,
+        }
+
+
+def oi_store():
+    store = OiStateStore(max_age_seconds=900)
+    store.apply_updates([
+        OiUpdate(
+            symbol="BTCUSDT",
+            row={
+                "symbol": "BTCUSDT",
+                "price": 100.0,
+                "currentOi": 10.0,
+            },
+            measured_at=90.0,
+        ),
+    ])
+    return store
+
+
+def cvd_row(**overrides):
+    return {
+        "cvd15m": 120.0,
+        "cvd15mRatio": 0.12,
+        "cvdDirection": "buying",
+        "cvdHealth": "live",
+        "cvdAsOf": 999,
+        "cvdCoverageSeconds": 900,
+        "cvdReason": None,
+        "cvdStatus": "buying",
+        "cvdUpdatedAt": 999,
+        **overrides,
+    }
+
+
+def cvd_meta(**overrides):
+    return {
+        "serviceHealth": "live",
+        "universeSymbols": 1,
+        "desiredShards": 1,
+        "activeShards": 1,
+        "connectedShards": 1,
+        "incomingMessagesPerSecond": 2.5,
+        "processingLagMs": 10.0,
+        "backfillQueueSize": 0,
+        "healthCounts": {
+            "warming": 0,
+            "live": 1,
+            "stale": 0,
+            "partial": 0,
+            "unavailable": 0,
+        },
+        **overrides,
+    }
 
 
 if __name__ == "__main__":
