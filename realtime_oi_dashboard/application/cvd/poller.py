@@ -157,7 +157,6 @@ class CvdPoller:
                 try:
                     change = self.refresh_universe()
                     if change is not None and change.changed:
-                        self._reconcile_shards()
                         for symbol in change.added:
                             self._enqueue_backfill_if_missing(symbol)
                     self._fill_silent_minutes()

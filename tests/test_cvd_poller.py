@@ -159,6 +159,37 @@ class CvdPollerTests(unittest.TestCase):
             original,
         )
 
+    def test_supervisor_reconciles_each_universe_change_once(self):
+        poller, cache, _, _ = self.create_poller(1)
+        poller.backfill.start = Mock()
+        poller.backfill.stop = Mock()
+        poller.snapshots.restore = Mock()
+        poller.snapshots.save = Mock()
+        poller.snapshots.save_if_due = Mock()
+        poller.store.publish = Mock()
+        poller._fill_silent_minutes = Mock()
+        poller._scale_if_needed = Mock()
+        poller._enqueue_backfill_if_missing = Mock(return_value=True)
+        original_reconcile = poller._reconcile_shards
+        poller._reconcile_shards = Mock(wraps=original_reconcile)
+        wait_calls = 0
+
+        def wait(_timeout):
+            nonlocal wait_calls
+            wait_calls += 1
+            if wait_calls == 1:
+                cache.payload = exchange_info(2)
+                poller.universe._next_refresh_at = 0
+                return False
+            return True
+
+        poller.stop_event.wait = wait
+
+        poller.run_forever()
+
+        self.assertEqual(poller._reconcile_shards.call_count, 2)
+        self.assertEqual(poller.store.active_symbols(), {"COIN0USDT", "COIN1USDT"})
+
     def test_kline_update_publishes_new_and_legacy_fields(self):
         poller, _, _, _ = self.create_poller(1)
         poller.refresh_universe(force=True)
