@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from math import isfinite
 from pathlib import Path
@@ -94,6 +95,7 @@ class AlertSnapshot:
         config_payload = payload.get("config")
         if not isinstance(config_payload, dict):
             raise ValueError("alert snapshot configuration is missing")
+        _validate_config_booleans(config_payload)
         config = validate_alert_config(
             config_payload.get("enabled"),
             config_payload.get("thresholds"),
@@ -134,7 +136,10 @@ class AlertStateRepository:
         try:
             if not self.path.exists():
                 return AlertSnapshot.default()
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            payload = json.loads(
+                self.path.read_text(encoding="utf-8"),
+                parse_constant=_reject_json_constant,
+            )
             return AlertSnapshot.from_payload(payload)
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             self.load_error = SAFE_LOAD_ERROR
@@ -152,9 +157,10 @@ def _crossed_thresholds(value: object) -> dict[str, set[float]]:
         raise ValueError("crossed thresholds must be an object")
     result = {}
     for symbol, thresholds in value.items():
-        if not isinstance(symbol, str) or not isinstance(thresholds, list):
+        if not _is_symbol(symbol) or not isinstance(thresholds, list):
             raise ValueError("crossed threshold entry is invalid")
-        result[symbol] = {float(threshold) for threshold in thresholds}
+        parsed_thresholds = {_positive_finite(threshold) for threshold in thresholds}
+        result[symbol] = parsed_thresholds
     return result
 
 
@@ -223,19 +229,34 @@ def _event(event: dict) -> AlertEvent:
         failure_reason = None
         if last_attempt_at is not None and not isinstance(last_attempt_at, str):
             raise ValueError("event attempt time is invalid")
+    symbol = event["symbol"]
+    signal = event["signal"]
+    triggered_at = event["triggered_at"]
+    event_id = event.get("event_id") or uuid4().hex
+    event_type = event.get("event_type", "oi_scale")
+    if (
+        not _is_symbol(symbol)
+        or not _is_non_empty_string(signal)
+        or not _is_non_empty_string(triggered_at)
+        or not _is_non_empty_string(event_id)
+        or event_type not in {"oi_scale", "oi_expansion"}
+    ):
+        raise ValueError("event identity is invalid")
+    oi_value = _positive_finite(event["oi_value"])
+    threshold = _positive_finite(event["threshold"])
     return AlertEvent(
-        symbol=event["symbol"],
-        oi_value=float(event["oi_value"]),
-        threshold=float(event["threshold"]),
-        signal=event["signal"],
-        triggered_at=event["triggered_at"],
-        event_id=event.get("event_id") or uuid4().hex,
-        event_type=event.get("event_type", "oi_scale"),
+        symbol=symbol,
+        oi_value=oi_value,
+        threshold=threshold,
+        signal=signal,
+        triggered_at=triggered_at,
+        event_id=event_id,
+        event_type=event_type,
         oi_change_percent=_optional_finite(event.get("oi_change_percent")),
         price_change_percent=_optional_finite(event.get("price_change_percent")),
         explanation=(
             _optional_string(event.get("explanation"))
-            or f"{event['signal']}: total OI reached ${float(event['oi_value']):,.0f}"
+            or f"{signal}: total OI reached ${oi_value:,.0f}"
         ),
         exchange_timestamp_ms=_optional_positive_int(
             event.get("exchange_timestamp_ms")
@@ -251,7 +272,10 @@ def _optional_finite(value: object) -> float | None:
         return None
     if isinstance(value, bool):
         raise ValueError("event metric is invalid")
-    parsed = float(value)
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("event metric is invalid") from exc
     if not isfinite(parsed):
         raise ValueError("event metric is invalid")
     return parsed
@@ -271,6 +295,43 @@ def _optional_positive_int(value: object) -> int | None:
     if isinstance(value, bool):
         raise ValueError("event exchange timestamp is invalid")
     parsed = int(value)
-    if parsed <= 0:
+    if parsed != value or parsed <= 0 or parsed > 2**53 - 1:
         raise ValueError("event exchange timestamp is invalid")
     return parsed
+
+
+def _validate_config_booleans(config: dict) -> None:
+    for field in (
+        "enabled",
+        "scale_alerts_enabled",
+        "require_cvd_confirmation",
+    ):
+        if field in config and not isinstance(config[field], bool):
+            raise ValueError(f"{field} must be a boolean")
+
+
+def _positive_finite(value: object) -> float:
+    if isinstance(value, bool):
+        raise ValueError("alert number is invalid")
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("alert number is invalid") from exc
+    if not isfinite(parsed) or parsed <= 0:
+        raise ValueError("alert number is invalid")
+    return parsed
+
+
+def _is_symbol(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and re.fullmatch(r"[A-Z0-9]+USDT", value) is not None
+    )
+
+
+def _is_non_empty_string(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _reject_json_constant(_value: str):
+    raise ValueError("non-standard JSON number")

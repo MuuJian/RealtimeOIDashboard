@@ -8,6 +8,7 @@ from realtime_oi_dashboard.domain.oi_alerts.model import AlertConfig, AlertEvent
 from realtime_oi_dashboard.infrastructure.storage.oi_alerts import (
     AlertSnapshot,
     AlertStateRepository,
+    SAFE_LOAD_ERROR,
 )
 
 
@@ -105,6 +106,55 @@ class AlertStateRepositoryTests(unittest.TestCase):
             repository.load_error,
             "Saved OI alert state could not be loaded; defaults are active",
         )
+
+    def test_non_standard_json_numbers_are_rejected_before_entering_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "oi-alerts.json"
+            path.write_text(
+                """{
+                    "config": {
+                        "enabled": true,
+                        "thresholds": [75000000, 100000000, 150000000]
+                    },
+                    "crossed_thresholds": {"BTCUSDT": [NaN]},
+                    "events": []
+                }""",
+                encoding="utf-8",
+            )
+            repository = AlertStateRepository(path)
+
+            loaded = repository.load()
+
+        self.assertEqual(loaded, AlertSnapshot.default())
+        self.assertEqual(repository.load_error, SAFE_LOAD_ERROR)
+
+    def test_invalid_persisted_event_degrades_to_safe_defaults(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "oi-alerts.json"
+            path.write_text(
+                json.dumps({
+                    "config": {
+                        "enabled": True,
+                        "thresholds": [75e6, 100e6, 150e6],
+                    },
+                    "crossed_thresholds": {},
+                    "events": [{
+                        "symbol": "BTCUSDT",
+                        "oi_value": -1,
+                        "threshold": 75e6,
+                        "signal": "OI scale alert",
+                        "triggered_at": "2026-08-30T00:00:00+00:00",
+                        "delivery_status": "pending",
+                    }],
+                }),
+                encoding="utf-8",
+            )
+            repository = AlertStateRepository(path)
+
+            loaded = repository.load()
+
+        self.assertEqual(loaded, AlertSnapshot.default())
+        self.assertEqual(repository.load_error, SAFE_LOAD_ERROR)
 
     def test_legacy_disabled_master_switch_keeps_both_alert_types_disabled(self):
         with tempfile.TemporaryDirectory() as directory:
