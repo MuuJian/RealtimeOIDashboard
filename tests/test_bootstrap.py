@@ -5,6 +5,7 @@ from unittest.mock import ANY, patch
 
 from realtime_oi_dashboard import bootstrap
 from realtime_oi_dashboard.application.background_service import BackgroundPollerService
+from realtime_oi_dashboard.profile import resolve_profile
 
 
 class FakeArgs:
@@ -221,6 +222,7 @@ class MainTests(unittest.TestCase):
             signal_service,
             cvd_service,
             shared_cache,
+            profile=resolve_profile("full"),
         )
 
     def test_stable_profile_constructs_only_the_oi_service(self):
@@ -260,6 +262,7 @@ class MainTests(unittest.TestCase):
             None,
             None,
             shared_cache,
+            profile=resolve_profile("stable"),
         )
 
     def test_signal_scan_creation_failure_still_runs_oi_dashboard(self):
@@ -289,7 +292,64 @@ class MainTests(unittest.TestCase):
             None,
             None,
             shared_cache,
+            profile=resolve_profile("full"),
         )
+
+    def test_disable_cvd_is_reflected_in_the_runtime_profile(self):
+        args = FakeArgs()
+        args.cvd_enabled = False
+        oi_service = FakeService()
+        signal_service = FakeService()
+        shared_cache = FakeSharedCache()
+
+        with patch.object(bootstrap, "parse_args", return_value=args), patch.object(
+            bootstrap, "create_shared_rest_cache", return_value=shared_cache
+        ), patch.object(
+            bootstrap, "create_cvd_service"
+        ) as create_cvd_service, patch.object(
+            bootstrap, "create_oi_service", return_value=oi_service
+        ), patch.object(
+            bootstrap,
+            "create_signal_scan_service",
+            return_value=signal_service,
+        ), patch.object(
+            bootstrap, "run_dashboard", return_value=0
+        ) as run_dashboard:
+            result = bootstrap.main([])
+
+        self.assertEqual(result, 0)
+        create_cvd_service.assert_not_called()
+        runtime_profile = run_dashboard.call_args.kwargs["profile"]
+        self.assertEqual(runtime_profile.name, "full")
+        self.assertFalse(runtime_profile.cvd_enabled)
+        self.assertTrue(runtime_profile.signal_scan_enabled)
+        self.assertTrue(runtime_profile.oi_alerts_enabled)
+
+    def test_oi_creation_failure_closes_precreated_dependencies(self):
+        args = FakeArgs()
+        alert_service = FakeService()
+        cvd_service = FakeService()
+        shared_cache = FakeSharedCache()
+
+        with patch.object(bootstrap, "parse_args", return_value=args), patch.object(
+            bootstrap, "create_shared_rest_cache", return_value=shared_cache
+        ), patch.object(
+            bootstrap, "create_cvd_service", return_value=cvd_service
+        ), patch.object(
+            bootstrap, "create_oi_alert_service", return_value=alert_service
+        ), patch.object(
+            bootstrap,
+            "create_oi_service",
+            side_effect=RuntimeError("OI construction failed"),
+        ), redirect_stdout(io.StringIO()), self.assertRaisesRegex(
+            RuntimeError,
+            "OI construction failed",
+        ):
+            bootstrap.main([])
+
+        self.assertTrue(alert_service.closed)
+        self.assertTrue(cvd_service.closed)
+        self.assertTrue(shared_cache.closed)
 
 
 if __name__ == "__main__":

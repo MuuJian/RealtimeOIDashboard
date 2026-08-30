@@ -109,6 +109,7 @@ class CvdPoller:
         self._disconnected_at: dict[int, int] = {}
         self._running = False
         self._closed = False
+        self._close_lock = threading.Lock()
         self._top_error = None
         self.backfill = CvdBackfillQueue(
             self._load_backfill,
@@ -199,30 +200,57 @@ class CvdPoller:
         with self.lock:
             shards = list(self._shards.values())
         asynchronously_stopped = []
+        first_error = None
         for shard in shards:
-            request_stop = getattr(shard, "request_stop", None)
-            if callable(request_stop):
-                request_stop()
-                asynchronously_stopped.append(shard)
-            else:
-                shard.stop()
+            try:
+                request_stop = getattr(shard, "request_stop", None)
+                if callable(request_stop):
+                    request_stop()
+                    asynchronously_stopped.append(shard)
+                else:
+                    shard.stop()
+            except BaseException as exc:
+                if first_error is None:
+                    first_error = exc
         deadline = time.monotonic() + 5.0
         for shard in asynchronously_stopped:
-            shard.wait_stopped(timeout=max(deadline - time.monotonic(), 0.0))
-        self.backfill.stop()
+            try:
+                shard.wait_stopped(timeout=max(deadline - time.monotonic(), 0.0))
+            except BaseException as exc:
+                if first_error is None:
+                    first_error = exc
+        try:
+            self.backfill.stop()
+        except BaseException as exc:
+            if first_error is None:
+                first_error = exc
+        if first_error is not None:
+            raise first_error
 
     def close(self) -> None:
-        with self.lock:
+        with self._close_lock:
             if self._closed:
                 return
-            self._closed = True
-        self.stop()
-        try:
-            self.store.publish(now_ms=self.now_ms())
-            self.snapshots.save(force=True)
-        finally:
+            first_error = None
+            for cleanup in (
+                self.stop,
+                lambda: self.store.publish(now_ms=self.now_ms()),
+                lambda: self.snapshots.save(force=True),
+            ):
+                try:
+                    cleanup()
+                except BaseException as exc:
+                    if first_error is None:
+                        first_error = exc
             if self._owns_http_client:
-                self.http_client.close()
+                try:
+                    self.http_client.close()
+                except BaseException as exc:
+                    if first_error is None:
+                        first_error = exc
+            if first_error is not None:
+                raise first_error
+            self._closed = True
 
     def _load_exchange_info(self):
         self._raise_if_stopped()

@@ -24,13 +24,15 @@ npm ci
 完整版本会启用 OI、CVD、Signal Scan 和 OI Alerts，稳定版本只启用 OI:
 
 ```bash
-.venv/bin/python main.py --profile full/stable
+.venv/bin/python main.py --profile full
+.venv/bin/python main.py --profile stable
 ```
 
 部署时也可以通过环境变量选择配置：
 
 ```bash
-DASHBOARD_PROFILE=stable/full
+DASHBOARD_PROFILE=full .venv/bin/python main.py
+DASHBOARD_PROFILE=stable .venv/bin/python main.py
 ```
 
 ### 用手机访问本地面板

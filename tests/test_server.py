@@ -162,6 +162,7 @@ class DashboardServerTests(unittest.TestCase):
         self.assertEqual(response.getheader("Cache-Control"), "no-store")
         self.assertIn('"profile":"full"', body)
         self.assertIn('"cvd":true', body)
+        self.assertIn('dataset.cvdEnabled="true"', body)
 
     def test_stable_profile_exposes_only_oi_routes(self):
         stable_server = create_dashboard_server(

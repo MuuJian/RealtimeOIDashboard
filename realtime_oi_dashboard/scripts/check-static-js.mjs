@@ -63,7 +63,10 @@ function checkRelativeImports(file) {
       /new Worker\(\s*new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)/g,
     ),
   ].map(match => match[1]);
-  const specifiers = [...imports, ...workers];
+  const dynamicImports = [
+    ...source.matchAll(/\bimport\(\s*["']([^"']+)["']\s*\)/g),
+  ].map(match => match[1]);
+  const specifiers = [...imports, ...dynamicImports, ...workers];
   const targets = [];
 
   for (const specifier of specifiers) {

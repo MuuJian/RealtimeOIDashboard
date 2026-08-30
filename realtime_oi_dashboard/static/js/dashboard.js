@@ -19,14 +19,22 @@ import { createDashboardRenderer } from "./services/DashboardRenderer.js";
 import { createRankingProcessor } from "./services/RankingProcessor.js";
 import { createRankingViewController } from "./services/RankingViewController.js";
 import { createUiRenderScheduler } from "./services/UiRenderScheduler.js";
-import { createSignalScanPanel } from "./features/signal-scan/SignalScanPanel.js";
-import { createSignalScanRefreshController } from "./features/signal-scan/SignalScanRefreshController.js";
-import { createOiAlertsPanel } from "./features/oi-alerts/OiAlertsPanel.js";
-import { createOiAlertsRefreshController } from "./features/oi-alerts/OiAlertsRefreshController.js";
 import { getRuntimeProfile } from "./config/RuntimeProfile.js";
 
 const lifecycleController = new AbortController();
 const runtimeProfile = getRuntimeProfile();
+const oiAlertsModulePromise = runtimeProfile.features.oiAlerts
+  ? Promise.all([
+    import("./features/oi-alerts/OiAlertsPanel.js"),
+    import("./features/oi-alerts/OiAlertsRefreshController.js"),
+  ])
+  : null;
+const signalScanModulePromise = runtimeProfile.features.signalScan
+  ? Promise.all([
+    import("./features/signal-scan/SignalScanPanel.js"),
+    import("./features/signal-scan/SignalScanRefreshController.js"),
+  ])
+  : null;
 const elements = getDashboardElements();
 const dashboardStatus = createDashboardStatus({
   title: elements.statusTitle,
@@ -75,6 +83,10 @@ const marketTooltip = createMarketTooltip({
 let oiAlertsPanel = null;
 let oiAlertsRefresh = createInactiveRefreshController();
 if (runtimeProfile.features.oiAlerts) {
+  const [
+    { createOiAlertsPanel },
+    { createOiAlertsRefreshController },
+  ] = await oiAlertsModulePromise;
   oiAlertsPanel = createOiAlertsPanel({
     elements: {
       statusElement: elements.oiAlertsStatus,
@@ -107,6 +119,10 @@ if (runtimeProfile.features.oiAlerts) {
 
 let signalScanRefresh = createInactiveRefreshController();
 if (runtimeProfile.features.signalScan) {
+  const [
+    { createSignalScanPanel },
+    { createSignalScanRefreshController },
+  ] = await signalScanModulePromise;
   const signalScanPanel = createSignalScanPanel({
     bullsBody: elements.signalScanBullsBody,
     bearsBody: elements.signalScanBearsBody,

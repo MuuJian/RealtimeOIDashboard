@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from realtime_oi_dashboard.application.background_service import (
     BackgroundPollerService,
 )
@@ -22,9 +24,11 @@ _DEFAULT_ALERT_SERVICE = object()
 def main(argv=None):
     args = parse_args(argv)
     profile = resolve_profile(getattr(args, "profile", None))
+    if not getattr(args, "cvd_enabled", True):
+        profile = replace(profile, cvd_enabled=False)
     shared_rest_cache = create_shared_rest_cache()
     cvd_service = None
-    if profile.cvd_enabled and getattr(args, "cvd_enabled", True):
+    if profile.cvd_enabled:
         try:
             cvd_service = create_cvd_service(
                 args,
@@ -32,6 +36,7 @@ def main(argv=None):
             )
         except Exception as exc:
             print(f"{timestamp()} CVD unavailable; continuing with OI dashboard: {exc}")
+    alert_service = None
     try:
         alert_service = create_oi_alert_service() if profile.oi_alerts_enabled else None
         oi_service = create_oi_service(
@@ -41,6 +46,12 @@ def main(argv=None):
             alert_service=alert_service,
         )
     except BaseException:
+        _report_close_failures(
+            ServiceGroup(
+                alerts=("OI alert service", alert_service),
+                cvd=("CVD poller", cvd_service),
+            ).close_all()
+        )
         _close_shared_rest_cache(shared_rest_cache)
         raise
     signal_scan_service = None
@@ -61,6 +72,7 @@ def main(argv=None):
         signal_scan_service,
         cvd_service,
         shared_rest_cache,
+        profile=profile,
     )
 
 

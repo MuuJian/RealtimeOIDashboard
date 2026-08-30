@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 from realtime_oi_dashboard.application.cvd.poller import CvdPoller
 from realtime_oi_dashboard.domain.cvd.model import MINUTE_MS
@@ -244,6 +245,43 @@ class CvdPollerTests(unittest.TestCase):
 
         self.assertFalse(queued)
         self.assertEqual(poller.backfill.queue_size, 0)
+
+    def test_close_finishes_cleanup_and_can_retry_after_a_shard_stop_failure(self):
+        poller, _, client, _ = self.create_poller(1)
+
+        class FlakyShard(FakeShard):
+            def __init__(self, shard_id):
+                super().__init__(shard_id)
+                self.stop_attempts = 0
+
+            def stop(self, **_kwargs):
+                self.stop_attempts += 1
+                if self.stop_attempts == 1:
+                    raise RuntimeError("shard stop failed")
+                super().stop()
+
+        flaky = FlakyShard(0)
+        healthy = FakeShard(1)
+        poller._shards = {0: flaky, 1: healthy}
+        poller.backfill.stop = Mock()
+        poller.store.publish = Mock()
+        poller.snapshots.save = Mock()
+
+        with self.assertRaisesRegex(RuntimeError, "shard stop failed"):
+            poller.close()
+
+        self.assertTrue(healthy.stopped)
+        poller.backfill.stop.assert_called_once_with()
+        poller.store.publish.assert_called_once_with(now_ms=16 * MINUTE_MS)
+        poller.snapshots.save.assert_called_once_with(force=True)
+        self.assertFalse(poller._closed)
+        self.assertFalse(client.closed)
+
+        poller.close()
+
+        self.assertTrue(flaky.stopped)
+        self.assertTrue(poller._closed)
+        self.assertEqual(poller.backfill.stop.call_count, 2)
 
 
 if __name__ == "__main__":

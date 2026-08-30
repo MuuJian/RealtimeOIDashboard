@@ -180,6 +180,8 @@ class DashboardHandler(DashboardRequestHandler):
             "globalThis.__REALTIME_OI_DASHBOARD_CONFIG__=" + config + ";"
             "document.documentElement.dataset.dashboardProfile="
             f"{json.dumps(profile.name)};"
+            "document.documentElement.dataset.cvdEnabled="
+            f"{json.dumps(str(profile.cvd_enabled).lower())};"
         ).encode("utf-8")
         self._send_body(
             body,

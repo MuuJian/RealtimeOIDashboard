@@ -62,6 +62,14 @@ class ParseArgsTests(unittest.TestCase):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             parse_args(["--profile", "unknown"])
 
+    def test_invalid_profile_environment_is_rejected(self):
+        with patch.dict(
+            os.environ,
+            {"DASHBOARD_PROFILE": "full/stable"},
+            clear=True,
+        ), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parse_args([])
+
     def test_invalid_port_is_rejected(self):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             parse_args(["--port", "65536"])

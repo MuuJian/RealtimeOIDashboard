@@ -44,6 +44,13 @@ def non_negative_float(value: str) -> float:
     return parsed
 
 
+def profile_name(value: str) -> str:
+    if value not in PROFILE_NAMES:
+        choices = ", ".join(PROFILE_NAMES)
+        raise argparse.ArgumentTypeError(f"must be one of: {choices}")
+    return value
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Realtime price + batched OI dashboard")
     platform_port = os.environ.get("PORT")
@@ -53,6 +60,7 @@ def parse_args(argv=None):
     parser.add_argument("--host", default=default_host)
     parser.add_argument(
         "--profile",
+        type=profile_name,
         choices=PROFILE_NAMES,
         default=os.environ.get("DASHBOARD_PROFILE", FULL_PROFILE),
         help="runtime feature profile (full or stable)",
