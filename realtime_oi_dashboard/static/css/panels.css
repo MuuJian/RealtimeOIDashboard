@@ -114,3 +114,30 @@ button {
   color: #ffd77b;
   box-shadow: 0 0 22px rgba(240, 189, 89, .08);
 }
+
+/* Give ranking controls predictable widths without changing other toolbars. */
+.ranking-toolbar .panel-title {
+  flex: 0 0 auto;
+}
+
+.ranking-controls {
+  display: grid;
+  grid-template-columns: 78px minmax(140px, 1fr) 210px repeat(2, 160px) 76px;
+  min-width: 0;
+}
+
+.ranking-controls input,
+.ranking-controls select {
+  width: 100%;
+  min-width: 0;
+}
+
+#searchInput::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
+th[data-sort]:focus-visible,
+.symbol-link:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: -3px;
+}

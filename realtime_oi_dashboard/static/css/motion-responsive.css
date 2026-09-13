@@ -27,6 +27,33 @@
   to { height: 45%; opacity: .4; }
 }
 
+@media (max-width: 1200px) {
+  .ranking-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .ranking-controls {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .ranking-controls #favoritesOnlyBtn {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1100px) {
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metric-dominance {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 980px) {
   header {
     align-items: stretch;
@@ -37,10 +64,6 @@
     width: min(100%, 480px);
     min-width: 0;
     align-self: flex-end;
-  }
-
-  .metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .toolbar {
@@ -57,6 +80,47 @@
 
   .metrics {
     grid-template-columns: 1fr;
+  }
+
+  .signal-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .signal-controls select {
+    min-width: 0;
+    padding-inline: 8px;
+  }
+
+  .ranking-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ranking-controls #searchInput {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .ranking-controls #favoritesOnlyBtn {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .ranking-controls #sortSelect {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .ranking-controls #limitSelect {
+    grid-column: 1 / -1;
+  }
+
+  .ranking-controls input,
+  .ranking-controls select,
+  .ranking-controls button,
+  .signal-controls select {
+    height: 40px;
   }
 
   .status-group {
