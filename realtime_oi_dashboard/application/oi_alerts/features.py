@@ -13,6 +13,7 @@ from realtime_oi_dashboard.domain.oi_alerts.model import AlertConfig, AlertEvent
 MINUTE_MS = 60_000
 MAX_HISTORY_MINUTES = 4 * 60
 MAX_BASELINE_TOLERANCE_MS = 2 * MINUTE_MS
+CVD_CONFIRMATION_MAX_AGE_MS = MINUTE_MS
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +25,9 @@ class FeatureSample:
     cvd_ratio: float | None
     cvd_direction: str | None
     funding_rate_percent: float | None
+    cvd_health: str | None = None
+    cvd_as_of: int | None = None
+    cvd_coverage_seconds: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,17 +240,28 @@ def _sample(row: dict) -> FeatureSample | None:
     price = _positive_float(row.get("price"))
     if None in (timestamp_ms, oi_quantity, oi_value, price):
         return None
+    cvd_as_of = _positive_int(row.get("cvdAsOf"))
+    coverage = _optional_float(row.get("cvdCoverageSeconds"))
+    cvd_valid = (
+        row.get("cvdHealth") == "live"
+        and coverage is not None and coverage >= 900
+        and cvd_as_of is not None
+        and abs(timestamp_ms - cvd_as_of) <= CVD_CONFIRMATION_MAX_AGE_MS
+    )
     return FeatureSample(
         timestamp_ms=timestamp_ms,
         oi_quantity=oi_quantity,
         oi_value=oi_value,
         price=price,
-        cvd_ratio=_optional_float(row.get("cvd15mRatio")),
+        cvd_ratio=_optional_float(row.get("cvd15mRatio")) if cvd_valid else None,
         cvd_direction=(
             _optional_text(row.get("cvdDirection"))
             or _optional_text(row.get("cvdStatus"))
-        ),
+        ) if cvd_valid else None,
         funding_rate_percent=_optional_float(row.get("fundingRatePercent")),
+        cvd_health=row.get("cvdHealth"),
+        cvd_as_of=cvd_as_of,
+        cvd_coverage_seconds=coverage,
     )
 
 
@@ -258,6 +273,9 @@ def _row_from_sample(sample: FeatureSample) -> dict:
         "price": sample.price,
         "cvd15mRatio": sample.cvd_ratio,
         "cvdDirection": sample.cvd_direction,
+        "cvdHealth": sample.cvd_health,
+        "cvdAsOf": sample.cvd_as_of,
+        "cvdCoverageSeconds": sample.cvd_coverage_seconds,
         "fundingRatePercent": sample.funding_rate_percent,
     }
 

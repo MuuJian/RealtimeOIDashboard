@@ -10,6 +10,28 @@ from realtime_oi_dashboard.domain.oi_alerts.model import AlertConfig
 
 
 class SignalFeatureTrackerTests(unittest.TestCase):
+    def test_confirmation_uses_only_live_complete_and_recent_cvd(self):
+        start = 2_000_000
+        for health, coverage, age, valid in (
+            ("live", 900, 1000, True), ("stale", 900, 1000, False),
+            ("warming", 900, 1000, False), ("live", 60, 1000, False),
+            ("live", 900, 120_000, False),
+        ):
+            tracker = SignalFeatureTracker()
+            row = {"currentOi": 100, "currentOiValue": 10000,
+                   "price": 100, "oiUpdatedAt": start}
+            tracker.observe("BTCUSDT", row, window_minutes=15)
+            feature = tracker.observe("BTCUSDT", {
+                **row, "currentOi": 110, "price": 110,
+                "oiUpdatedAt": start + 15 * 60_000, "cvd15mRatio": 0.9,
+                "cvdHealth": health, "cvdCoverageSeconds": coverage,
+                "cvdAsOf": start + 15 * 60_000 - age,
+            }, window_minutes=15)
+            signal = classify_expansion(feature, AlertConfig(require_cvd_confirmation=True))
+            self.assertEqual(signal is not None, valid)
+            tracker.set_window(15)
+            self.assertEqual(tracker.payload()["BTCUSDT"]["cvd_ratio"] is not None, valid)
+
     def test_sampling_gap_requires_a_recent_window_baseline(self):
         for gap_minutes in (120, 300):
             tracker = SignalFeatureTracker()
