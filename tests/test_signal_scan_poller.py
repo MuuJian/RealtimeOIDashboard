@@ -104,6 +104,38 @@ class FailingSnapshotClient(FakeHttpClient):
 
 
 class SignalScanPollerTests(unittest.TestCase):
+    def setUp(self):
+        # Existing histories end in hour 119; keep wall time aligned with them.
+        clock_patch = patch(
+            "realtime_oi_dashboard.application.signal_scan.kline_loader.time",
+            return_value=119 * 3600 + 300,
+        )
+        self.kline_clock = clock_patch.start()
+        self.addCleanup(clock_patch.stop)
+
+    def test_stale_contiguous_history_cannot_refresh_scan_timestamp(self):
+        client = FakeHttpClient(
+            [{"symbol": "AUSDT", "quoteVolume": "1000", "priceChangePercent": "1.5"}],
+            make_exchange_info(["AUSDT"]), {"AUSDT": make_klines()},
+        )
+        poller = SignalScanPoller(http_client=client)
+        self.addCleanup(poller.close)
+        self.assertTrue(poller.run_scan())
+        saved_at = poller.get_state()["saved_at"]
+        self.kline_clock.return_value += 3 * 3600
+        self.assertFalse(poller.run_scan())
+        self.assertEqual(poller.get_state()["saved_at"], saved_at)
+        self.assertNotIn("AUSDT", poller._kline_cache)
+        self.assertEqual(client.kline_requests[-2:], [("AUSDT", 2), ("AUSDT", 120)])
+
+    def test_future_history_is_rejected(self):
+        client = FakeHttpClient([], make_exchange_info([]), {"AUSDT": make_klines()})
+        poller = SignalScanPoller(http_client=client)
+        self.addCleanup(poller.close)
+        self.kline_clock.return_value -= 3600
+        with self.assertRaisesRegex(ValueError, "future kline"):
+            poller._load_full_klines("AUSDT")
+
     def test_rejects_an_injected_client_without_get_json(self):
         with self.assertRaisesRegex(TypeError, "callable get_json"):
             SignalScanPoller(http_client=object())

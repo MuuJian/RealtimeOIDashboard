@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from time import time
+
 from realtime_oi_dashboard.application.signal_scan.kline_cache import (
     SignalScanKlineCache,
 )
@@ -12,6 +14,7 @@ from realtime_oi_dashboard.application.signal_scan.market_snapshot import (
 from realtime_oi_dashboard.domain.errors import PollingStopped
 from realtime_oi_dashboard.domain.signal_scan.klines import (
     KLINE_MAX_RESPONSE_ROWS,
+    KLINE_INTERVAL_MILLISECONDS,
     merge_kline_history,
     normalize_kline_history,
 )
@@ -28,6 +31,17 @@ KLINE_LIMIT = 120
 KLINE_REFRESH_LIMIT = 2
 KLINE_TIMEOUT_SECONDS = 10
 KLINE_CACHE_MAX_SYMBOLS = SCAN_POOL_SIZE * 2
+
+
+def _history_is_current(klines: list) -> bool:
+    now_ms = int(time() * 1000)
+    current_open = now_ms // KLINE_INTERVAL_MILLISECONDS * KLINE_INTERVAL_MILLISECONDS
+    latest_open = int(klines[-1][0]) if klines else -1
+    # Allow the closed candle briefly while a new hour opens on the provider.
+    return latest_open == current_open or (
+        latest_open == current_open - KLINE_INTERVAL_MILLISECONDS
+        and now_ms - current_open <= 60_000
+    )
 
 
 class SignalScanKlineLoader:
@@ -80,7 +94,7 @@ class SignalScanKlineLoader:
             # that recovery request also fails.
             return self.load_full(symbol), False
         merged = merge_kline_history(cached, updates, limit=KLINE_LIMIT)
-        if merged is None or len(merged) < MIN_CANDLES:
+        if merged is None or len(merged) < MIN_CANDLES or not _history_is_current(merged):
             return self.load_full(symbol), False
         return merged, True
 
@@ -90,6 +104,8 @@ class SignalScanKlineLoader:
             normalized = normalize_kline_history(klines, limit=KLINE_LIMIT)
             if normalized is None:
                 raise ValueError("invalid kline time series")
+            if not _history_is_current(normalized):
+                raise ValueError("stale or future kline history")
             return normalized
         except PollingStopped:
             raise
