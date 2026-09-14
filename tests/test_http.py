@@ -1,5 +1,6 @@
 import threading
 import unittest
+import requests
 from unittest.mock import patch
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
@@ -29,6 +30,32 @@ class FakeSession:
 
 
 class JsonHttpClientSessionLifecycleTests(unittest.TestCase):
+    def test_final_rate_limit_failure_defers_other_clients_and_endpoints(self):
+        for status in (429, 418):
+            with self.subTest(status=status):
+                clock = [0.0]
+                calls = []
+                def sleep(delay):
+                    clock[0] += delay
+                budget = BinanceWeightBudget(monotonic=lambda: clock[0], sleep=sleep)
+                class Session(FakeSession):
+                    def get(self, url, **_kwargs):
+                        calls.append((url, clock[0]))
+                        response = requests.Response()
+                        response.status_code = status if url.endswith("openInterest") else 200
+                        response.headers["Retry-After"] = "60"
+                        response._content = b'[]'
+                        return response
+                with patch("realtime_oi_dashboard.infrastructure.http.GLOBAL_BINANCE_WEIGHT_BUDGET", budget):
+                    first = JsonHttpClient(session_factory=Session, sleep=sleep)
+                    second = JsonHttpClient(session_factory=Session, sleep=sleep)
+                    with self.assertRaises(requests.HTTPError):
+                        first.get_json("https://fapi.binance.com/fapi/v1/openInterest", attempts=1)
+                    second.get_json("https://fapi.binance.com/fapi/v1/klines", params={"limit": 16})
+                    first.close()
+                    second.close()
+                self.assertGreaterEqual(calls[1][1], 60 if status == 429 else 120)
+
     def create_client(self):
         sessions = []
 

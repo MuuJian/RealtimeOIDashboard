@@ -37,6 +37,7 @@ class BinanceWeightBudget:
         self._weights = deque()
         self._used_weight = 0.0
         self._history_requests = deque()
+        self._blocked_until = 0.0
         self._monotonic = monotonic
         self._sleep = sleep
         self._lock = threading.Lock()
@@ -73,6 +74,8 @@ class BinanceWeightBudget:
                 while self._history_requests and self._history_requests[0] <= now - 300:
                     self._history_requests.popleft()
                 waits = []
+                if now < self._blocked_until:
+                    waits.append(self._blocked_until - now)
                 if self._used_weight + weight > self._capacity:
                     waits.append(self._weights[0][0] + 60 - now)
                 if history and len(self._history_requests) >= HISTORY_REQUESTS_PER_FIVE_MINUTES:
@@ -88,6 +91,14 @@ class BinanceWeightBudget:
             if check_cancelled is not None:
                 check_cancelled()
             wait(min(wait_for, 1.0))
+
+    def defer(self, url: str, seconds: float) -> None:
+        if urlparse(url).hostname not in BINANCE_HOSTS:
+            return
+        if not isfinite(seconds) or seconds <= 0:
+            return
+        with self._lock:
+            self._blocked_until = max(self._blocked_until, self._monotonic() + seconds)
 
 
 def request_weight(url: str, *, params=None) -> float:

@@ -116,6 +116,14 @@ class JsonHttpClient:
 
             self._raise_if_cancelled()
             last_error = error
+            if self._before_request is _DEFAULT_BEFORE_REQUEST:
+                response = getattr(error, "response", None)
+                if response is not None and response.status_code in {418, 429}:
+                    delay = _retry_after_seconds(response.headers.get("Retry-After", ""))
+                    minimum = 120.0 if response.status_code == 418 else 2.0
+                    GLOBAL_BINANCE_WEIGHT_BUDGET.defer(
+                        url, max(delay if delay is not None else 10.0, minimum)
+                    )
             if attempt == attempts or not self._should_retry(error):
                 break
             self._sleep(self._retry_delay(attempt, error))
