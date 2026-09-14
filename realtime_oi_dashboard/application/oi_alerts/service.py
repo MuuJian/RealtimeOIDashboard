@@ -24,6 +24,8 @@ from realtime_oi_dashboard.infrastructure.storage.oi_alerts import (
     AlertSnapshot,
     AlertStateRepository,
     MAX_RECENT_EVENTS,
+    PENDING_STATUSES,
+    bound_alert_events,
 )
 from realtime_oi_dashboard.infrastructure.telegram.notifier import TelegramNotifier
 
@@ -43,7 +45,7 @@ class OiAlertService:
         self._notifier_stop_timeout = notifier_stop_timeout
         snapshot = repository.load()
         self._engine = AlertEngine(snapshot.config)
-        self._events = list(snapshot.events[-MAX_RECENT_EVENTS:])
+        self._events = list(bound_alert_events(snapshot.events))
         self._last_triggered_at = {
             symbol: dict(trigger_times)
             for symbol, trigger_times in snapshot.last_triggered_at.items()
@@ -161,7 +163,9 @@ class OiAlertService:
         with self._lock:
             if self._save_pending:
                 return
-            pending = [event for event in self._events if event.event_id in self._unsubmitted_ids]
+            pending = [event for event in self._events
+                       if event.event_id in self._unsubmitted_ids
+                       and event.delivery_status in PENDING_STATUSES]
             self._unsubmitted_ids.difference_update(event.event_id for event in pending)
         for index, event in enumerate(pending):
             try:
@@ -174,6 +178,7 @@ class OiAlertService:
     def get_state(self, rows: Mapping[str, Mapping[str, object]]) -> dict:
         with self._lock:
             payload = self._snapshot_unlocked().to_payload()
+            payload["events"] = payload["events"][-MAX_RECENT_EVENTS:]
             payload["notifier"] = self._notifier.get_status()
             payload["storage"] = {
                 "status": "load_error" if self._storage_load_error else "ok",
@@ -268,9 +273,11 @@ class OiAlertService:
                     break
 
     def _bound_events_unlocked(self) -> None:
-        if len(self._events) > MAX_RECENT_EVENTS:
-            self._events = self._events[-MAX_RECENT_EVENTS:]
-        self._unsubmitted_ids.intersection_update(event.event_id for event in self._events)
+        self._events = list(bound_alert_events(self._events))
+        self._unsubmitted_ids.intersection_update(
+            event.event_id for event in self._events
+            if event.delivery_status in PENDING_STATUSES
+        )
 
     def _snapshot_unlocked(self) -> AlertSnapshot:
         return AlertSnapshot(

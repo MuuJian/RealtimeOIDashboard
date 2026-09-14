@@ -39,6 +39,12 @@ class RecordingNotifier:
         return {"status": "configured", "last_error": None, "last_attempt_at": None}
 
 
+class CompletingNotifier(RecordingNotifier):
+    def enqueue(self, event):
+        super().enqueue(event)
+        self.mark_delivery(event, "sent", None, event.triggered_at)
+
+
 class RecordingAlertService:
     def __init__(self):
         self.observed = []
@@ -76,6 +82,41 @@ class RecordingAlertService:
 
 
 class OiAlertServiceTests(unittest.TestCase):
+    def test_pending_delivery_survives_history_limit_and_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = AlertStateRepository(Path(directory) / "oi-alerts.json")
+            service = OiAlertService(repository, notifier_factory=RecordingNotifier)
+            symbols = [f"TOKEN{i}USDT" for i in range(60)]
+            for value in (70_000_000, 80_000_000):
+                service.observe_updates(
+                    [OiUpdate(symbol, {"currentOiValue": value}, 1) for symbol in symbols],
+                    triggered_at="trigger",
+                )
+            self.assertEqual(len(service.get_state({})["events"]), 50)
+            self.assertEqual(len(repository.load().events), 60)
+            restarted = OiAlertService(repository, notifier_factory=RecordingNotifier)
+            restarted.start()
+            self.assertEqual(len(restarted._notifier.enqueued), 60)
+            self.assertEqual({e.event_id for e in service._notifier.enqueued},
+                             {e.event_id for e in restarted._notifier.enqueued})
+
+    def test_delivery_backlog_has_bounded_explicit_overflow(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = AlertStateRepository(Path(directory) / "oi-alerts.json")
+            service = OiAlertService(repository, notifier_factory=RecordingNotifier)
+            symbols = [f"TOKEN{i}USDT" for i in range(200)]
+            for value in (70_000_000, 80_000_000):
+                service.observe_updates(
+                    [OiUpdate(symbol, {"currentOiValue": value}, 1) for symbol in symbols],
+                    triggered_at="trigger",
+                )
+            self.assertEqual(len(service._notifier.enqueued), 101)
+            events = repository.load().events
+            self.assertEqual(len(events), 151)
+            failed = [e for e in events if e.delivery_status == "failed"]
+            self.assertEqual(len(failed), 50)
+            self.assertTrue(all(e.failure_reason == "delivery queue is full" for e in failed))
+
     def test_disk_failure_retries_pending_event_before_delivery_without_recrossing(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = AlertStateRepository(Path(directory) / "oi-alerts.json")
@@ -198,7 +239,7 @@ class OiAlertServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             service = OiAlertService(
                 AlertStateRepository(Path(directory) / "oi-alerts.json"),
-                notifier_factory=RecordingNotifier,
+                notifier_factory=CompletingNotifier,
             )
             for index in range(55):
                 symbol = f"TOKEN{index}USDT"
@@ -223,7 +264,7 @@ class OiAlertServiceTests(unittest.TestCase):
             repository = AlertStateRepository(path)
             service = OiAlertService(
                 repository,
-                notifier_factory=RecordingNotifier,
+                notifier_factory=CompletingNotifier,
             )
             symbols = [f"TOKEN{index}USDT" for index in range(200)]
 

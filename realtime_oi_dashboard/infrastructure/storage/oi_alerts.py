@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from math import isfinite
 from pathlib import Path
 from uuid import uuid4
@@ -18,11 +18,34 @@ from realtime_oi_dashboard.infrastructure.storage.file_io import write_text_atom
 
 
 MAX_RECENT_EVENTS = 50
+MAX_PENDING_EVENTS = 101  # The delivery queue plus its single worker.
+PENDING_STATUSES = {"pending", "queued"}
 SAFE_LOAD_ERROR = "Saved OI alert state could not be loaded; defaults are active"
 _SAFE_FAILURE_REASONS = {
     "Telegram delivery failed",
     "delivery queue is full",
 }
+
+
+def bound_alert_events(events) -> tuple[AlertEvent, ...]:
+    retained = []
+    pending_count = 0
+    for event in events:
+        if event.delivery_status in PENDING_STATUSES:
+            pending_count += 1
+            if pending_count > MAX_PENDING_EVENTS:
+                event = replace(
+                    event, delivery_status="failed",
+                    failure_reason="delivery queue is full",
+                    last_attempt_at=event.triggered_at,
+                )
+        retained.append(event)
+    recent_ids = {
+        event.event_id for event in
+        [event for event in retained if event.delivery_status not in PENDING_STATUSES][-MAX_RECENT_EVENTS:]
+    }
+    return tuple(event for event in retained
+                 if event.delivery_status in PENDING_STATUSES or event.event_id in recent_ids)
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +60,7 @@ class AlertSnapshot:
         return cls()
 
     def to_payload(self) -> dict:
-        events = self.events[-MAX_RECENT_EVENTS:]
+        events = bound_alert_events(self.events)
         configured_thresholds = set(self.config.thresholds)
         return {
             "config": {
@@ -119,7 +142,7 @@ class AlertSnapshot:
         return cls(
             config,
             crossed_thresholds,
-            events[-MAX_RECENT_EVENTS:],
+            bound_alert_events(events),
             last_triggered_at,
         )
 
