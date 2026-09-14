@@ -121,6 +121,23 @@ class UniverseAndAllocatorTests(unittest.TestCase):
             symbol_count=10, current_count=1, shard_metrics=metrics, now=30
         ), 2)
 
+    def test_upstream_delay_does_not_expand_and_load_expansion_is_bounded(self):
+        allocator = CvdShardAllocator()
+        count = 1
+        for now in range(0, 3600, 30):
+            count = allocator.recommended_count(symbol_count=1, current_count=count,
+                shard_metrics=[{"symbolCount": 1, "processingLagMs": 600}], now=now)
+        self.assertEqual(count, 1)
+        for now in range(3600, 10800, 30):
+            count = allocator.recommended_count(symbol_count=1, current_count=count,
+                shard_metrics=[{"symbolCount": 1, "messagesPerSecond": 700}], now=now)
+        self.assertEqual(count, 1)
+        count = 1
+        for now in range(10800, 25200, 30):
+            count = allocator.recommended_count(symbol_count=526, current_count=count,
+                shard_metrics=[{"messagesPerSecond": 700}], now=now)
+        self.assertEqual(count, 64)
+
 
 class FakeConnection:
     def __init__(self, received=None):

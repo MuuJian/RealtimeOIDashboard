@@ -83,6 +83,10 @@ class BinanceCvdShard:
 
     def metrics(self) -> dict:
         with self._lock:
+            data_fresh = (
+                self._connected and self._last_data_at is not None
+                and self._monotonic() - self._last_data_at < DATA_STALE_SECONDS
+            )
             elapsed = max(self._monotonic() - self._rate_window_started, 0.001)
             current_rate = self._message_count / elapsed
             return {
@@ -91,7 +95,7 @@ class BinanceCvdShard:
                 "connected": self._connected,
                 "confirmedSymbols": len(self._confirmed_symbols),
                 "messagesPerSecond": max(self._messages_per_second, current_rate),
-                "processingLagMs": self._processing_lag_ms,
+                "processingLagMs": self._processing_lag_ms if data_fresh else 0.0,
                 "queueDepth": 0,
                 "symbolRates": {
                     symbol: count / elapsed

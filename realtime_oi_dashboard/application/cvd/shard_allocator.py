@@ -9,6 +9,7 @@ TARGET_SYMBOLS_PER_SHARD = 150
 TARGET_MESSAGES_PER_SECOND = 600.0
 MAX_PROCESSING_LAG_MS = 500.0
 SCALE_OUT_CONFIRM_SECONDS = 30.0
+MAX_LOAD_DRIVEN_SHARDS = 64
 
 
 def desired_shard_count(
@@ -123,7 +124,6 @@ class CvdShardAllocator:
         overloaded = any(
             metric.get("symbolCount", 0) > self.target_symbols_per_shard
             or metric.get("messagesPerSecond", 0) > self.target_messages_per_second
-            or metric.get("processingLagMs", 0) > self.max_processing_lag_ms
             or metric.get("queueDepth", 0) > 0
             for metric in shard_metrics
         )
@@ -136,4 +136,7 @@ class CvdShardAllocator:
         if now - self._overloaded_since < self.scale_out_confirm_seconds:
             return max(current_count, minimum)
         self._overloaded_since = now
-        return max(current_count + 1, minimum)
+        # Event age includes upstream/network/clock delay; adding sockets
+        # cannot repair that. Bound load-driven expansion to useful shards.
+        maximum = max(minimum, min(symbol_count, MAX_LOAD_DRIVEN_SHARDS))
+        return max(current_count, minimum, min(current_count + 1, maximum))
