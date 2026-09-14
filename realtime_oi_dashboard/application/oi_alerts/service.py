@@ -206,6 +206,11 @@ class OiAlertService:
             self._engine.retain_symbols(symbols)
             self._feature_tracker.retain_symbols(symbols)
             self._expansion_engine.retain_symbols(symbols)
+            removed = set(self._last_triggered_at) - symbols
+            for symbol in removed:
+                del self._last_triggered_at[symbol]
+            if removed:
+                self._save_unlocked()
 
     def update_config(
         self,

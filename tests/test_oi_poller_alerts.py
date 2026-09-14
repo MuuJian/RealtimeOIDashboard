@@ -82,6 +82,23 @@ class RecordingAlertService:
 
 
 class OiAlertServiceTests(unittest.TestCase):
+    def test_removed_symbols_release_and_persist_trigger_timestamps(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = AlertStateRepository(Path(directory) / "oi-alerts.json")
+            service = OiAlertService(repository, notifier_factory=CompletingNotifier)
+            for index in range(200):
+                symbol = f"TOKEN{index}USDT"
+                for value in (70_000_000, 80_000_000):
+                    service.observe_updates(
+                        [OiUpdate(symbol, {"currentOiValue": value}, 1)],
+                        triggered_at="trigger",
+                    )
+                service.retain_symbols(set())
+            self.assertEqual(service._last_triggered_at, {})
+            self.assertEqual(repository.load().last_triggered_at, {})
+            self.assertEqual(repository.load().crossed_thresholds, {})
+            self.assertEqual(len(repository.load().events), 50)
+
     def test_pending_delivery_survives_history_limit_and_restart(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = AlertStateRepository(Path(directory) / "oi-alerts.json")
