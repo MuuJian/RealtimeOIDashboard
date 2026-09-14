@@ -412,6 +412,49 @@ class SnapshotAndBackfillTests(unittest.TestCase):
 
         self.assertEqual(calls, ["BTCUSDT"])
 
+    def test_backfill_resumes_after_ban_without_losing_pending_symbols(self):
+        class Response:
+            status_code = 418
+            headers = {"Retry-After": "180"}
+
+        class BannedError(Exception):
+            response = Response()
+
+        clock = [0.0]
+        calls, applied = [], []
+
+        def load(symbol):
+            calls.append(symbol)
+            if len(calls) == 1:
+                raise BannedError("IP banned")
+            return [[1]]
+
+        queue = CvdBackfillQueue(
+            load, lambda symbol, rows: applied.append(symbol),
+            workers=1, requests_per_second=1000, monotonic=lambda: clock[0],
+        )
+        queue.enqueue("BTCUSDT")
+        queue.enqueue("ETHUSDT")
+        queue.start()
+        try:
+            for _ in range(100):
+                if queue.last_error:
+                    break
+                time.sleep(0.01)
+            self.assertTrue(queue.enqueue("SOLUSDT"))
+            self.assertEqual(queue._blocked_until, 180)
+            self.assertEqual(calls, ["BTCUSDT"])
+            clock[0] = 181
+            with queue._condition:
+                queue._condition.notify_all()
+            for _ in range(100):
+                if len(applied) == 3:
+                    break
+                time.sleep(0.01)
+            self.assertCountEqual(applied, ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
+        finally:
+            queue.stop()
+
 
 class BinanceWeightBudgetTests(unittest.TestCase):
     def test_assigns_endpoint_weights_only_to_binance_futures(self):

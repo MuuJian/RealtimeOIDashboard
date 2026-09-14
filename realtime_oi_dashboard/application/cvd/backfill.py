@@ -7,6 +7,8 @@ import threading
 import time
 from collections import deque
 
+from realtime_oi_dashboard.infrastructure.http import _retry_after_seconds
+
 
 BACKFILL_REQUESTS_PER_SECOND = 4.0
 BACKFILL_WORKERS = 2
@@ -57,7 +59,8 @@ class CvdBackfillQueue:
         self._threads = []
         self._stop_event = threading.Event()
         self._started = False
-        self._blocked = False
+        self._monotonic = monotonic
+        self._blocked_until = 0.0
         self.last_error: str | None = None
 
     def start(self) -> None:
@@ -77,7 +80,6 @@ class CvdBackfillQueue:
         with self._condition:
             if (
                 self._stop_event.is_set()
-                or self._blocked
                 or symbol in self._queued
                 or symbol in self._inflight
                 or len(self._queued) + len(self._inflight) >= self._max_pending
@@ -109,11 +111,13 @@ class CvdBackfillQueue:
             symbol, attempt = task
             retry = False
             try:
-                with self._condition:
-                    if self._blocked:
-                        continue
                 if self._pacer.wait(self._stop_event):
                     return
+                with self._condition:
+                    while self._blocked_until > self._monotonic():
+                        if self._stop_event.is_set():
+                            return
+                        self._condition.wait(timeout=min(self._blocked_until - self._monotonic(), 1))
                 rows = self._load_symbol(symbol)
                 if self._stop_event.is_set():
                     return
@@ -123,7 +127,8 @@ class CvdBackfillQueue:
                 status = getattr(getattr(exc, "response", None), "status_code", None)
                 self.last_error = str(exc)
                 if status == 418:
-                    self._block()
+                    self._block(exc)
+                    retry = attempt + 1 < MAX_RETRIES
                 elif attempt + 1 < MAX_RETRIES:
                     delay = _retry_delay(
                         exc,
@@ -138,7 +143,7 @@ class CvdBackfillQueue:
     def _take(self):
         with self._condition:
             while (
-                (not self._pending or self._blocked)
+                (not self._pending or self._blocked_until > self._monotonic())
                 and not self._stop_event.is_set()
             ):
                 self._condition.wait(timeout=1)
@@ -152,16 +157,16 @@ class CvdBackfillQueue:
     def _finish(self, symbol: str, attempt: int, retry: bool) -> None:
         with self._condition:
             self._inflight.discard(symbol)
-            if retry and not self._stop_event.is_set() and not self._blocked:
+            if retry and not self._stop_event.is_set():
                 self._queued.add(symbol)
                 self._pending.append((symbol, attempt + 1))
                 self._condition.notify()
 
-    def _block(self) -> None:
+    def _block(self, error) -> None:
+        response = getattr(error, "response", None)
+        delay = _retry_after_seconds(getattr(response, "headers", {}).get("Retry-After", ""))
         with self._condition:
-            self._blocked = True
-            self._pending.clear()
-            self._queued.clear()
+            self._blocked_until = max(self._blocked_until, self._monotonic() + max(delay or 0, 120))
             self._condition.notify_all()
 
 
