@@ -53,6 +53,8 @@ class OiAlertService:
         self._feature_tracker = SignalFeatureTracker()
         self._expansion_engine = ExpansionAlertEngine()
         self._pending_replayed = False
+        self._save_pending = False
+        self._unsubmitted_ids: set[str] = set()
 
     def start(self) -> None:
         self._notifier.start()
@@ -129,6 +131,7 @@ class OiAlertService:
                         event.threshold
                     ] = event.triggered_at
                 self._events.extend(events)
+                self._unsubmitted_ids.update(event.event_id for event in events)
                 self._bound_events_unlocked()
             for symbol in observed_symbols:
                 trigger_times = self._last_triggered_at.get(symbol)
@@ -143,16 +146,30 @@ class OiAlertService:
                 if not trigger_times:
                     del self._last_triggered_at[symbol]
                     dirty = True
-            if dirty:
+            if dirty or self._save_pending:
                 self._save_unlocked()
 
-        for event in events:
-            self._notifier.enqueue(event)
+        self._enqueue_unsubmitted()
         return events
 
     def save(self) -> None:
         with self._lock:
             self._save_unlocked()
+        self._enqueue_unsubmitted()
+
+    def _enqueue_unsubmitted(self) -> None:
+        with self._lock:
+            if self._save_pending:
+                return
+            pending = [event for event in self._events if event.event_id in self._unsubmitted_ids]
+            self._unsubmitted_ids.difference_update(event.event_id for event in pending)
+        for index, event in enumerate(pending):
+            try:
+                self._notifier.enqueue(event)
+            except Exception:
+                with self._lock:
+                    self._unsubmitted_ids.update(item.event_id for item in pending[index:])
+                raise
 
     def get_state(self, rows: Mapping[str, Mapping[str, object]]) -> dict:
         with self._lock:
@@ -253,6 +270,7 @@ class OiAlertService:
     def _bound_events_unlocked(self) -> None:
         if len(self._events) > MAX_RECENT_EVENTS:
             self._events = self._events[-MAX_RECENT_EVENTS:]
+        self._unsubmitted_ids.intersection_update(event.event_id for event in self._events)
 
     def _snapshot_unlocked(self) -> AlertSnapshot:
         return AlertSnapshot(
@@ -269,7 +287,9 @@ class OiAlertService:
         )
 
     def _save_unlocked(self) -> None:
+        self._save_pending = True
         self._repository.save(self._snapshot_unlocked())
+        self._save_pending = False
 
 
 def _oi_value(row: Mapping[str, object]) -> float | None:

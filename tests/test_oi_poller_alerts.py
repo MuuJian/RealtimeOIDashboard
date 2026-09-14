@@ -76,6 +76,23 @@ class RecordingAlertService:
 
 
 class OiAlertServiceTests(unittest.TestCase):
+    def test_disk_failure_retries_pending_event_before_delivery_without_recrossing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = AlertStateRepository(Path(directory) / "oi-alerts.json")
+            service = OiAlertService(repository, notifier_factory=RecordingNotifier)
+            def updates(value):
+                return [OiUpdate("BTCUSDT", {"currentOiValue": value}, 1)]
+            service.observe_updates(updates(70e6), triggered_at="t1")
+            with patch.object(repository, "save", side_effect=OSError("disk full")):
+                with self.assertRaises(OSError):
+                    service.observe_updates(updates(80e6), triggered_at="t2")
+                self.assertEqual(service._notifier.enqueued, [])
+            service.observe_updates(updates(81e6), triggered_at="t3")
+            self.assertEqual(len(service._notifier.enqueued), 1)
+            self.assertEqual(len(repository.load().events), 1)
+            service.observe_updates(updates(82e6), triggered_at="t4")
+            self.assertEqual(len(service._notifier.enqueued), 1)
+
     def test_observe_updates_uses_current_oi_value_skips_null_updates_and_enqueues_events(self):
         with tempfile.TemporaryDirectory() as directory:
             notifier = None
