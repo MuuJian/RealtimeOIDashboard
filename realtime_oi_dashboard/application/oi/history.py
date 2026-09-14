@@ -99,11 +99,11 @@ class OiHistoryService:
         if (
             cached is not None
             and cached.is_fresh(time.monotonic())
-            and _cached_points_cover_targets(
+            and (cached.retrying or _cached_points_cover_targets(
                 cached,
                 target_24h_ms,
                 target_7d_ms,
-            )
+            ))
         ):
             return _Baselines(
                 target_24h_ms=target_24h_ms,
@@ -221,6 +221,7 @@ class OiHistoryService:
                 refresh_deadline=time.monotonic() + refresh_in,
                 past_24h_point=past_24h_point,
                 past_7d_point=past_7d_point,
+                retrying=retry_in is not None,
             )
 
     def retain_symbols(self, active_symbols: set[str]) -> None:

@@ -17,6 +17,7 @@ class OiHistoryCacheEntry:
     refresh_deadline: float
     past_24h_point: HistoryPoint | None
     past_7d_point: HistoryPoint | None
+    retrying: bool = False
 
     def is_fresh(self, now: float) -> bool:
         return now < self.refresh_deadline

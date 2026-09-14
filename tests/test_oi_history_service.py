@@ -14,6 +14,27 @@ from realtime_oi_dashboard.infrastructure.binance.futures_client import (
 
 
 class OiHistoryServiceTests(unittest.TestCase):
+    def test_expired_baselines_do_not_bypass_failure_cooldown(self):
+        now_ms = 2_000_000_000_000
+        calls = []
+        def fetch(symbol):
+            calls.append(symbol)
+            if len(calls) > 1:
+                raise TimeoutError("history unavailable")
+            return _history_response(now_ms, 100)
+        service = OiHistoryService(fetch, lambda *_args: None)
+        with patch("realtime_oi_dashboard.application.oi.history.time.monotonic", return_value=0) as clock:
+            service.get_changes("BTCUSDT", 1, 1, now_ms)
+            clock.return_value = 3600
+            for _ in range(3):
+                changes = service.get_changes("BTCUSDT", 1, 1, now_ms + 3 * HOUR_MS)
+                self.assertIsNone(changes["oi24hChangePercent"])
+                self.assertIsNone(changes["oi7dChangePercent"])
+            self.assertEqual(len(calls), 2)
+            clock.return_value = 3660
+            service.get_changes("BTCUSDT", 1, 1, now_ms + 3 * HOUR_MS)
+            self.assertEqual(len(calls), 3)
+
     def test_aggregates_cached_notional_into_dominance_history(self):
         now_ms = 2_000_000_000_000
         values = {
