@@ -16,6 +16,18 @@ def alert_event():
 
 
 class TelegramNotifierTests(unittest.TestCase):
+    def test_immediate_delivery_cannot_be_overwritten_by_queued_status(self):
+        outcomes = []
+        notifier = TelegramNotifier(
+            "secret", "123", post_json=lambda *_: None,
+            mark_delivery=lambda event, status, error, at: outcomes.append(status),
+        )
+        # Deliver synchronously at the handoff to reproduce the fastest worker.
+        notifier.start = lambda: None
+        notifier._queue.put_nowait = lambda item: notifier._deliver(*item)
+        notifier.enqueue(alert_event())
+        self.assertEqual(outcomes, ["queued", "sent"])
+
     def tearDown(self):
         for notifier in getattr(self, "notifiers", []):
             notifier.stop(timeout=1)
@@ -116,13 +128,13 @@ class TelegramNotifierTests(unittest.TestCase):
         event = alert_event()
         notifier.enqueue(event)
 
-        self.assertEqual(outcomes[0][:3], (event, "failed", "delivery queue is full"))
-        self.assertIsInstance(outcomes[0][3], str)
+        self.assertEqual(outcomes[-1][:3], (event, "failed", "delivery queue is full"))
+        self.assertIsInstance(outcomes[-1][3], str)
         self.assertEqual(
             notifier.get_status(),
             {
                 "status": "failed",
                 "last_error": "delivery queue is full",
-                "last_attempt_at": outcomes[0][3],
+                "last_attempt_at": outcomes[-1][3],
             },
         )

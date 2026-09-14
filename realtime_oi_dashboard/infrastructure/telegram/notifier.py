@@ -72,9 +72,9 @@ class TelegramNotifier:
             self._report(event, "not_configured", None, None)
             return
         self.start()
+        self._report(event, "queued", None, None)
         try:
             self._queue.put_nowait((event, _event_message(event)))
-            self._report(event, "queued", None, None)
         except queue.Full:
             attempted_at = self._now()
             with self._lock:
