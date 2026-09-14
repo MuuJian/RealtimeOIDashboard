@@ -33,6 +33,12 @@ class SymbolCvdWindowTests(unittest.TestCase):
         self.assertEqual(row["cvd15mRatio"], 0.2)
         self.assertEqual(len(self.window.export_buckets(cutoff_ms=0)), 1)
 
+    def test_delayed_backfill_cannot_evict_a_newer_ring_slot(self):
+        self.update(32, 100, 60)
+        self.assertFalse(self.update(16, 900, 600, source="rest"))
+        self.assertTrue(self.window.has_open_time(32 * MINUTE_MS))
+        self.assertEqual(self.window.snapshot(now_ms=32 * MINUTE_MS)["cvd15m"], 20)
+
     def test_older_rest_value_cannot_overwrite_newer_wss_value(self):
         self.update(15, 150, 90, updated_at=902_000)
         accepted = self.update(

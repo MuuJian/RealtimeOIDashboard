@@ -92,6 +92,12 @@ class SymbolCvdWindow:
             return False
 
         with self._lock:
+            if (
+                self._latest_open_time is not None
+                and bucket.open_time
+                < self._latest_open_time - (BUCKET_COUNT - 1) * MINUTE_MS
+            ):
+                return False
             index = _bucket_index(bucket.open_time)
             previous = self._buckets[index]
             if (
