@@ -1,5 +1,7 @@
 import json
 import threading
+import socket
+import time
 import unittest
 from http.client import HTTPConnection
 
@@ -80,6 +82,59 @@ class FakeAlertProvider:
 
 
 class DashboardServerTests(unittest.TestCase):
+    def test_connection_limit_rejects_excess_and_releases_closed_slots(self):
+        self.server._request_slots = threading.BoundedSemaphore(2)
+        clients = []
+        try:
+            for _ in range(2):
+                client = socket.create_connection(self.server.server_address, timeout=1)
+                clients.append(client)
+                client.sendall(b"GET /livez HTTP/1.1\r\n")
+            deadline = time.monotonic() + 1
+            while self.server._request_slots._value and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertEqual(self.server._request_slots._value, 0)
+            with socket.create_connection(self.server.server_address, timeout=1) as extra:
+                self.assertEqual(extra.recv(1), b"")
+        finally:
+            for client in clients:
+                client.close()
+        deadline = time.monotonic() + 1
+        while self.server._request_slots._value != 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(self.server._request_slots._value, 2)
+        connection = HTTPConnection(*self.server.server_address, timeout=1)
+        try:
+            connection.request("GET", "/livez")
+            self.assertEqual(connection.getresponse().status, 200)
+        finally:
+            connection.close()
+
+    def test_header_and_body_drips_cannot_extend_total_connection_deadline(self):
+        self.server.request_timeout_seconds = 0.15
+        requests = (
+            b"GET /livez HTTP/1.1\r\nX-Drip: ",
+            b"PUT /api/oi-alerts/config HTTP/1.1\r\nHost: localhost\r\n"
+            b"Content-Type: application/json\r\nContent-Length: 1000\r\n\r\n",
+        )
+        for request in requests:
+            with self.subTest(request=request):
+                with socket.create_connection(self.server.server_address, timeout=1) as client:
+                    client.sendall(request)
+                    started = time.monotonic()
+                    for _ in range(30):
+                        try:
+                            client.sendall(b" ")
+                        except OSError:
+                            break
+                        time.sleep(0.02)
+                    try:
+                        received = client.recv(1)
+                    except ConnectionResetError:
+                        received = b""
+                    self.assertEqual(received, b"")
+                    self.assertLess(time.monotonic() - started, 0.5)
+
     def setUp(self):
         self.oi_provider = FakeStateProvider({"schema_version": 6, "rows": []})
         self.signal_provider = FakeStateProvider(

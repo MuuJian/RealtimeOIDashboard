@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import sys
+import socket
+import threading
 from collections.abc import Mapping
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -29,6 +31,9 @@ SAFE_ALERT_LOAD_ERROR = "Saved OI alert state could not be loaded; defaults are 
 
 
 class DashboardHTTPServer(ThreadingHTTPServer):
+    max_connections = 64
+    request_timeout_seconds = 30
+
     def __init__(
         self,
         server_address,
@@ -39,15 +44,32 @@ class DashboardHTTPServer(ThreadingHTTPServer):
         oi_alert_provider=None,
         profile: DashboardProfile | None = None,
     ) -> None:
+        self._request_slots = threading.BoundedSemaphore(self.max_connections)
         super().__init__(server_address, request_handler_class)
         self.oi_state_provider = oi_state_provider
         self.signal_scan_state_provider = signal_scan_state_provider
         self.oi_alert_provider = oi_alert_provider
         self.profile = profile or resolve_profile(None)
 
+    def process_request(self, request, client_address) -> None:
+        if not self._request_slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self._request_slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._request_slots.release()
+
     def handle_error(self, request, client_address) -> None:
         _, error, _ = sys.exc_info()
-        if isinstance(error, ConnectionError):
+        if isinstance(error, (ConnectionError, TimeoutError)):
             return
         super().handle_error(request, client_address)
 
@@ -55,6 +77,21 @@ class DashboardHTTPServer(ThreadingHTTPServer):
 class DashboardHandler(DashboardRequestHandler):
     index_file = INDEX_FILE
     static_dir = STATIC_DIR
+
+    def handle(self) -> None:
+        def expire_connection():
+            try:
+                self.connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+        deadline = threading.Timer(self.server.request_timeout_seconds, expire_connection)
+        deadline.daemon = True
+        deadline.start()
+        try:
+            super().handle()
+        finally:
+            deadline.cancel()
 
     def do_GET(self) -> None:
         self.serve_request()
