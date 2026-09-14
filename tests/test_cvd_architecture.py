@@ -416,7 +416,7 @@ class SnapshotAndBackfillTests(unittest.TestCase):
 class BinanceWeightBudgetTests(unittest.TestCase):
     def test_assigns_endpoint_weights_only_to_binance_futures(self):
         self.assertEqual(request_weight("https://fapi.binance.com/fapi/v1/ticker/24hr"), 40)
-        self.assertEqual(request_weight("https://fapi.binance.com/fapi/v1/klines"), 1)
+        self.assertEqual(request_weight("https://fapi.binance.com/fapi/v1/klines"), 5)
         self.assertEqual(request_weight("https://api.coingecko.com/api/v3/coins"), 0)
 
     def test_budget_waits_until_tokens_refill(self):

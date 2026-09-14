@@ -95,7 +95,7 @@ class JsonHttpClient:
         last_error: Exception | None = None
         for attempt in range(1, attempts + 1):
             self._raise_if_cancelled()
-            self._acquire_request_budget(url)
+            self._acquire_request_budget(url, params=params)
             self._raise_if_cancelled()
             try:
                 response = self._session().get(url, params=params, timeout=timeout)
@@ -127,10 +127,11 @@ class JsonHttpClient:
         if self._check_cancelled is not None:
             self._check_cancelled()
 
-    def _acquire_request_budget(self, url: str) -> None:
+    def _acquire_request_budget(self, url: str, *, params=None) -> None:
         if self._before_request is _DEFAULT_BEFORE_REQUEST:
             GLOBAL_BINANCE_WEIGHT_BUDGET.acquire(
                 url,
+                params=params,
                 check_cancelled=self._raise_if_cancelled,
                 sleep=self._sleep,
             )
