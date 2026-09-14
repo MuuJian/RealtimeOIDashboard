@@ -14,6 +14,7 @@ STREAM_URL = "wss://fstream.binance.com/market/stream"
 SUBSCRIPTION_BATCH_SIZE = 100
 CONTROL_MESSAGE_INTERVAL_SECONDS = 0.21
 CONNECTION_ROTATE_SECONDS = 85_800
+DATA_STALE_SECONDS = 30.0
 
 
 class BinanceCvdShard:
@@ -52,6 +53,7 @@ class BinanceCvdShard:
         self._messages_per_second = 0.0
         self._processing_lag_ms = 0.0
         self._connected_at = None
+        self._last_data_at = None
 
     def start(self) -> None:
         if self._thread is not None:
@@ -125,6 +127,7 @@ class BinanceCvdShard:
             self._confirmed_symbols = set()
             self._pending_controls = {}
             self._connected_at = self._monotonic()
+            self._last_data_at = self._connected_at
             self._connected = True
         self._sync_subscriptions()
 
@@ -134,8 +137,15 @@ class BinanceCvdShard:
             with self._lock:
                 connection = self._connection
                 connected_at = self._connected_at
+                last_data_at = self._last_data_at
+                has_symbols = bool(self._desired_symbols)
             if connection is None:
                 return
+            if (
+                has_symbols and last_data_at is not None
+                and self._monotonic() - last_data_at >= DATA_STALE_SECONDS
+            ):
+                raise ConnectionError("CVD market data timed out")
             if (
                 connected_at is not None
                 and self._monotonic() - connected_at
@@ -315,6 +325,7 @@ class BinanceCvdShard:
             if symbol not in self._desired_symbols:
                 return
             self._confirmed_symbols.add(symbol)
+            self._last_data_at = self._monotonic()
             self._message_count += 1
             self._symbol_counts[symbol] += 1
             wall_lag = max(int(self._wall_time() * 1000) - event_ms, 0)

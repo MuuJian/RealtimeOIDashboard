@@ -3,6 +3,7 @@ import tempfile
 import threading
 import time
 import unittest
+import websocket
 from pathlib import Path
 
 from realtime_oi_dashboard.application.cvd.backfill import CvdBackfillQueue
@@ -139,6 +140,25 @@ class FakeConnection:
 
 
 class CvdStreamTests(unittest.TestCase):
+    def test_open_but_silent_socket_expires_and_is_closed(self):
+        clock = ManualClock()
+        health = []
+        connection = FakeConnection()
+        def recv():
+            clock.value += 1
+            raise websocket.WebSocketTimeoutException()
+        connection.recv = recv
+        shard = BinanceCvdShard(0, lambda *_args: None,
+            lambda *args: health.append(args), monotonic=clock,
+            websocket_factory=lambda *_args, **_kwargs: connection)
+        shard.update_symbols({"BTCUSDT"})
+        shard._connect()
+        with self.assertRaisesRegex(ConnectionError, "timed out"):
+            shard._consume()
+        shard._close_connection()
+        self.assertTrue(connection.closed)
+        self.assertFalse(health[-1][2])
+
     def test_subscriptions_are_batched_and_kline_fields_are_forwarded(self):
         connection = FakeConnection()
         updates = []

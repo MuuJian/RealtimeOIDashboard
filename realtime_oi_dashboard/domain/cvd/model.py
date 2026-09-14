@@ -160,15 +160,12 @@ class SymbolCvdWindow:
                 for bucket in self._buckets
                 if bucket is not None and bucket.open_time in expected
             }
-            implicit_current = self._connected and current_open not in buckets_by_open
             covered_opens = set(buckets_by_open)
-            if implicit_current:
-                covered_opens.add(current_open)
             delta = sum(bucket.delta for bucket in buckets_by_open.values())
             total = sum(bucket.total for bucket in buckets_by_open.values())
             ratio = delta / total if total else 0.0
             coverage_minutes = _coverage_minutes(expected, covered_opens)
-            observed_count = len(buckets_by_open) + int(implicit_current)
+            observed_count = len(buckets_by_open)
             health = self._health_locked(coverage_minutes, observed_count)
             direction = _direction_for(ratio)
             as_of = self._as_of or (now_ms if self._connected else None)

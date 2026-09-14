@@ -427,6 +427,9 @@ class CvdPoller:
 
     def _fill_silent_minutes(self) -> None:
         now_ms = self.now_ms()
+        # Allow the final WSS candle to arrive before requesting a repair.
+        if now_ms % MINUTE_MS < 5_000:
+            return
         for shard_id, symbols in self._assignments.items():
             shard = self._shards.get(shard_id)
             if shard is None:
@@ -442,10 +445,10 @@ class CvdPoller:
                 if metrics.get("confirmedSymbols") == len(symbols)
                 else set()
             )
-            self.store.fill_closed_zero_buckets(
-                symbols.intersection(confirmed),
-                now_ms=now_ms,
-            )
+            # Silence is not evidence of zero volume. REST confirms both
+            # genuinely empty minutes and missed closing updates.
+            for symbol in symbols.intersection(confirmed):
+                self._enqueue_backfill_if_missing(symbol)
 
     def _enqueue_backfill_if_missing(self, symbol: str) -> bool:
         current_open = self.now_ms() // MINUTE_MS * MINUTE_MS

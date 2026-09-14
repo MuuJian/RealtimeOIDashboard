@@ -223,6 +223,17 @@ class CvdPollerTests(unittest.TestCase):
         self.assertEqual(row["cvdHealth"], "unavailable")
         self.assertIsNone(row["cvd15m"])
 
+    def test_silence_requests_verified_history_instead_of_fabricating_zeros(self):
+        poller, _, _, _ = self.create_poller(1, now_ms=lambda: 16 * MINUTE_MS + 6000)
+        poller.refresh_universe(force=True)
+        poller._handle_shard_health(0, {"COIN0USDT"}, True, None)
+        poller._fill_silent_minutes()
+        poller.store.publish(now_ms=16 * MINUTE_MS + 6000)
+        row = poller.get_state()["rows"]["COIN0USDT"]
+        self.assertEqual(row["cvdHealth"], "unavailable")
+        self.assertEqual(row["cvdCoverageSeconds"], 0)
+        self.assertEqual(poller.backfill.queue_size, 1)
+
     def test_one_shard_disconnect_does_not_clear_other_rows(self):
         poller, _, _, shards = self.create_poller(151)
         poller.refresh_universe(force=True)
