@@ -216,11 +216,15 @@ class SymbolCvdWindow:
                 )
             ]
 
-    def has_open_time(self, open_time: int) -> bool:
+    def has_open_time(self, open_time: int, *, require_closed=False) -> bool:
         open_time = _aligned_minute(open_time)
         with self._lock:
             bucket = self._buckets[_bucket_index(open_time)]
-            return bucket is not None and bucket.open_time == open_time
+            return (
+                bucket is not None
+                and bucket.open_time == open_time
+                and (not require_closed or bucket.closed)
+            )
 
     def _prune_locked(self, reference_open: int) -> None:
         cutoff = reference_open - (BUCKET_COUNT - 1) * MINUTE_MS
@@ -297,6 +301,12 @@ def _coverage_minutes(expected, buckets_by_open) -> int:
 
 
 def _should_replace_bucket(previous: MinuteBucket, candidate: MinuteBucket) -> bool:
+    if (
+        previous.source in {"rest", "wss"}
+        and candidate.source in {"rest", "wss"}
+        and candidate.closed != previous.closed
+    ):
+        return candidate.closed
     previous_priority = SOURCE_PRIORITY[previous.source]
     candidate_priority = SOURCE_PRIORITY[candidate.source]
     if candidate_priority != previous_priority:

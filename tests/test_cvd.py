@@ -55,6 +55,18 @@ class SymbolCvdWindowTests(unittest.TestCase):
             30,
         )
 
+    def test_final_rest_repairs_incomplete_wss_and_resists_late_open_updates(self):
+        values = dict(open_time=15 * MINUTE_MS, quote_volume=100,
+                      taker_buy_quote_volume=60, closed=False, source="wss",
+                      updated_at=901_000)
+        self.window.update(**values)
+        self.assertTrue(self.window.update(**{
+            **values, "quote_volume": 1000, "taker_buy_quote_volume": 900,
+            "closed": True, "source": "rest", "updated_at": 959_999,
+        }))
+        self.assertFalse(self.window.update(**{**values, "updated_at": 960_001}))
+        self.assertEqual(self.window.snapshot(now_ms=16 * MINUTE_MS)["cvd15m"], 800)
+
     def test_real_wss_value_overwrites_newer_synthetic_zero(self):
         self.update(
             15,

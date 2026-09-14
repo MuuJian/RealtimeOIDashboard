@@ -277,6 +277,15 @@ class CvdPollerTests(unittest.TestCase):
         self.assertFalse(queued)
         self.assertEqual(poller.backfill.queue_size, 0)
 
+    def test_reconnect_repairs_existing_but_unclosed_minutes(self):
+        poller, _, _, _ = self.create_poller(1)
+        poller.refresh_universe(force=True)
+        for minute in range(2, 16):
+            poller.store.update_bucket("COIN0USDT", open_time=minute * MINUTE_MS,
+                quote_volume=100, taker_buy_quote_volume=60, closed=minute != 15,
+                source="wss", updated_at=(minute + 1) * MINUTE_MS - 1)
+        self.assertTrue(poller._enqueue_backfill_if_missing("COIN0USDT"))
+
     def test_close_finishes_cleanup_and_can_retry_after_a_shard_stop_failure(self):
         poller, _, client, _ = self.create_poller(1)
 

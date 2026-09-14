@@ -82,7 +82,10 @@ class CvdStore:
         return [
             current_open - offset * MINUTE_MS
             for offset in range(minutes)
-            if not window.has_open_time(current_open - offset * MINUTE_MS)
+            if not window.has_open_time(
+                current_open - offset * MINUTE_MS,
+                require_closed=offset > 0,
+            )
         ]
 
     def publish(self, *, now_ms: int | None = None) -> MappingProxyType:
