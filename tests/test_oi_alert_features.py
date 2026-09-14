@@ -10,6 +10,20 @@ from realtime_oi_dashboard.domain.oi_alerts.model import AlertConfig
 
 
 class SignalFeatureTrackerTests(unittest.TestCase):
+    def test_sampling_gap_requires_a_recent_window_baseline(self):
+        for gap_minutes in (120, 300):
+            tracker = SignalFeatureTracker()
+            row = {"currentOi": 100, "currentOiValue": 10000,
+                   "price": 100, "oiUpdatedAt": 60_000}
+            tracker.observe("BTCUSDT", row, window_minutes=15)
+            feature = tracker.observe("BTCUSDT", {
+                **row, "currentOi": 110, "price": 110,
+                "oiUpdatedAt": 60_000 + gap_minutes * 60_000,
+            }, window_minutes=15)
+            self.assertIsNone(feature.oi_change_percent)
+            self.assertIsNone(feature.price_change_percent)
+            self.assertIsNone(classify_expansion(feature, AlertConfig()))
+
     def test_uses_oi_quantity_and_exchange_window_for_change(self):
         tracker = SignalFeatureTracker()
         start_ms = 1_787_327_400_000

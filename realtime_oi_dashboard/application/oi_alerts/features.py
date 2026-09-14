@@ -12,6 +12,7 @@ from realtime_oi_dashboard.domain.oi_alerts.model import AlertConfig, AlertEvent
 
 MINUTE_MS = 60_000
 MAX_HISTORY_MINUTES = 4 * 60
+MAX_BASELINE_TOLERANCE_MS = 2 * MINUTE_MS
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,10 +82,12 @@ class SignalFeatureTracker:
             history.popleft()
 
         target = sample.timestamp_ms - window_minutes * MINUTE_MS
+        tolerance = min(MAX_BASELINE_TOLERANCE_MS, window_minutes * MINUTE_MS // 4)
         baseline = None
         for candidate in reversed(history):
             if candidate.timestamp_ms <= target:
-                baseline = candidate
+                if target - candidate.timestamp_ms <= tolerance:
+                    baseline = candidate
                 break
         feature = SignalFeature(
             symbol=symbol,
