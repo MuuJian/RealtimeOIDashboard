@@ -88,8 +88,8 @@ function isOptionalText(value) {
 
 function isSymbol(value) {
   return typeof value === "string"
-    && value === value.trim()
-    && /^[A-Z0-9]+USDT$/.test(value);
+    && value === value.toUpperCase()
+    && /^[\p{L}\p{N}]+USDT$/u.test(value);
 }
 
 function isFiniteNumber(value) {

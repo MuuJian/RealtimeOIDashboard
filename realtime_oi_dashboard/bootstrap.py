@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import signal
+import threading
+from contextlib import contextmanager
 from dataclasses import replace
 
 from realtime_oi_dashboard.application.background_service import (
@@ -216,7 +219,8 @@ def run_dashboard(
         try:
             log_startup(args)
             try:
-                server.serve_forever()
+                with _interrupt_on_sigterm():
+                    server.serve_forever()
             except KeyboardInterrupt:
                 print("\nDashboard stopped.")
         finally:
@@ -228,6 +232,23 @@ def run_dashboard(
                 _stop_service(services, "cvd")
             _close_shared_rest_cache(shared_rest_cache)
     return 0
+
+
+@contextmanager
+def _interrupt_on_sigterm():
+    """Route container termination through the normal worker cleanup path."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def interrupt(_signum, _frame):
+        raise KeyboardInterrupt
+
+    previous_handler = signal.signal(signal.SIGTERM, interrupt)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous_handler)
 
 
 def _start_optional_signal_scan(server, signal_scan_service):

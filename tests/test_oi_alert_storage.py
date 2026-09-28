@@ -13,6 +13,29 @@ from realtime_oi_dashboard.infrastructure.storage.oi_alerts import (
 
 
 class AlertStateRepositoryTests(unittest.TestCase):
+    def test_unicode_symbols_round_trip_without_resetting_alert_configuration(self):
+        symbol = "测试USDT"
+        snapshot = AlertSnapshot(
+            config=AlertConfig(False, (80e6, 120e6, 180e6), symbols=(symbol,)),
+            crossed_thresholds={symbol: {80e6}},
+            events=(AlertEvent(
+                symbol=symbol,
+                oi_value=90e6,
+                threshold=80e6,
+                signal="OI scale alert",
+                triggered_at="2026-09-28T00:00:00Z",
+                explanation="OI scale alert",
+            ),),
+            last_triggered_at={symbol: {80e6: "2026-09-28T00:00:00Z"}},
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            repository = AlertStateRepository(Path(directory) / "oi-alerts.json")
+            repository.save(snapshot)
+            loaded = repository.load()
+
+        self.assertIsNone(repository.load_error)
+        self.assertEqual(loaded, snapshot)
+
     def test_round_trips_config_crossed_state_and_newest_fifty_events(self):
         events = tuple(
             AlertEvent(

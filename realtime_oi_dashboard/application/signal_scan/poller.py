@@ -44,9 +44,9 @@ from realtime_oi_dashboard.application.signal_scan.shutdown import (
 from realtime_oi_dashboard.domain.errors import PollingStopped
 from realtime_oi_dashboard.domain.signal_scan.rules import (
     SCAN_POOL_SIZE,
-    USDT_SYMBOL_PATTERN,
     build_scan_universe,
     filter_signal_entries,
+    is_valid_scan_symbol,
     select_signals,
 )
 from realtime_oi_dashboard.domain.signal_scan.klines import (
@@ -486,6 +486,4 @@ def _close_settings():
 
 
 def _valid_symbol(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    return value if USDT_SYMBOL_PATTERN.fullmatch(value) else None
+    return value if is_valid_scan_symbol(value) else None

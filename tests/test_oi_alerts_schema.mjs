@@ -29,6 +29,37 @@ test("accepts the unified OI alert rule payload", () => {
   assert.equal(isOiAlertsPayload(payload()), true);
 });
 
+test("accepts Unicode Binance symbols in rules, active alerts, and event history", () => {
+  const active = {
+    symbol: "币安人生USDT",
+    event_type: "oi_scale",
+    oi_value: 100e6,
+    threshold: 75e6,
+    signal: "OI scale alert",
+    oi_change_percent: null,
+    price_change_percent: null,
+    explanation: "test",
+    as_of: "2026-08-22T00:00:00Z",
+  };
+  const event = {
+    ...active,
+    event_id: "unicode-event",
+    triggered_at: active.as_of,
+    exchange_timestamp_ms: 1_787_356_800_000,
+    delivery_status: "sent",
+    failure_reason: null,
+    last_attempt_at: active.as_of,
+  };
+  assert.equal(isOiAlertsPayload(payload({
+    config: { ...payload().config, symbols: [active.symbol] },
+    active: [active],
+    events: [event],
+  })), true);
+  for (const symbol of ["币安人生USDT ", "币安/人生USDT", "btCUSDT", "USDT"]) {
+    assert.equal(isOiAlertsPayload(payload({ active: [{ ...active, symbol }] })), false);
+  }
+});
+
 test("rejects malformed symbols and non-finite signal metrics", () => {
   assert.equal(isOiAlertsPayload(payload({
     config: { ...payload().config, symbols: ["btc"] },

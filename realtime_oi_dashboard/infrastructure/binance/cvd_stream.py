@@ -212,6 +212,8 @@ class BinanceCvdShard:
                 self._stop_event.wait(CONTROL_MESSAGE_INTERVAL_SECONDS)
 
     def _rotate_connection(self) -> None:
+        if self._stop_event.is_set():
+            return
         replacement = self._websocket_factory(STREAM_URL, timeout=1)
         with self._lock:
             desired = set(self._desired_symbols)
@@ -220,6 +222,8 @@ class BinanceCvdShard:
             ordered = sorted(desired)
             pending_request_ids = set()
             for offset in range(0, len(ordered), SUBSCRIPTION_BATCH_SIZE):
+                if self._stop_event.is_set():
+                    return
                 batch = ordered[offset:offset + SUBSCRIPTION_BATCH_SIZE]
                 with self._lock:
                     self._request_id += 1
@@ -241,6 +245,8 @@ class BinanceCvdShard:
             received_data = False
             deadline = self._monotonic() + 10.0
             while not ready and self._monotonic() < deadline:
+                if self._stop_event.is_set():
+                    return
                 try:
                     message = replacement.recv()
                 except websocket.WebSocketTimeoutException:
@@ -249,12 +255,16 @@ class BinanceCvdShard:
                     break
                 try:
                     payload = json.loads(message)
-                    if payload.get("result") is None and "id" in payload:
-                        pending_request_ids.discard(payload["id"])
+                    if "id" in payload:
+                        if payload.get("result") is not None or "code" in payload:
+                            raise ConnectionError(
+                                f"CVD subscription rejected: {payload.get('msg', payload)}"
+                            )
+                        if "result" in payload:
+                            pending_request_ids.discard(payload["id"])
                     data = payload.get("data", payload)
                     if isinstance(data, dict) and isinstance(data.get("k"), dict):
-                        received_data = True
-                        self._handle_message(message)
+                        received_data = self._handle_message(message) or received_data
                     ready = received_data and not pending_request_ids
                 except (AttributeError, TypeError, ValueError):
                     ready = False
@@ -262,7 +272,7 @@ class BinanceCvdShard:
                 raise ConnectionError("replacement CVD shard was not confirmed")
 
             with self._lock:
-                if self._connection is not old_connection:
+                if self._stop_event.is_set() or self._connection is not old_connection:
                     return
                 self._connection = replacement
                 self._subscribed_symbols = desired
@@ -279,7 +289,7 @@ class BinanceCvdShard:
                 except Exception:
                     pass
 
-    def _handle_message(self, message) -> None:
+    def _handle_message(self, message) -> bool:
         received_at = self._monotonic()
         try:
             payload = json.loads(message)
@@ -288,6 +298,8 @@ class BinanceCvdShard:
                     raise ConnectionError(
                         f"CVD subscription rejected: {payload.get('msg', payload)}"
                     )
+                if "result" not in payload:
+                    return False
                 notify_symbols = set()
                 with self._lock:
                     control = self._pending_controls.pop(payload["id"], None)
@@ -310,7 +322,7 @@ class BinanceCvdShard:
                         True,
                         None,
                     )
-                return
+                return False
             data = payload.get("data", payload)
             kline = data["k"]
             symbol = kline["s"]
@@ -324,10 +336,10 @@ class BinanceCvdShard:
                 "updated_at": event_ms,
             }
         except (KeyError, TypeError, ValueError, OverflowError):
-            return
+            return False
         with self._lock:
             if symbol not in self._desired_symbols:
-                return
+                return False
             self._confirmed_symbols.add(symbol)
             self._last_data_at = self._monotonic()
             self._message_count += 1
@@ -337,6 +349,7 @@ class BinanceCvdShard:
             self._processing_lag_ms = max(wall_lag, processing_ms)
         self._on_kline(self.shard_id, symbol, values)
         self._roll_rate_window()
+        return True
 
     def _roll_rate_window(self) -> None:
         now = self._monotonic()

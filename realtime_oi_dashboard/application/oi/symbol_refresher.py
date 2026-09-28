@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
 from realtime_oi_dashboard.domain.market_data import validate_symbol_refresh
+from realtime_oi_dashboard.infrastructure.binance.weight_budget import BinanceCooldownError
 
 
 SYMBOL_REFRESH_RETRY_SECONDS = 60
@@ -74,7 +75,7 @@ class SymbolRefresher:
                 known_symbols,
                 confirmed_large_removal=confirmed_large_removal,
             )
-        except PollingStopped:
+        except (PollingStopped, BinanceCooldownError):
             raise
         except Exception as exc:
             with self.lock:

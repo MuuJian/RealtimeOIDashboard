@@ -4,9 +4,31 @@ from unittest.mock import patch
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
 from realtime_oi_dashboard.application.oi.runtime import DashboardRuntime
+from realtime_oi_dashboard.infrastructure.binance.weight_budget import BinanceCooldownError
 
 
 class DashboardRuntimeTests(unittest.TestCase):
+    def test_cooldown_is_reported_once_and_waits_without_delaying_shutdown(self):
+        reported = threading.Event()
+        errors = []
+        def update_once(**_kwargs):
+            raise BinanceCooldownError(4200, status_code=418)
+        def handle_error(error):
+            errors.append(error)
+            reported.set()
+        runtime, stop_event, closed = self.runtime(update_once, handle_error)
+        worker = threading.Thread(target=runtime.run_forever)
+        worker.start()
+        try:
+            self.assertTrue(reported.wait(1))
+            self.assertTrue(worker.is_alive())
+        finally:
+            stop_event.set()
+            worker.join(1)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(closed, [True])
+
     def runtime(self, update_once, handle_error, *, workers=1):
         stop_event = threading.Event()
         closed = []

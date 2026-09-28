@@ -177,6 +177,11 @@ class OiAlertService:
 
     def get_state(self, rows: Mapping[str, Mapping[str, object]]) -> dict:
         with self._lock:
+            features = {
+                symbol: feature
+                for symbol, feature in self._feature_tracker.payload().items()
+                if symbol in rows
+            }
             payload = self._snapshot_unlocked().to_payload()
             payload["events"] = payload["events"][-MAX_RECENT_EVENTS:]
             payload["notifier"] = self._notifier.get_status()
@@ -190,11 +195,9 @@ class OiAlertService:
                 self._last_triggered_at,
             )
             payload["active"].extend(
-                active_feature_rows(
-                    self._feature_tracker.payload(), self._engine.config
-                )
+                active_feature_rows(features, self._engine.config)
             )
-            payload["features"] = self._feature_tracker.payload()
+            payload["features"] = features
             return payload
 
     def get_features(self) -> dict[str, dict]:

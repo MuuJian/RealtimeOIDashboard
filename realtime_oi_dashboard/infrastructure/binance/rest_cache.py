@@ -22,6 +22,7 @@ from realtime_oi_dashboard.infrastructure.binance.market_data import (
     DirectBinanceMarketData,
 )
 from realtime_oi_dashboard.infrastructure.http import JsonHttpClient
+from realtime_oi_dashboard.infrastructure.binance.weight_budget import BinanceCooldownError
 
 
 TICKER_URL = TICKER_24H_URL
@@ -95,7 +96,7 @@ class _SharedResource:
                     )
                 ):
                     raise ValueError(self._error_message)
-            except PollingStopped:
+            except (PollingStopped, BinanceCooldownError):
                 raise
             except Exception as exc:
                 # Forced refreshes independently confirm large symbol removals.

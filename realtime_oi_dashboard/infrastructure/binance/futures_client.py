@@ -23,6 +23,7 @@ from realtime_oi_dashboard.infrastructure.binance.market_data import (
     DirectBinanceMarketData,
     resolve_market_data_source,
 )
+from realtime_oi_dashboard.infrastructure.binance.weight_budget import BinanceCooldownError
 from realtime_oi_dashboard.domain.parsing import optional_float, optional_int
 
 
@@ -159,7 +160,7 @@ class BinanceFuturesClient:
                         f"{len(incomplete_symbols)} active symbols"
                     ),
                 )
-        except PollingStopped:
+        except (PollingStopped, BinanceCooldownError):
             raise
         except Exception as exc:
             failure_time = time.monotonic()

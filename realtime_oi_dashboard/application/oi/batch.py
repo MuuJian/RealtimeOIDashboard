@@ -8,6 +8,7 @@ from math import isfinite
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
 from realtime_oi_dashboard.domain.oi.row import OIRowBuilder
+from realtime_oi_dashboard.infrastructure.binance.weight_budget import BinanceCooldownError
 
 
 class OIBatchRunner:
@@ -92,6 +93,8 @@ class OIBatchRunner:
                 )
             except PollingStopped:
                 break
+            except BinanceCooldownError:
+                raise
             except Exception as exc:
                 self.record_error(symbol, exc)
                 results.append(None)
@@ -136,6 +139,10 @@ class OIBatchRunner:
                 for pending in futures:
                     pending.cancel()
                 break
+            except BinanceCooldownError:
+                for pending in futures:
+                    pending.cancel()
+                raise
             except Exception as exc:
                 self.record_error(symbol, exc)
         return [results_by_symbol[symbol] for symbol in batch]
@@ -157,7 +164,10 @@ class OIBatchRunner:
 
         oi_snapshot = self.client.get_open_interest(symbol)
         current_oi = oi_snapshot.value
-        measured_at = time.monotonic()
+        # Freshness starts at Binance's observation, not when a cached or
+        # delayed value reaches us. Repeated old values must not renew the TTL.
+        source_age = max(time.time() - oi_snapshot.timestamp_ms / 1000, 0.0)
+        measured_at = time.monotonic() - source_age
         if self.stop_event.is_set():
             return None
 

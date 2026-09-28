@@ -45,7 +45,7 @@ function validConfig(config) {
     && config.cooldown_minutes >= 0
     && config.cooldown_minutes <= 1440
     && Array.isArray(config.symbols)
-    && config.symbols.every(symbol => /^[A-Z0-9]+USDT$/.test(symbol))
+    && config.symbols.every(validSymbol)
   );
 }
 
@@ -69,7 +69,7 @@ function validStorage(storage) {
 function validActive(row) {
   return Boolean(
     row
-    && /^[A-Z0-9]+USDT$/.test(row.symbol)
+    && validSymbol(row.symbol)
     && ["oi_scale", "oi_expansion"].includes(row.event_type)
     && positiveNumber(row.oi_value)
     && positiveNumber(row.threshold)
@@ -98,6 +98,12 @@ function validEvent(row) {
 
 function positiveNumber(value) {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function validSymbol(value) {
+  return typeof value === "string"
+    && value === value.toUpperCase()
+    && /^[\p{L}\p{N}]+USDT$/u.test(value);
 }
 
 function nonNegativeNumber(value) {

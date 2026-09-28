@@ -28,6 +28,7 @@ from realtime_oi_dashboard.application.signal_scan.poller import (
     TICKER_URL,
 )
 from realtime_oi_dashboard.domain.errors import PollingStopped
+from realtime_oi_dashboard.infrastructure.binance.weight_budget import BinanceCooldownError
 
 
 def make_klines(count=120, base=100.0):
@@ -112,6 +113,42 @@ class SignalScanPollerTests(unittest.TestCase):
         )
         self.kline_clock = clock_patch.start()
         self.addCleanup(clock_patch.stop)
+
+    def test_unicode_symbol_reaches_scan_results_and_error_reporting(self):
+        symbol = "币安人生USDT"
+        history = make_klines()
+        for index, candle in enumerate(history):
+            candle[2:5] = [100.0 + index] * 3
+        client = FakeHttpClient(
+            [{"symbol": symbol, "quoteVolume": "1000", "priceChangePercent": "1.5"}],
+            make_exchange_info([symbol]), {symbol: history},
+        )
+        poller = SignalScanPoller(http_client=client)
+        self.addCleanup(poller.close)
+
+        self.assertTrue(poller.run_scan())
+        self.assertEqual(poller.get_state()["bulls"][0]["symbol"], symbol)
+        client.failing_symbols.add(symbol)
+        with redirect_stdout(io.StringIO()):
+            self.assertFalse(poller.run_scan())
+        self.assertEqual(poller.get_state()["recent_errors"][0]["symbol"], symbol)
+
+    def test_cooldown_skips_full_retry_and_preserves_cached_klines(self):
+        client = FakeHttpClient([], make_exchange_info([]), {})
+        poller = SignalScanPoller(http_client=client)
+        self.addCleanup(poller.close)
+        history = make_klines()
+        self.assertTrue(poller._kline_cache.store("AUSDT", history))
+
+        for load in (poller._load_klines, poller._load_full_klines):
+            with self.subTest(load=load.__name__):
+                with patch.object(
+                    client, "get_json", side_effect=BinanceCooldownError(120, status_code=418)
+                ) as request:
+                    with self.assertRaises(BinanceCooldownError):
+                        load("AUSDT")
+                self.assertEqual(request.call_count, 1)
+                self.assertEqual(poller._kline_cache.peek("AUSDT"), history)
 
     def test_stale_contiguous_history_cannot_refresh_scan_timestamp(self):
         client = FakeHttpClient(

@@ -114,6 +114,18 @@ class HealthEndpointTests(unittest.TestCase):
                     expected_status,
                 )
 
+    def test_expired_or_failed_snapshots_are_not_reported_as_initial_warmup(self):
+        for error, expected_status in ((None, "stale"), ("Binance cooldown", "error")):
+            with self.subTest(error=error):
+                self.oi_provider.state = {
+                    **_oi_state(rows=[]),
+                    "saved_at": "2026-09-28T00:00:00Z",
+                    "error": error,
+                }
+                status, payload = self.request_json("/readyz")
+                self.assertEqual(status, 503)
+                self.assertEqual(payload["components"]["oi"]["status"], expected_status)
+
     def test_optional_component_failure_does_not_block_readiness(self):
         self.signal_provider.error = BackgroundServiceStopped("stopped")
         self.oi_provider.state = _oi_state(cvd_health="stale")

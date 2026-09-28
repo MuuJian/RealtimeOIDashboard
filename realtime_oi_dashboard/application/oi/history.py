@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from math import isfinite
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
+from realtime_oi_dashboard.infrastructure.binance.weight_budget import BinanceCooldownError
 from realtime_oi_dashboard.infrastructure.storage.oi_history_cache import (
     HistoryPoint,
     OiHistoryCacheEntry,
@@ -122,7 +123,7 @@ class OiHistoryService:
             ]
             if not history_points:
                 raise ValueError("OI history response contains no valid points")
-        except PollingStopped:
+        except (PollingStopped, BinanceCooldownError):
             raise
         except Exception as exc:
             history_points = None

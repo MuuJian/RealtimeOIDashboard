@@ -1,3 +1,4 @@
+import io
 import json
 import tempfile
 import threading
@@ -5,6 +6,7 @@ import time
 import unittest
 import websocket
 from pathlib import Path
+from unittest.mock import patch
 
 from realtime_oi_dashboard.application.cvd.backfill import CvdBackfillQueue
 from realtime_oi_dashboard.application.cvd.shard_allocator import (
@@ -19,6 +21,7 @@ from realtime_oi_dashboard.infrastructure.binance.cvd_stream import (
     BinanceCvdShard,
 )
 from realtime_oi_dashboard.infrastructure.binance.weight_budget import (
+    BinanceCooldownError,
     BinanceWeightBudget,
     request_weight,
 )
@@ -252,6 +255,15 @@ class CvdStreamTests(unittest.TestCase):
                 "msg": "Invalid request",
             }))
 
+    def test_control_message_without_result_does_not_confirm_subscriptions(self):
+        shard, connection = self.rotation_shard(FakeConnection(), {"BTCUSDT"})
+        request_id = connection.sent[0]["id"]
+
+        shard._handle_message(json.dumps({"id": request_id}))
+
+        self.assertEqual(shard.confirmed_symbols(), set())
+        self.assertIn(request_id, shard._pending_controls)
+
     def test_smooth_rotation_waits_for_ack_and_live_data(self):
         old_connection = FakeConnection()
         replacement = FakeConnection(received=[
@@ -292,8 +304,128 @@ class CvdStreamTests(unittest.TestCase):
         self.assertEqual(len(updates), 1)
         self.assertIs(shard._connection, replacement)
 
+    def test_rotation_rejection_preserves_the_working_connection(self):
+        replacement = FakeConnection(received=[
+            lambda connection: json.dumps({
+                "result": None,
+                "id": connection.sent[0]["id"],
+            }),
+            lambda connection: json.dumps({
+                "code": 2,
+                "msg": "Invalid request",
+                "id": connection.sent[1]["id"],
+            }),
+            json.dumps({"k": {
+                "s": "BTCUSDT", "t": 900_000,
+                "q": "150", "Q": "90", "x": False,
+            }}),
+        ])
+        symbols = {"BTCUSDT"} | {f"COIN{index}USDT" for index in range(100)}
+        shard, old_connection = self.rotation_shard(replacement, symbols)
+
+        with self.assertRaisesRegex(ConnectionError, "subscription rejected"):
+            shard._rotate_connection()
+
+        self.assertFalse(old_connection.closed)
+        self.assertTrue(replacement.closed)
+        self.assertIs(shard._connection, old_connection)
+
+    def test_rotation_requires_usable_data_from_a_subscribed_symbol(self):
+        for kline in ({}, {
+            "s": "ETHUSDT", "t": 900_000,
+            "q": "150", "Q": "90", "x": False,
+        }):
+            with self.subTest(kline=kline):
+                replacement = FakeConnection(received=[
+                    lambda connection: json.dumps({
+                        "result": None,
+                        "id": connection.sent[0]["id"],
+                    }),
+                    json.dumps({"k": kline}),
+                    None,
+                ])
+                shard, old_connection = self.rotation_shard(replacement, {"BTCUSDT"})
+
+                with self.assertRaisesRegex(ConnectionError, "was not confirmed"):
+                    shard._rotate_connection()
+
+                self.assertFalse(old_connection.closed)
+                self.assertTrue(replacement.closed)
+                self.assertIs(shard._connection, old_connection)
+
+    def test_rotation_requires_an_explicit_success_result(self):
+        replacement = FakeConnection(received=[
+            lambda connection: json.dumps({"id": connection.sent[0]["id"]}),
+            json.dumps({"k": {
+                "s": "BTCUSDT", "t": 900_000,
+                "q": "150", "Q": "90", "x": False,
+            }}),
+            None,
+        ])
+        shard, old_connection = self.rotation_shard(replacement, {"BTCUSDT"})
+
+        with self.assertRaisesRegex(ConnectionError, "was not confirmed"):
+            shard._rotate_connection()
+
+        self.assertFalse(old_connection.closed)
+        self.assertTrue(replacement.closed)
+        self.assertIs(shard._connection, old_connection)
+
+    def test_stop_during_rotation_closes_the_replacement_without_waiting_for_data(self):
+        replacement = FakeConnection()
+        shard, old_connection = self.rotation_shard(replacement, {"BTCUSDT"})
+
+        def stop_and_ack(connection):
+            shard.request_stop()
+            return json.dumps({"result": None, "id": connection.sent[0]["id"]})
+
+        replacement.received.append(stop_and_ack)
+
+        # Another recv would exhaust the fixture, reproducing the old loop
+        # that kept waiting for live data after shutdown had been requested.
+        shard._rotate_connection()
+
+        self.assertTrue(old_connection.closed)
+        self.assertTrue(replacement.closed)
+        self.assertIsNone(shard._connection)
+
+    def rotation_shard(self, replacement, symbols):
+        old_connection = FakeConnection()
+        connections = iter([old_connection, replacement])
+        shard = BinanceCvdShard(
+            0, lambda *_args: None, lambda *_args: None,
+            websocket_factory=lambda *_args, **_kwargs: next(connections),
+        )
+        shard.update_symbols(symbols)
+        shard._connect()
+        self.addCleanup(shard.stop)
+        return shard, old_connection
+
 
 class SnapshotAndBackfillTests(unittest.TestCase):
+    def test_oversized_snapshot_read_is_bounded_before_decoding(self):
+        class RecordedStream(io.BytesIO):
+            def __init__(self, data):
+                super().__init__(data)
+                self.read_sizes = []
+
+            def read(self, size=-1):
+                self.read_sizes.append(size)
+                return super().read(size)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "cvd.json"
+            path.touch()
+            repository = CvdSnapshotRepository(path)
+            snapshot_file = RecordedStream(b"x" * 1024)
+            with patch.object(Path, "open", return_value=snapshot_file), patch(
+                "realtime_oi_dashboard.infrastructure.storage.cvd_snapshot.MAX_SNAPSHOT_BYTES",
+                64,
+            ):
+                with self.assertRaisesRegex(ValueError, "too large"):
+                    repository.load(now_ms=1_800_000)
+            self.assertEqual(snapshot_file.read_sizes, [65])
+
     def test_snapshot_round_trip_prunes_expired_buckets(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = CvdSnapshotRepository(Path(directory) / "cvd.json")
@@ -452,6 +584,45 @@ class SnapshotAndBackfillTests(unittest.TestCase):
                     break
                 time.sleep(0.01)
             self.assertCountEqual(applied, ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
+        finally:
+            queue.stop()
+
+    def test_preflight_cooldown_keeps_queue_and_symbol_retry_budget(self):
+        clock = ManualClock()
+        calls, applied = [], []
+
+        def load(symbol):
+            calls.append(symbol)
+            if len(calls) == 1:
+                raise BinanceCooldownError(45, status_code=429, monotonic=clock)
+            return [[1]]
+
+        queue = CvdBackfillQueue(
+            load, lambda symbol, _rows: applied.append(symbol),
+            workers=1, requests_per_second=1000, monotonic=clock,
+        )
+        queue.enqueue("BTCUSDT")
+        queue.enqueue("ETHUSDT")
+        queue.start()
+        try:
+            for _ in range(100):
+                with queue._condition:
+                    pending = list(queue._pending)
+                    blocked_until = queue._blocked_until
+                if blocked_until == 45 and ("BTCUSDT", 0) in pending:
+                    break
+                time.sleep(0.01)
+            self.assertEqual(calls, ["BTCUSDT"])
+            self.assertIn(("BTCUSDT", 0), pending)
+            self.assertEqual(queue._blocked_until, 45)
+            clock.value = 46
+            with queue._condition:
+                queue._condition.notify_all()
+            for _ in range(100):
+                if len(applied) == 2:
+                    break
+                time.sleep(0.01)
+            self.assertCountEqual(applied, ["BTCUSDT", "ETHUSDT"])
         finally:
             queue.stop()
 

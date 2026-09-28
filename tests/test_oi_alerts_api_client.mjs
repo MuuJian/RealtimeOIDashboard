@@ -135,3 +135,43 @@ test("posts an empty test-message request without credentials", async () => {
     else globalThis.fetch = previousFetch;
   }
 });
+
+test("a successful save invalidates an older alert refresh response", async () => {
+  const restoreWindow = installWindow();
+  const previousFetch = globalThis.fetch;
+  const savedPayload = {
+    ...validPayload,
+    config: { ...validPayload.config, min_oi_change_percent: 5 },
+  };
+  let resolveOldSnapshot;
+  let currentPayload = validPayload;
+  globalThis.fetch = async (_url, options) => {
+    if (options.method === "PUT") {
+      currentPayload = savedPayload;
+      return { ok: true, json: async () => savedPayload };
+    }
+    if (!resolveOldSnapshot) {
+      return {
+        ok: true,
+        json: () => new Promise(resolve => { resolveOldSnapshot = resolve; }),
+      };
+    }
+    return { ok: true, json: async () => currentPayload };
+  };
+
+  try {
+    const oldRefresh = loadOiAlerts();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(typeof resolveOldSnapshot, "function");
+    assert.deepEqual(await saveOiAlertsConfig(savedPayload.config), savedPayload);
+    resolveOldSnapshot(validPayload);
+    await assert.rejects(oldRefresh, error => (
+      error.code === "ABORTED" && error.reason === "cancelled"
+    ));
+    assert.deepEqual(await loadOiAlerts(), savedPayload);
+  } finally {
+    restoreWindow();
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});

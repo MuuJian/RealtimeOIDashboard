@@ -21,6 +21,9 @@ export function createRankingViewController({
   let highOi7dRows = [];
   let disposed = false;
   let latestRequest = 0;
+  let pendingFull = false;
+  let pendingHigh = false;
+  const pendingSymbols = new Set();
 
   function request({
     replaceRows,
@@ -29,7 +32,13 @@ export function createRankingViewController({
     forceFull = false,
     forceHigh = false,
   } = {}) {
+    if (disposed) return;
     const requestVersion = ++latestRequest;
+    // Worker results are coalesced, so their render work must be coalesced too.
+    pendingFull ||= forceFull || replaceRows !== undefined;
+    pendingHigh ||= forceFull || forceHigh
+      || replaceRows !== undefined || patchRows.length > 0;
+    for (const symbol of changedSymbols) pendingSymbols.add(symbol);
     const previousVisibleSymbols = visibleRows.map(row => row.symbol);
     const previousHighSymbols = highOi7dRows.map(row => row.symbol);
     const previousHeatMax = heatMax;
@@ -60,12 +69,15 @@ export function createRankingViewController({
       highOi7dRows = nextHighRows;
       heatMax = view.heatMax;
 
-      scheduleRender({
-        full: forceFull || visibleOrderChanged || replaceRows !== undefined,
-        high: forceFull || forceHigh || highRowsChanged
-          || replaceRows !== undefined || patchRows.length > 0,
-        patchSymbols: heatChanged ? view.visibleSymbols : changedSymbols,
-      });
+      const render = {
+        full: pendingFull || visibleOrderChanged,
+        high: pendingHigh || highRowsChanged,
+        patchSymbols: heatChanged ? view.visibleSymbols : [...pendingSymbols],
+      };
+      pendingFull = false;
+      pendingHigh = false;
+      pendingSymbols.clear();
+      scheduleRender(render);
     }).catch(error => {
       if (!disposed && requestVersion === latestRequest) onError(error);
     });
@@ -75,6 +87,7 @@ export function createRankingViewController({
     if (disposed) return;
     disposed = true;
     latestRequest += 1;
+    pendingSymbols.clear();
     processor.dispose();
   }
 

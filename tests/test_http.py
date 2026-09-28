@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
 from realtime_oi_dashboard.infrastructure.binance.weight_budget import (
+    BinanceCooldownError,
     BinanceWeightBudget,
 )
 from realtime_oi_dashboard.infrastructure.http import JsonHttpClient
@@ -30,7 +31,7 @@ class FakeSession:
 
 
 class JsonHttpClientSessionLifecycleTests(unittest.TestCase):
-    def test_final_rate_limit_failure_defers_other_clients_and_endpoints(self):
+    def test_rate_limit_is_reported_without_blocking_workers_and_pauses_other_clients(self):
         for status in (429, 418):
             with self.subTest(status=status):
                 clock = [0.0]
@@ -49,12 +50,62 @@ class JsonHttpClientSessionLifecycleTests(unittest.TestCase):
                 with patch("realtime_oi_dashboard.infrastructure.http.GLOBAL_BINANCE_WEIGHT_BUDGET", budget):
                     first = JsonHttpClient(session_factory=Session, sleep=sleep)
                     second = JsonHttpClient(session_factory=Session, sleep=sleep)
-                    with self.assertRaises(requests.HTTPError):
-                        first.get_json("https://fapi.binance.com/fapi/v1/openInterest", attempts=1)
+                    with self.assertRaises(BinanceCooldownError) as failure:
+                        first.get_json("https://fapi.binance.com/fapi/v1/openInterest")
+                    self.assertEqual(failure.exception.status_code, status)
+                    self.assertEqual(len(calls), 1)
+                    self.assertEqual(clock[0], 0)
+                    with self.assertRaises(BinanceCooldownError):
+                        second.get_json("https://fapi.binance.com/fapi/v1/klines", params={"limit": 16})
+                    self.assertEqual(len(calls), 1)
+                    clock[0] = 60 if status == 429 else 120
                     second.get_json("https://fapi.binance.com/fapi/v1/klines", params={"limit": 16})
                     first.close()
                     second.close()
                 self.assertGreaterEqual(calls[1][1], 60 if status == 429 else 120)
+
+    def test_ban_deadline_in_json_is_respected_without_retry_after_header(self):
+        class BannedSession(FakeSession):
+            def get(self, *_args, **_kwargs):
+                response = requests.Response()
+                response.status_code = 418
+                response._content = (
+                    b'{"code":-1003,"msg":"IP banned until 1700004200000"}'
+                )
+                return response
+
+        budget = BinanceWeightBudget()
+        with (
+            patch("realtime_oi_dashboard.infrastructure.http.GLOBAL_BINANCE_WEIGHT_BUDGET", budget),
+            patch("realtime_oi_dashboard.infrastructure.http.time.time", return_value=1700000000),
+        ):
+            client = JsonHttpClient(session_factory=BannedSession,
+                                    sleep=lambda _: self.fail("must not sleep in the HTTP worker"))
+            self.addCleanup(client.close)
+            with self.assertRaises(BinanceCooldownError) as failure:
+                client.get_json("https://fapi.binance.com/fapi/v1/openInterest")
+        self.assertAlmostEqual(failure.exception.retry_after, 4200, delta=1)
+
+    def test_successful_response_accounts_for_ip_usage_from_other_processes(self):
+        clock = [0.0]
+        calls = []
+        class Session(FakeSession):
+            def get(self, url, **_kwargs):
+                calls.append(clock[0])
+                response = requests.Response()
+                response.status_code = 200
+                response.headers["X-MBX-USED-WEIGHT-1M"] = "100"
+                response._content = b'{}'
+                return response
+        def sleep(delay):
+            clock[0] += delay
+        budget = BinanceWeightBudget(weight_per_minute=100, monotonic=lambda: clock[0])
+        with patch("realtime_oi_dashboard.infrastructure.http.GLOBAL_BINANCE_WEIGHT_BUDGET", budget):
+            client = JsonHttpClient(session_factory=Session, sleep=sleep)
+            self.addCleanup(client.close)
+            for _ in range(2):
+                client.get_json("https://fapi.binance.com/fapi/v1/openInterest")
+        self.assertEqual(calls, [0, 60])
 
     def create_client(self):
         sessions = []

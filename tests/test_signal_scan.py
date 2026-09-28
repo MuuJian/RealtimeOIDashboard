@@ -4,6 +4,7 @@ from realtime_oi_dashboard.domain.signal_scan.rules import (
     build_scan_universe,
     classify_symbol,
     compute_ema,
+    is_valid_scan_symbol,
     select_signals,
 )
 
@@ -40,6 +41,12 @@ class ComputeEmaTests(unittest.TestCase):
 
 
 class ClassifySymbolTests(unittest.TestCase):
+    def test_unicode_alphanumeric_symbols_are_accepted_without_relaxing_separators(self):
+        self.assertTrue(is_valid_scan_symbol("币安人生USDT"))
+        for symbol in (None, "USDT", "btcusdt", "BTCUSDC", "币安_USDT", "币安 USDT", "币安/USDT"):
+            with self.subTest(symbol=symbol):
+                self.assertFalse(is_valid_scan_symbol(symbol))
+
     def test_returns_none_for_invalid_symbol(self):
         klines = make_klines([100.0] * 120)
 

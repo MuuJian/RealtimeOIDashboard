@@ -56,6 +56,21 @@ test("accepts a symbol that appears in trend and volatility result tables", () =
   );
 });
 
+test("accepts Unicode Binance symbols in signals and per-symbol errors", () => {
+  assert.equal(isSignalScanPayload(payload({
+    bulls: [signalRow({ symbol: "币安人生USDT", isBull: true })],
+    recent_errors: [{ symbol: "龙虾USDT", error: "request timed out" }],
+  })), true);
+  for (const symbol of ["币安人生USDT ", "龙虾_USDT", "btcUSDT", "USDT"]) {
+    assert.equal(isSignalScanPayload(payload({
+      bulls: [signalRow({ symbol, isBull: true })],
+    })), false);
+    assert.equal(isSignalScanPayload(payload({
+      recent_errors: [{ symbol, error: "request timed out" }],
+    })), false);
+  }
+});
+
 test("rejects an error payload that still contains signal rows", () => {
   assert.equal(
     isSignalScanPayload(

@@ -1,12 +1,18 @@
 import { assertOiAlertsPayload } from "./OiAlertsPayloadSchema.js";
 
 const REQUEST_TIMEOUT_MS = 8000;
+let configRevision = 0;
 
-export function loadOiAlerts({ signal } = {}) {
-  return requestOiAlerts("/api/oi-alerts", { method: "GET", signal });
+export async function loadOiAlerts({ signal } = {}) {
+  const revision = configRevision;
+  const payload = await requestOiAlerts("/api/oi-alerts", { method: "GET", signal });
+  // A poll started before a save can finish afterward. Do not let it replace
+  // the just-saved form with the configuration from its earlier snapshot.
+  if (revision !== configRevision) throw createAbortError("cancelled");
+  return payload;
 }
 
-export function saveOiAlertsConfig(config, { signal } = {}) {
+export async function saveOiAlertsConfig(config, { signal } = {}) {
   const body = {
     enabled: config.enabled,
     scale_alerts_enabled: config.scale_alerts_enabled,
@@ -18,11 +24,13 @@ export function saveOiAlertsConfig(config, { signal } = {}) {
     symbols: config.symbols,
     thresholds: config.thresholds,
   };
-  return requestOiAlerts("/api/oi-alerts/config", {
+  const payload = await requestOiAlerts("/api/oi-alerts/config", {
     method: "PUT",
     body,
     signal,
   });
+  configRevision += 1;
+  return payload;
 }
 
 export function sendOiAlertsTestMessage({ signal } = {}) {

@@ -6,6 +6,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
+from realtime_oi_dashboard.infrastructure.binance.weight_budget import BinanceCooldownError
 
 
 class DashboardRuntime:
@@ -55,6 +56,7 @@ class DashboardRuntime:
                     thread_name_prefix="oi-worker",
                 )
             while not self.stop_event.is_set():
+                delay = self.batch_delay
                 try:
                     self.update_once(executor=executor)
                 except PollingStopped:
@@ -63,8 +65,10 @@ class DashboardRuntime:
                     if self.stop_event.is_set():
                         break
                     self.handle_batch_error(exc)
+                    if isinstance(exc, BinanceCooldownError):
+                        delay = max(delay, exc.retry_after)
 
-                self.stop_event.wait(self.batch_delay)
+                self.stop_event.wait(delay)
         finally:
             # Every exit path owns cancellation, including setup failures and
             # unexpected BaseExceptions that bypass the polling-loop handlers.

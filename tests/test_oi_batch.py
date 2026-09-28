@@ -4,10 +4,12 @@ import unittest
 from unittest.mock import patch
 
 from realtime_oi_dashboard.domain.errors import PollingStopped
+from realtime_oi_dashboard.domain.oi.state import OiStateStore
 from realtime_oi_dashboard.application.oi.batch import OIBatchRunner
 from realtime_oi_dashboard.infrastructure.binance.futures_client import (
     OpenInterestSnapshot,
 )
+from realtime_oi_dashboard.infrastructure.binance.weight_budget import BinanceCooldownError
 
 
 class FakeClient:
@@ -29,6 +31,44 @@ class FakeClient:
 
 
 class OIBatchRunnerTests(unittest.TestCase):
+    def test_delayed_and_repeated_exchange_values_do_not_renew_row_retention(self):
+        runner = self.updater()
+        store = OiStateStore(max_age_seconds=900)
+        source_time = 1_700_000_123.456
+        for elapsed in (0, 30):
+            with (
+                patch("realtime_oi_dashboard.application.oi.batch.time.time", return_value=source_time + 840 + elapsed),
+                patch("realtime_oi_dashboard.application.oi.batch.time.monotonic", return_value=1000 + elapsed),
+            ):
+                update = runner.build_symbol_update(
+                    "BTCUSDT", {"BTCUSDT": {"price": 10, "volume24h": 1}}, {}, {}
+                )
+            self.assertAlmostEqual(update.measured_at, 160)
+            store.apply_updates([update])
+        store.prune_stale(1061)
+        self.assertEqual(store.rows, {})
+
+    def test_allowed_future_exchange_skew_does_not_create_future_monotonic_age(self):
+        with (
+            patch("realtime_oi_dashboard.application.oi.batch.time.time", return_value=1_700_000_093.456),
+            patch("realtime_oi_dashboard.application.oi.batch.time.monotonic", return_value=1000),
+        ):
+            update = self.updater().build_symbol_update(
+                "BTCUSDT", {"BTCUSDT": {"price": 10, "volume24h": 1}}, {}, {}
+            )
+        self.assertEqual(update.measured_at, 1000)
+
+    def test_cooldown_aborts_the_batch_without_per_symbol_errors(self):
+        def build_update(*_args):
+            raise BinanceCooldownError(4200, status_code=418)
+        for workers in (1, 3):
+            with self.subTest(workers=workers), self.assertRaises(BinanceCooldownError):
+                self.updater(workers=workers).run(
+                    ["BTCUSDT", "ETHUSDT", "SOLUSDT"], {}, {}, {},
+                    build_update=build_update,
+                )
+        self.assertEqual(self.errors, [])
+
     def setUp(self):
         self.stop_event = threading.Event()
         self.errors = []
@@ -132,6 +172,10 @@ class OIBatchRunnerTests(unittest.TestCase):
 
         client = FakeClient()
         with (
+            patch(
+                "realtime_oi_dashboard.application.oi.batch.time.time",
+                return_value=1_700_000_123.456,
+            ),
             patch(
                 "realtime_oi_dashboard.application.oi.batch.time.monotonic",
                 return_value=123.0,

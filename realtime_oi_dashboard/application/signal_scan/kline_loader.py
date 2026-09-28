@@ -23,6 +23,7 @@ from realtime_oi_dashboard.domain.signal_scan.rules import (
     SCAN_POOL_SIZE,
     classify_symbol,
 )
+from realtime_oi_dashboard.infrastructure.binance.weight_budget import BinanceCooldownError
 
 
 KLINES_URL = f"{FAPI_BASE_URL}/fapi/v1/klines"
@@ -86,7 +87,7 @@ class SignalScanKlineLoader:
 
         try:
             updates = self.request(symbol, limit=KLINE_REFRESH_LIMIT)
-        except PollingStopped:
+        except (PollingStopped, BinanceCooldownError):
             raise
         except Exception:
             # A failed small refresh must not discard a usable history. Retry
@@ -107,7 +108,7 @@ class SignalScanKlineLoader:
             if not _history_is_current(normalized):
                 raise ValueError("stale or future kline history")
             return normalized
-        except PollingStopped:
+        except (PollingStopped, BinanceCooldownError):
             raise
         except Exception:
             # A failed full rebuild cannot produce a trustworthy signal. Drop

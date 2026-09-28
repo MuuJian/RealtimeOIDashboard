@@ -646,6 +646,7 @@ class OIPollerAlertIntegrationTests(unittest.TestCase):
         alerts = RecordingAlertService()
         poller = self.create_poller(alerts)
         poller.oi_state.rows["BTCUSDT"] = {"currentOiValue": 80_000_000}
+        poller.oi_state.update_times["BTCUSDT"] = time.monotonic()
 
         self.assertEqual(
             poller.get_alert_state(),
@@ -659,6 +660,32 @@ class OIPollerAlertIntegrationTests(unittest.TestCase):
             },
         )
         self.assertEqual(poller.send_alert_test_message(), {"queued": True})
+
+    def test_alert_reads_and_updates_expire_rows_without_an_oi_page_request(self):
+        alerts = RecordingAlertService()
+        poller = self.create_poller(alerts)
+        self.addCleanup(poller.close)
+        for operation in (poller.get_alert_state,
+                          lambda: poller.update_alert_config({"enabled": False})):
+            with self.subTest(operation=operation):
+                now = time.monotonic()
+                poller.oi_state.apply_updates([
+                    OiUpdate("BTCUSDT", {"currentOiValue": 80_000_000}, now - ROW_MAX_AGE_SECONDS - 1),
+                    OiUpdate("ETHUSDT", {"currentOiValue": 90_000_000}, now),
+                ])
+                self.assertEqual(set(operation()["rows"]), {"ETHUSDT"})
+
+    def test_signal_features_include_only_rows_within_the_retention_window(self):
+        alerts = RecordingAlertService()
+        alerts.get_features = lambda: {"BTCUSDT": {"score": 1}, "ETHUSDT": {"score": 2}}
+        poller = self.create_poller(alerts)
+        self.addCleanup(poller.close)
+        now = time.monotonic()
+        poller.oi_state.apply_updates([
+            OiUpdate("BTCUSDT", {}, now - ROW_MAX_AGE_SECONDS - 1),
+            OiUpdate("ETHUSDT", {}, now),
+        ])
+        self.assertEqual(poller.get_signal_features(), {"ETHUSDT": {"score": 2}})
 
     def test_explicit_none_disables_alerts_without_constructing_default_service(self):
         with tempfile.TemporaryDirectory() as directory, patch(

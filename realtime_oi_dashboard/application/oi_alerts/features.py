@@ -73,6 +73,8 @@ class SignalFeatureTracker:
     def observe(self, symbol: str, row: dict, *, window_minutes: int) -> SignalFeature | None:
         sample = _sample(row)
         if sample is None:
+            self._features.pop(symbol, None)
+            self._history.pop(symbol, None)
             return None
         history = self._history.setdefault(symbol, deque())
         if history and sample.timestamp_ms < history[-1].timestamp_ms:

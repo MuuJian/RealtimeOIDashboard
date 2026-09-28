@@ -414,10 +414,12 @@ class OIPoller:
 
     def get_alert_state(self):
         with self.lock:
+            self.prune_stale_data()
             return self.alert_service.get_state(self.oi_state.rows)
 
     def update_alert_config(self, payload):
         with self.lock:
+            self.prune_stale_data()
             return self.alert_service.update_config(payload, self.oi_state.rows)
 
     def send_alert_test_message(self):
@@ -425,7 +427,12 @@ class OIPoller:
 
     def get_signal_features(self):
         with self.lock:
-            return self.alert_service.get_features()
+            self.prune_stale_data()
+            return {
+                symbol: feature
+                for symbol, feature in self.alert_service.get_features().items()
+                if symbol in self.oi_state.rows
+            }
 
     def _with_cvd_updates(self, updates):
         provider = self.cvd_state_provider

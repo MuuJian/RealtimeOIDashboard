@@ -10,6 +10,33 @@ from realtime_oi_dashboard.domain.oi_alerts.model import AlertConfig
 
 
 class SignalFeatureTrackerTests(unittest.TestCase):
+    def test_zero_oi_sample_clears_previous_current_feature(self):
+        tracker = SignalFeatureTracker()
+        row = {
+            "currentOi": 100,
+            "currentOiValue": 10_000,
+            "price": 100,
+            "oiUpdatedAt": 2_000_000,
+        }
+        tracker.observe("BTCUSDT", row, window_minutes=15)
+        self.assertIn("BTCUSDT", tracker.payload())
+
+        observed = tracker.observe("BTCUSDT", {
+            **row,
+            "currentOi": 0,
+            "currentOiValue": 0,
+            "oiUpdatedAt": 2_060_000,
+        }, window_minutes=15)
+
+        self.assertIsNone(observed)
+        self.assertEqual(tracker.payload(), {})
+        tracker.set_window(15)
+        self.assertEqual(tracker.payload(), {})
+        resumed = tracker.observe("BTCUSDT", {
+            **row, "currentOi": 110, "oiUpdatedAt": 2_900_000,
+        }, window_minutes=15)
+        self.assertIsNone(resumed.oi_change_percent)
+
     def test_confirmation_uses_only_live_complete_and_recent_cvd(self):
         start = 2_000_000
         for health, coverage, age, valid in (

@@ -1,4 +1,8 @@
 import io
+import signal
+import subprocess
+import sys
+import textwrap
 import unittest
 from contextlib import redirect_stdout
 from unittest.mock import ANY, patch
@@ -64,6 +68,44 @@ class FakeSharedCache:
 
 
 class RunDashboardTests(unittest.TestCase):
+    def test_sigterm_stops_workers_and_closes_shared_cache(self):
+        script = textwrap.dedent("""
+            import os
+            import signal
+            from unittest.mock import patch
+            from tests.test_bootstrap import FakeArgs, FakeServer, FakeService, FakeSharedCache
+            from realtime_oi_dashboard import bootstrap
+
+            server = FakeServer()
+            server.serve_forever = lambda: os.kill(os.getpid(), signal.SIGTERM)
+            oi, scan, cvd = FakeService(), FakeService(), FakeService()
+            cache = FakeSharedCache()
+            previous_handler = signal.getsignal(signal.SIGTERM)
+            with patch.object(bootstrap, "create_dashboard_server", return_value=server):
+                result = bootstrap.run_dashboard(FakeArgs(), oi, scan, cvd, cache)
+            assert result == 0
+            assert all(service.stop_timeouts for service in (oi, scan, cvd))
+            assert cache.stopped and cache.closed
+            assert signal.getsignal(signal.SIGTERM) == previous_handler
+            print("cleanup complete")
+        """)
+        result = subprocess.run(
+            [sys.executable, "-c", script], capture_output=True, text=True, timeout=10
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("cleanup complete", result.stdout)
+
+    def test_sigterm_handler_is_restored_if_serving_fails(self):
+        previous_handler = signal.getsignal(signal.SIGTERM)
+        server = FakeServer()
+        server.serve_forever = lambda: (_ for _ in ()).throw(RuntimeError("server failed"))
+        oi_service = FakeService()
+        with patch.object(bootstrap, "create_dashboard_server", return_value=server), \
+                redirect_stdout(io.StringIO()), self.assertRaisesRegex(RuntimeError, "server failed"):
+            bootstrap.run_dashboard(FakeArgs(), oi_service, None)
+        self.assertEqual(signal.getsignal(signal.SIGTERM), previous_handler)
+        self.assertTrue(oi_service.stop_timeouts)
+
     def test_run_dashboard_injects_checked_oi_service_as_alert_provider(self):
         oi_service = FakeService()
         signal_service = FakeService()

@@ -7,6 +7,7 @@ import threading
 import time
 from collections import deque
 
+from realtime_oi_dashboard.infrastructure.binance.weight_budget import BinanceCooldownError
 from realtime_oi_dashboard.infrastructure.http import _retry_after_seconds
 
 
@@ -110,6 +111,7 @@ class CvdBackfillQueue:
                 continue
             symbol, attempt = task
             retry = False
+            count_attempt = True
             try:
                 if self._pacer.wait(self._stop_event):
                     return
@@ -126,7 +128,13 @@ class CvdBackfillQueue:
             except Exception as exc:
                 status = getattr(getattr(exc, "response", None), "status_code", None)
                 self.last_error = str(exc)
-                if status == 418:
+                if isinstance(exc, BinanceCooldownError):
+                    self._block(exc)
+                    retry = True
+                    # An IP-wide cooldown is not a failed symbol repair. Keep
+                    # the work queued until requests are permitted again.
+                    count_attempt = False
+                elif status in (418, 429):
                     self._block(exc)
                     retry = attempt + 1 < MAX_RETRIES
                 elif attempt + 1 < MAX_RETRIES:
@@ -138,7 +146,7 @@ class CvdBackfillQueue:
                     if not self._stop_event.wait(delay):
                         retry = True
             finally:
-                self._finish(symbol, attempt, retry)
+                self._finish(symbol, attempt, retry, count_attempt=count_attempt)
 
     def _take(self):
         with self._condition:
@@ -154,19 +162,26 @@ class CvdBackfillQueue:
             self._inflight.add(symbol)
             return symbol, attempt
 
-    def _finish(self, symbol: str, attempt: int, retry: bool) -> None:
+    def _finish(
+        self, symbol: str, attempt: int, retry: bool, *, count_attempt=True
+    ) -> None:
         with self._condition:
             self._inflight.discard(symbol)
             if retry and not self._stop_event.is_set():
                 self._queued.add(symbol)
-                self._pending.append((symbol, attempt + 1))
+                self._pending.append((symbol, attempt + int(count_attempt)))
                 self._condition.notify()
 
     def _block(self, error) -> None:
-        response = getattr(error, "response", None)
-        delay = _retry_after_seconds(getattr(response, "headers", {}).get("Retry-After", ""))
+        if isinstance(error, BinanceCooldownError):
+            delay = max(error.retry_after, 0.01)
+        else:
+            response = getattr(error, "response", None)
+            retry_after = getattr(response, "headers", {}).get("Retry-After", "")
+            minimum = 120 if getattr(response, "status_code", None) == 418 else 10
+            delay = max(_retry_after_seconds(retry_after) or 0, minimum)
         with self._condition:
-            self._blocked_until = max(self._blocked_until, self._monotonic() + max(delay or 0, 120))
+            self._blocked_until = max(self._blocked_until, self._monotonic() + delay)
             self._condition.notify_all()
 
 

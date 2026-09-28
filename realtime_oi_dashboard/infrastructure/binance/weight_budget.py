@@ -5,15 +5,42 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from math import isfinite
 from urllib.parse import parse_qs, urlparse
+
+import requests
 
 
 DEFAULT_WEIGHT_PER_MINUTE = 1_800.0
 INVALID_CAPACITY_ERROR = "weight_per_minute must be a finite positive number"
 BINANCE_HOSTS = {"fapi.binance.com", "testnet.binancefuture.com", "demo-fapi.binance.com"}
 HISTORY_REQUESTS_PER_FIVE_MINUTES = 1000
+
+
+class BinanceCooldownError(requests.HTTPError):
+    """Surface an IP-wide cooldown without tying up an HTTP worker."""
+
+    def __init__(
+        self,
+        retry_after: float,
+        *,
+        status_code: int | None = None,
+        response=None,
+        monotonic=time.monotonic,
+    ) -> None:
+        self.status_code = status_code
+        self._monotonic = monotonic
+        self._retry_at = monotonic() + max(retry_after, 0.0)
+        status = f" after HTTP {status_code}" if status_code is not None else ""
+        super().__init__(
+            f"Binance REST requests paused{status}; retry in {retry_after:.0f}s",
+            response=response,
+        )
+
+    @property
+    def retry_after(self) -> float:
+        return max(self._retry_at - self._monotonic(), 0.0)
 
 
 class BinanceWeightBudget:
@@ -38,6 +65,7 @@ class BinanceWeightBudget:
         self._used_weight = 0.0
         self._history_requests = deque()
         self._blocked_until = 0.0
+        self._blocked_status = None
         self._monotonic = monotonic
         self._sleep = sleep
         self._lock = threading.Lock()
@@ -75,7 +103,11 @@ class BinanceWeightBudget:
                     self._history_requests.popleft()
                 waits = []
                 if now < self._blocked_until:
-                    waits.append(self._blocked_until - now)
+                    raise BinanceCooldownError(
+                        self._blocked_until - now,
+                        status_code=self._blocked_status,
+                        monotonic=self._monotonic,
+                    )
                 if self._used_weight + weight > self._capacity:
                     waits.append(self._weights[0][0] + 60 - now)
                 if history and len(self._history_requests) >= HISTORY_REQUESTS_PER_FIVE_MINUTES:
@@ -92,13 +124,49 @@ class BinanceWeightBudget:
                 check_cancelled()
             wait(min(wait_for, 1.0))
 
-    def defer(self, url: str, seconds: float) -> None:
-        if urlparse(url).hostname not in BINANCE_HOSTS:
+    def observe_response(self, url: str, headers) -> None:
+        """Include usage reported for this IP, including other processes.
+
+        Reserve only the excess over our rolling total. Keeping that excess
+        for a full minute is conservative across Binance's fixed windows and
+        out-of-order responses; a smaller header must not refund local usage.
+        """
+        if (
+            urlparse(url).hostname not in BINANCE_HOSTS
+            or not isinstance(headers, Mapping)
+        ):
             return
-        if not isfinite(seconds) or seconds <= 0:
+        value = next(
+            (value for key, value in headers.items()
+             if isinstance(key, str) and key.lower() == "x-mbx-used-weight-1m"),
+            None,
+        )
+        try:
+            reported = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return
+        if not isfinite(reported) or reported < 0:
             return
         with self._lock:
-            self._blocked_until = max(self._blocked_until, self._monotonic() + seconds)
+            now = self._monotonic()
+            while self._weights and self._weights[0][0] <= now - 60:
+                self._used_weight -= self._weights.popleft()[1]
+            extra = min(reported, self._capacity) - self._used_weight
+            if extra > 0:
+                self._weights.append((now, extra))
+                self._used_weight += extra
+
+    def defer(self, url: str, seconds: float, *, status_code=None) -> bool:
+        if urlparse(url).hostname not in BINANCE_HOSTS:
+            return False
+        if not isfinite(seconds) or seconds <= 0:
+            return False
+        with self._lock:
+            deadline = self._monotonic() + seconds
+            if deadline > self._blocked_until:
+                self._blocked_until = deadline
+                self._blocked_status = status_code
+        return True
 
 
 def request_weight(url: str, *, params=None) -> float:

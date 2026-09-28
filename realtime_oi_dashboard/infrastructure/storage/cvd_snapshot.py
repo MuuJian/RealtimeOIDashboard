@@ -24,7 +24,10 @@ class CvdSnapshotRepository:
     def load(self, *, now_ms: int) -> tuple[dict[str, list[dict]], int | None]:
         if not self.path.exists():
             return {}, None
-        raw = self.path.read_bytes()
+        # Check the limit while reading so a corrupt snapshot cannot allocate
+        # its entire contents before the size guard runs.
+        with self.path.open("rb") as snapshot_file:
+            raw = snapshot_file.read(MAX_SNAPSHOT_BYTES + 1)
         if len(raw) > MAX_SNAPSHOT_BYTES:
             raise ValueError("CVD snapshot is too large")
         payload = json.loads(raw.decode("utf-8"))

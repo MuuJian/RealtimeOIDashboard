@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 import weakref
@@ -14,6 +15,7 @@ from typing import Any
 import requests
 
 from realtime_oi_dashboard.infrastructure.binance.weight_budget import (
+    BinanceCooldownError,
     GLOBAL_BINANCE_WEIGHT_BUDGET,
 )
 
@@ -99,6 +101,10 @@ class JsonHttpClient:
             self._raise_if_cancelled()
             try:
                 response = self._session().get(url, params=params, timeout=timeout)
+                if self._before_request is _DEFAULT_BEFORE_REQUEST:
+                    GLOBAL_BINANCE_WEIGHT_BUDGET.observe_response(
+                        url, getattr(response, "headers", {})
+                    )
                 response.raise_for_status()
             except requests.RequestException as exc:
                 error = exc
@@ -119,11 +125,15 @@ class JsonHttpClient:
             if self._before_request is _DEFAULT_BEFORE_REQUEST:
                 response = getattr(error, "response", None)
                 if response is not None and response.status_code in {418, 429}:
-                    delay = _retry_after_seconds(response.headers.get("Retry-After", ""))
-                    minimum = 120.0 if response.status_code == 418 else 2.0
-                    GLOBAL_BINANCE_WEIGHT_BUDGET.defer(
-                        url, max(delay if delay is not None else 10.0, minimum)
-                    )
+                    delay = _binance_cooldown_seconds(response)
+                    if GLOBAL_BINANCE_WEIGHT_BUDGET.defer(
+                        url, delay, status_code=response.status_code
+                    ):
+                        raise BinanceCooldownError(
+                            delay,
+                            status_code=response.status_code,
+                            response=response,
+                        ) from error
             if attempt == attempts or not self._should_retry(error):
                 break
             self._sleep(self._retry_delay(attempt, error))
@@ -279,3 +289,23 @@ def _retry_after_seconds(value: str) -> float | None:
     if not isfinite(seconds) or seconds < 0:
         return None
     return seconds
+
+
+def _binance_cooldown_seconds(response) -> float:
+    delay = _retry_after_seconds(response.headers.get("Retry-After", ""))
+    # Binance may report the ban deadline only in the error JSON. Respect it
+    # even if an intermediary omitted Retry-After, instead of probing the ban.
+    if response.status_code == 418:
+        try:
+            payload = response.json()
+            message = payload.get("msg", "") if isinstance(payload, dict) else ""
+            deadline = re.search(r"banned until (\d{10,16})", message)
+            if deadline is not None:
+                remaining = int(deadline.group(1)) / 1000 - time.time()
+                delay = max(delay or 0.0, remaining)
+        except (TypeError, ValueError, OverflowError, RecursionError):
+            pass
+    minimum = 120.0 if response.status_code == 418 else 2.0
+    # Without a reset hint, wait through the longest budget used by this app.
+    fallback = 120.0 if response.status_code == 418 else 300.0
+    return max(delay if delay is not None else fallback, minimum)

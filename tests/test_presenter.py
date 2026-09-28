@@ -15,6 +15,33 @@ class StubClock:
 
 
 class DashboardPresenterTests(unittest.TestCase):
+    def test_expired_source_data_reports_stale_even_after_recent_batch_success(self):
+        store = OiStateStore(max_age_seconds=10)
+        store.apply_updates([OiUpdate("BTCUSDT", {"symbol": "BTCUSDT"}, 0)])
+        payload = self.presenter(store, StubClock(stale=False)).build(
+            {"saved_at": "recent", "error": None}, ["BTCUSDT"]
+        )
+        self.assertEqual(payload["rows"], [])
+        self.assertEqual(payload["error"], "stale")
+
+    def test_expired_successful_snapshot_reports_stale_after_rows_are_pruned(self):
+        store = OiStateStore(max_age_seconds=10)
+        store.apply_updates([OiUpdate("BTCUSDT", {"symbol": "BTCUSDT"}, 0)])
+        payload = self.presenter(store, StubClock(stale=True)).build(
+            {"saved_at": "old", "error": None}, ["BTCUSDT"]
+        )
+        self.assertEqual(store.rows, {})
+        self.assertEqual(payload["rows"], [])
+        self.assertEqual(payload["error"], "stale")
+
+    def test_expired_rows_preserve_specific_failure_and_startup_is_not_stale(self):
+        store = OiStateStore(max_age_seconds=10)
+        presenter = self.presenter(store, StubClock(stale=True))
+        payload = presenter.build({"saved_at": "old", "error": "HTTP 418 cooldown"}, [])
+        self.assertEqual(payload["error"], "HTTP 418 cooldown")
+        startup = presenter.build({"saved_at": None, "error": None}, [])
+        self.assertIsNone(startup["error"])
+
     def presenter(self, store, clock, cvd_state_provider=None):
         return DashboardPresenter(
             store,

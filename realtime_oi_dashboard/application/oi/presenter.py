@@ -73,9 +73,11 @@ class DashboardPresenter:
         state["cvd_meta"] = _cvd_meta(cvd_state)
         state["oi_dominance_history"] = self.dominance_history_provider()
         rows = self.state_store.copy_rows()
-        if rows and self.clock.rows_are_stale(self.wall_time()):
+        if (rows or state.get("saved_at")) and (
+            not rows or self.clock.rows_are_stale(self.wall_time())
+        ):
             rows = []
-            state["error"] = self.stale_rows_error
+            state["error"] = state.get("error") or self.stale_rows_error
         else:
             rows = self._with_cvd(rows, cvd_state)
         state["rows"] = rows

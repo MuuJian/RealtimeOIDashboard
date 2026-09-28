@@ -6,14 +6,14 @@ from collections.abc import Sequence, Set
 from math import isfinite
 import re
 
+from realtime_oi_dashboard.domain.symbols import is_valid_binance_symbol
+
 
 STABLE_SYMBOL_PATTERN = re.compile(
     r"^(USDC|FDUSD|TUSD|BUSD|DAI|USDP|USD1|PYUSD|XUSD|USDE|AEUR|RLUSD|EUR|EURI|"
     r"GBP|AUD|JPY|TRY|BRL|ARS|ZAR|MXN|IDRT|NGN|UAH|RUB|PLN|RON|CZK|TRX|BNB|BTC|"
     r"XRP|XAUT|PAXG|XAU|XAG|XPT|XPD|WGOLD|GOLD|SILVER)USDT$"
 )
-USDT_SYMBOL_PATTERN = re.compile(r"^[A-Z0-9]+USDT$")
-
 SCAN_POOL_SIZE = 30
 TREND_POOL_SIZE = 20
 MIN_CANDLES = 60
@@ -23,6 +23,15 @@ SPIKE_MIN_VOL_RATIO = 1.8
 KLINE_CLOSE_INDEX = 4
 KLINE_HIGH_INDEX = 2
 KLINE_LOW_INDEX = 3
+
+
+def is_valid_scan_symbol(value: object) -> bool:
+    return (
+        is_valid_binance_symbol(value)
+        and value == value.upper()
+        and len(value) > len("USDT")
+        and value.endswith("USDT")
+    )
 
 
 def compute_ema(values: Sequence[float], period: int) -> float:
@@ -52,10 +61,7 @@ def classify_symbol(
     price_change_percent: float,
     klines: Sequence[Sequence],
 ) -> dict | None:
-    if (
-        not isinstance(symbol, str)
-        or USDT_SYMBOL_PATTERN.fullmatch(symbol) is None
-    ):
+    if not is_valid_scan_symbol(symbol):
         return None
     if not isinstance(klines, Sequence) or isinstance(klines, (str, bytes)):
         return None
@@ -143,8 +149,7 @@ def build_scan_universe(
         quote_volume = _finite_float(ticker.get("quoteVolume"))
         price_change = _finite_float(ticker.get("priceChangePercent"))
         if (
-            not isinstance(symbol, str)
-            or USDT_SYMBOL_PATTERN.fullmatch(symbol) is None
+            not is_valid_scan_symbol(symbol)
             or STABLE_SYMBOL_PATTERN.fullmatch(symbol) is not None
             or quote_volume is None
             or quote_volume <= 0
@@ -216,8 +221,7 @@ def _is_signal_entry(value: object) -> bool:
     if not isinstance(value, dict):
         return False
     if (
-        not isinstance(value.get("symbol"), str)
-        or USDT_SYMBOL_PATTERN.fullmatch(value["symbol"]) is None
+        not is_valid_scan_symbol(value.get("symbol"))
         or not isinstance(value.get("isBull"), bool)
         or not isinstance(value.get("isBear"), bool)
         or value["isBull"] and value["isBear"]

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field, replace
 from math import isfinite
 from pathlib import Path
@@ -348,7 +347,9 @@ def _positive_finite(value: object) -> float:
 def _is_symbol(value: object) -> bool:
     return (
         isinstance(value, str)
-        and re.fullmatch(r"[A-Z0-9]+USDT", value) is not None
+        and value.endswith("USDT")
+        and value[:-4].isalnum()
+        and value == value.upper()
     )
 
 

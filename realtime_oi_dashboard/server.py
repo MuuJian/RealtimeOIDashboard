@@ -364,7 +364,13 @@ def _oi_readiness(provider):
         for row in rows
     )
     if row_count == 0:
-        return None, {"status": "warming", "rows": 0}
+        if state.get("error"):
+            status = "error"
+        elif state.get("saved_at"):
+            status = "stale"
+        else:
+            status = "warming"
+        return None, {"status": status, "rows": 0}
     component_status = "degraded" if state.get("error") else "ready"
     return state, {"status": component_status, "rows": row_count}
 
