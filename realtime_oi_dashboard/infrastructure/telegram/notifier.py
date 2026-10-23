@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import logging
 import queue
 import threading
 import time
@@ -84,11 +85,15 @@ class TelegramNotifier:
             self._report(event, "failed", _QUEUE_FULL, attempted_at)
 
     def send_test_message(self) -> bool:
+        return self.send_message("OI Alerts Telegram test message")
+
+    def send_message(self, text: str) -> bool:
+        """Queue a plain message; return whether the queue accepted it."""
         if not self.is_configured:
             return False
         self.start()
         try:
-            self._queue.put_nowait((None, "OI Alerts Telegram test message"))
+            self._queue.put_nowait((None, text))
         except queue.Full:
             with self._lock:
                 self._status = "failed"
@@ -163,6 +168,8 @@ class TelegramNotifier:
         with self._lock:
             self._status = "failed"
             self._last_error = error
+        if event is None:
+            logging.getLogger(__name__).warning(_DELIVERY_FAILED)
         if event is not None:
             self._report(event, "failed", error, attempted_at)
 
@@ -200,5 +207,7 @@ def _event_message(event: AlertEvent) -> str:
 def _post_json(url: str, payload: dict) -> None:
     data = json.dumps(payload).encode("utf-8")
     request = Request(url, data=data, headers={"Content-Type": "application/json"})
-    with urlopen(request, timeout=10):
-        pass
+    with urlopen(request, timeout=10) as response:
+        result = json.load(response)
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            raise ValueError(_DELIVERY_FAILED)

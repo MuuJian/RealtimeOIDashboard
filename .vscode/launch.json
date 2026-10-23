@@ -19,7 +19,9 @@
         "--oi-batch-delay",
         "1",
         "--oi-workers",
-        "3"
+        "3",
+        "--profile",
+        "stable"
       ],
       "serverReadyAction": {
         "pattern": "Dashboard running at http://\\S+:(\\d+)",

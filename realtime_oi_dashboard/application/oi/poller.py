@@ -23,6 +23,7 @@ from realtime_oi_dashboard.application.oi.presenter import DashboardPresenter
 from realtime_oi_dashboard.application.oi.runtime import DashboardRuntime
 from realtime_oi_dashboard.domain.oi.state import OiStateStore, OiUpdate
 from realtime_oi_dashboard.application.oi.symbol_refresher import SymbolRefresher
+from realtime_oi_dashboard.application.oi.telegram_channel import Oi24hChannelService
 
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
@@ -88,6 +89,7 @@ class OIPoller:
         cvd_state_provider=None,
         shared_rest_cache=None,
         alert_service=_DEFAULT_ALERT_SERVICE,
+        telegram_channel_service=None,
     ):
         self.batch_size = _positive_int("batch_size", batch_size)
         self.batch_delay = _non_negative_seconds("batch_delay", batch_delay)
@@ -108,6 +110,11 @@ class OIPoller:
             Path(market_cap_file)
             if market_cap_file
             else DATA_DIR / "market_caps.json"
+        )
+        self.telegram_channel_service = (
+            Oi24hChannelService()
+            if telegram_channel_service is None
+            else telegram_channel_service
         )
         self.stop_event = threading.Event()
         self.lock = threading.RLock()
@@ -248,6 +255,7 @@ class OIPoller:
             reset_market_caches=reset_market_caches,
         )
         self.market_caps.retain_symbols(active)
+        self.telegram_channel_service.retain_symbols(active)
         retain_alert_symbols = getattr(self.alert_service, "retain_symbols", None)
         if callable(retain_alert_symbols):
             retain_alert_symbols(active)
@@ -352,6 +360,7 @@ class OIPoller:
                 self.state["error"] = EMPTY_BATCH_ERROR
                 return
 
+            self.telegram_channel_service.observe_updates(accepted_updates)
             self.alert_service.observe_updates(
                 self._with_cvd_updates(accepted_updates),
                 triggered_at=iso_now(),
@@ -405,8 +414,11 @@ class OIPoller:
             try:
                 self.alert_service.close()
             finally:
-                if self._owns_http_client:
-                    self.http_client.close()
+                try:
+                    self.telegram_channel_service.close()
+                finally:
+                    if self._owns_http_client:
+                        self.http_client.close()
 
     def get_state(self):
         with self.lock:

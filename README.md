@@ -161,6 +161,40 @@ OI 警报页面可设置：
 
 ## OI 告警 Telegram 设置
 
+### 24H 持仓大幅变化频道推送（full / stable 均可用）
+
+频道规则直接使用排行的「持仓(24h)」数据，即 OI 合约数量相对 24 小时前的变化；**上涨 >100% 或下跌 >50%（变化 < -50%）时推送，刚好 +100% 或 -50% 不推送**。不需要价格、CVD、规模门槛或监控清单确认，也不额外请求 Binance。
+
+将机器人添加为目标频道管理员并授予发布消息权限，任选以下一种方式配置，重启服务后生效：
+
+- **Railway Variables / 本地环境变量**：设置 `TELEGRAM_BOT_TOKEN` 和 `TELEGRAM_CHANNEL_ID`。公开频道可填 `@your_channel`，私有频道填 `-100...` 形式的数字 ID。
+- **配置文件**：复制项目根目录的 `telegram.example.json` 为 `telegram.json`，填写 `bot_token`、`channel_id`。该文件已被 Git 忽略。可用 `TELEGRAM_CONFIG_FILE` 指定其他 JSON 路径。
+
+```json
+{
+  "enabled": true,
+  "bot_token": "你的机器人 token",
+  "channel_id": "@your_channel",
+  "rise_threshold_percent": 100,
+  "drop_threshold_percent": -50
+}
+```
+
+| 环境变量 | 作用 |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | 机器人 token，覆盖 JSON 中的 `bot_token`。 |
+| `TELEGRAM_CHANNEL_ID` | 本频道规则的推送目标，覆盖 JSON 中的 `channel_id`。 |
+| `TELEGRAM_CHANNEL_ENABLED` | 可选，`true` / `1` 开启，`false` / `0` 关闭，覆盖 JSON 中的 `enabled`。 |
+| `TELEGRAM_CONFIG_FILE` | 可选，指定配置文件路径；默认读取项目根目录 `telegram.json`。 |
+| `TELEGRAM_OI_24H_RISE_PERCENT` | 可选，上涨提醒阈值，默认 `100`，变化 **> +100%** 时推送，覆盖 JSON 中的 `rise_threshold_percent`。必须为有限正数。 |
+| `TELEGRAM_OI_24H_DROP_PERCENT` | 可选，减仓提醒阈值，默认 `-50`，变化 **< -50%** 时推送，覆盖 JSON 中的 `drop_threshold_percent`。允许大于 -100 且小于 0；-100% 表示持仓清零。 |
+
+首次获取的数据已满足规则也会推送。同一币种持续满足同一方向的规则只推一次，退出该区间后再次进入才重推；缺失或无效的数据不触发或解除规则。去重保存在内存，服务重启后会重新通知仍满足规则的币种。后台队列发送失败最多尝试 3 次，最终失败写入日志；本频道推送不使用下方 OI 告警页面的持久化事件记录。
+
+未配置 token 或频道时不发送。配置只供后端读取，不通过网页 API 暴露。`TELEGRAM_CHANNEL_ID` 专供本规则，原有 OI 告警仍使用 `TELEGRAM_CHAT_ID`；只需要本频道规则时无需设置后者。
+
+### 原有 OI 告警页面推送（full）
+
 1. 在 Telegram 中打开 `@BotFather`，发送 `/newbot` 创建机器人。
 2. 打开与新机器人的私聊并发送 `/start`，或者将机器人加入接收告警的群组。
 3. 向机器人私聊或目标群组发送一条消息后，在 PowerShell 中运行以下命令获取聊天 ID：

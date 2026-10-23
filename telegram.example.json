@@ -1,0 +1,7 @@
+{
+  "enabled": true,
+  "bot_token": "",
+  "channel_id": "",
+  "rise_threshold_percent": 100,
+  "drop_threshold_percent": -50
+}

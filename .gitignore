@@ -10,6 +10,7 @@ pyvenv.*
 realtime_oi_dashboard/data/
 realtime_oi_dashboard/application/data/
 .env
+telegram.json
 .DS_Store
 
 # Python cache
